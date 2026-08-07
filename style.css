@@ -1113,106 +1113,174 @@ body.light-mode .heat-cell {
     }
 }
 
-@media (max-width: 600px) {
-    .theme-toggle {
-        top: 15px;
-        left: 15px;
-        width: 40px;
-        height: 40px;
-    }
-    
+@media (max-width: 768px) {
+    /* 1. Reduce Diet Tracker Height */
     .dashboard-wrapper {
-        padding: 20px 15px;
-        border-radius: 20px;
-        margin-top: 50px;
+        padding: 15px !important;
+        margin-bottom: 24px !important;
+        margin-top: 50px !important;
+        border-radius: 20px !important;
+    }
+    .app-title {
+        margin-bottom: 12px !important;
+        font-size: 20px !important;
+    }
+    .hero-progress-card {
+        padding: 15px !important;
+        margin-bottom: 16px !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 12px !important;
+        border-radius: 16px !important;
+    }
+    .hero-stats {
+        align-items: center !important;
+        text-align: center !important;
+        gap: 4px !important;
     }
     
-    .macro-value { font-size: 24px; }
-    .macro-target { font-size: 11px; }
-    .macro-label { font-size: 10px; }
-    
-    .food-right {
-        flex-direction: column;
-        align-items: flex-start;
-        padding-left: 0;
-        gap: 16px;
+    /* 2. Smaller Progress Ring */
+    .hero-progress-ring {
+        width: 85px !important;
+        height: 85px !important;
+        min-width: 85px !important;
     }
-    
-    .qty-box {
-        width: 100%;
-        justify-content: space-between;
+    .hero-progress-ring svg {
+        width: 85px !important;
+        height: 85px !important;
+    }
+    .ring-bg, .ring-fill {
+        stroke-width: 7 !important;
+    }
+    .hero-progress-text {
+        font-size: 18px !important;
+    }
+    .hero-title {
+        font-size: 14px !important;
+        margin-bottom: 0 !important;
     }
 
+    /* 3. Compact Nutrition Stats */
+    .macros-header {
+        gap: 4px !important;
+    }
+    .macro-col {
+        padding: 0 2px !important;
+    }
+    .macro-label {
+        font-size: 9px !important;
+        margin-bottom: 4px !important;
+    }
+    .macro-value {
+        font-size: 18px !important;
+    }
+    .macro-target {
+        font-size: 9px !important;
+    }
+    .macro-value-container {
+        margin-bottom: 6px !important;
+        gap: 2px !important;
+    }
+    .progress-track {
+        height: 4px !important;
+    }
+    
+    /* 4, 5, 6. Food Card Layout & Badge Wrap */
+    .food-row {
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
+        grid-template-areas: 
+            "name qty"
+            "macros macros" !important;
+        gap: 12px 10px !important;
+        padding: 14px 16px !important;
+        align-items: center !important;
+    }
+    .food-right {
+        display: contents !important; 
+    }
+    .food-left {
+        grid-area: name !important;
+        margin-bottom: 0 !important;
+        min-height: 44px !important; /* 9. Touch Target */
+    }
+    .qty-box {
+        grid-area: qty !important;
+        width: auto !important;
+        padding: 6px 12px !important;
+        margin: 0 !important;
+        min-width: 44px !important; /* 9. Touch Target */
+        min-height: 44px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+    .macros-string {
+        grid-area: macros !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+        justify-content: flex-start !important;
+    }
+    
+    /* 7. Meal Header */
+    .meal-section {
+        margin-bottom: 24px !important;
+    }
+    .meal-header {
+        font-size: 16px !important;
+        margin-bottom: 12px !important;
+    }
+    
+    /* 8. Mobile Typography */
+    .food-name-en {
+        font-size: 14px !important;
+    }
+    .qty-num {
+        font-size: 14px !important;
+    }
+    .qty-unit {
+        font-size: 9px !important;
+    }
+    .macro-tag {
+        font-size: 10px !important;
+        padding: 4px 8px !important;
+    }
+
+    /* Fix theme toggle */
+    .theme-toggle {
+        top: 12px;
+        left: 12px;
+        width: 44px;
+        height: 44px;
+    }
+    
+    /* Other mobile tab tweaks */
     .tracker-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 15px;
     }
-    
     .tracker-tabs {
         width: 100%;
         display: flex;
     }
-    
     .tab-btn {
         flex: 1;
         text-align: center;
-        padding: 8px;
+        padding: 10px;
     }
-    
-    .hero-progress-card, .period-summary-card {
+    .period-summary-card {
         flex-direction: column;
         text-align: center;
         gap: 15px;
     }
-
-    .hero-stats {
-        align-items: center;
-    }
-
     .advanced-stats-grid {
         grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
     }
-}
-
-/* Reset Button */
-.reset-btn-container {
-    text-align: center;
-    margin-top: 60px;
-}
-
-.reset-btn {
-    background: var(--tag-bg);
-    color: var(--text-muted);
-    border: 1px solid var(--tag-border);
-    padding: 14px 28px;
-    border-radius: 14px;
-    font-family: inherit;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.reset-btn:hover {
-    background: rgba(250, 112, 154, 0.1);
-    color: #fa709a;
-    border-color: rgba(250, 112, 154, 0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-}
-
-.reset-btn:active {
-    transform: translateY(0);
-}
-
-.reset-icon {
-    transition: transform 0.5s ease;
-}
-
-.reset-btn:hover .reset-icon {
-    transform: rotate(-180deg);
+    .adv-stat {
+        padding: 12px;
+    }
 }
