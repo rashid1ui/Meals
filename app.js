@@ -1,11 +1,11 @@
 const targets = { p: 153, f: 71, c: 251, k: 2254 };
 
 const mealIcons = [
-    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
-    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
-    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.6 21.4 2.6 5.4"/><path d="m21.5 15.3-2.8-2.8c-.8-.8-2.1-.8-2.9 0l-1.3 1.3c-.8.8-.8 2.1 0 2.9l2.8 2.8c.8.8 2.1.8 2.9 0l1.3-1.3c.8-.8.8-2.1 0-2.9z"/><path d="m8.7 2.5-2.8 2.8c-.8.8-.8 2.1 0 2.9l1.3 1.3c.8.8 2.1.8 2.9 0l2.8-2.8c.8-.8.8-2.1 0-2.9l-1.3-1.3c-.8-.8-2.1-.8-2.9 0z"/></svg>`,
-    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="M8.46 10.46l-4.24-4.24"/><path d="M15.54 10.46l4.24-4.24"/><path d="M22 22H2"/><path d="M8 22v-3a4 4 0 0 1 8 0v3"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.6 21.4 2.6 5.4"/><path d="m21.5 15.3-2.8-2.8c-.8-.8-2.1-.8-2.9 0l-1.3 1.3c-.8.8-.8 2.1 0 2.9l2.8 2.8c.8.8 2.1.8 2.9 0l1.3-1.3c.8-.8.8-2.1 0-2.9z"/><path d="m8.7 2.5-2.8 2.8c-.8.8-.8 2.1 0 2.9l1.3 1.3c.8.8 2.1.8 2.9 0l2.8-2.8c.8-.8.8-2.1 0-2.9l-1.3-1.3c-.8-.8-2.1-.8-2.9 0z"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
 ];
 
 
@@ -106,49 +106,73 @@ function saveState() {
 }
 
 function loadState() {
-    const savedState = localStorage.getItem('dietTrackerStatePro');
-    if (savedState) {
-        const checkedItems = JSON.parse(savedState);
-        checkedItems.forEach(id => {
-            const cb = document.getElementById(id);
-            if (cb) {
-                cb.checked = true;
-                // Add active class immediately on load
-                cb.closest('.food-row').classList.add('active');
+    try {
+        const savedState = localStorage.getItem('dietTrackerStatePro');
+        if (savedState) {
+            const checkedItems = JSON.parse(savedState);
+            if (Array.isArray(checkedItems)) {
+                checkedItems.forEach(id => {
+                    const cb = document.getElementById(id);
+                    if (cb) {
+                        cb.checked = true;
+                        cb.closest('.food-row').classList.add('active');
+                    }
+                });
             }
-        });
+        }
+    } catch (e) {
+        console.error("Error loading state:", e);
     }
 }
 
 function resetDay() {
     if (confirm("Are you sure you want to clear today's selection?")) {
         checkboxes.forEach(cb => cb.checked = false);
-        currentWater = 0;
-        updateWaterUI();
-        saveWaterState();
         updateDashboard();
     }
 }
 
 const currentDisplayed = { p: 0, f: 0, c: 0, k: 0 };
 let hasCelebrated = false;
+let celebrationTimeout = null;
+
+// Store active animation requests to cancel them on rapid consecutive clicks
+const animationRequests = {};
 
 function animateValue(id, start, end, duration) {
-    if (start === end) return;
     const obj = document.getElementById(id);
+    
+    if (start === end) {
+        obj.innerHTML = end;
+        return;
+    }
+    
+    // Cancel any existing animation for this element to prevent overlapping frames and jitter
+    if (animationRequests[id]) {
+        window.cancelAnimationFrame(animationRequests[id]);
+    }
+
     let startTimestamp = null;
     const step = (timestamp) => {
         if (!startTimestamp) startTimestamp = timestamp;
         const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-        const val = progress * (end - start) + start;
+        
+        // Easing function (easeOutCubic) for a more premium, natural slow-down at the end
+        const easeOutProgress = 1 - Math.pow(1 - progress, 3);
+        const val = easeOutProgress * (end - start) + start;
+        
         obj.innerHTML = Math.floor(val);
+        
         if (progress < 1) {
-            window.requestAnimationFrame(step);
+            animationRequests[id] = window.requestAnimationFrame(step);
         } else {
+            // Ensure the exact final value is set at the end of the animation
             obj.innerHTML = end;
+            delete animationRequests[id];
         }
     };
-    window.requestAnimationFrame(step);
+    
+    animationRequests[id] = window.requestAnimationFrame(step);
 }
 
 function updateDashboard() {
@@ -178,18 +202,40 @@ function updateDashboard() {
     currentDisplayed.c = current.c;
     currentDisplayed.k = current.k;
 
-    // Check for celebration
-    if (current.p >= targets.p && current.f >= targets.f && current.c >= targets.c && current.k >= targets.k) {
-        if (!hasCelebrated && typeof confetti === 'function') {
-            confetti({
-                particleCount: 150,
-                spread: 80,
-                origin: { y: 0.6 }
-            });
+    // Check for celebration (Protein OR Calories reach target)
+    if (current.p >= targets.p || current.k >= targets.k) {
+        if (!hasCelebrated) {
             hasCelebrated = true;
+            const dashboard = document.getElementById('main-dashboard');
+            if (dashboard) {
+                // Clear any existing timeout to avoid glitching
+                if (celebrationTimeout) clearTimeout(celebrationTimeout);
+                
+                // Trigger pure CSS celebration (glow, checkmark, confetti)
+                dashboard.classList.add('celebrating');
+                
+                // Remove class after 3 seconds for smooth fade out
+                celebrationTimeout = setTimeout(() => {
+                    dashboard.classList.remove('celebrating');
+                }, 3000);
+            }
         }
     } else {
+        // Reset flag if user unchecks items falling below target
         hasCelebrated = false;
+    }
+    
+    // Automatic Habit Tracking: Calories directly dictate 70% of the daily progress.
+    // We instantly recalculate without page refresh.
+    try {
+        if (typeof calculateTodayScore === 'function') {
+            calculateTodayScore();
+            saveHabitsData();
+            renderWeeklyCards();
+            renderMonthlyHeatmap();
+        }
+    } catch(e) {
+        console.error("Error auto-updating dashboard analytics:", e);
     }
 
     updateBar('p-bar', current.p, targets.p);
@@ -229,61 +275,379 @@ themeToggle.addEventListener('click', () => {
 
 checkboxes.forEach(cb => cb.addEventListener('change', updateDashboard));
 
-// Water Tracker Logic
-const waterGlassesContainer = document.getElementById('water-glasses');
-const waterCount = document.getElementById('water-count');
-let currentWater = 0;
-const totalGlasses = 8;
+// --- Daily Progress & Habit Tracker Logic ---
+const trackerTabs = document.querySelectorAll('.tab-btn');
+const trackerContents = document.querySelectorAll('.tracker-content');
 
-function initWaterTracker() {
-    if(!waterGlassesContainer) return;
-    waterGlassesContainer.innerHTML = '';
-    for (let i = 0; i < totalGlasses; i++) {
-        const glass = document.createElement('div');
-        glass.className = 'water-glass';
-        glass.addEventListener('click', () => toggleWater(i));
-        waterGlassesContainer.appendChild(glass);
+let habitsData = {};
+
+function initHabitsTracker() {
+    if (trackerTabs.length === 0) return;
+    
+    // 1. Tab Switching
+    trackerTabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+            trackerTabs.forEach(t => t.classList.remove('active'));
+            trackerContents.forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.target).classList.add('active');
+        });
+    });
+
+    // 2. Load Data
+    try {
+        const saved = localStorage.getItem('dietTrackerHabitsPro');
+        if (saved) {
+            habitsData = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error("Error parsing habits data:", e);
+        habitsData = {};
     }
-    loadWaterState();
+    
+    // Create today if not exists
+    const todayStr = getLocalDateStr(new Date());
+    if (!habitsData[todayStr]) {
+        habitsData[todayStr] = {
+            score: 0
+        };
+    }
+
+    calculateTodayScore();
+    renderWeeklyCards();
+    renderMonthlyHeatmap();
 }
 
-function toggleWater(index) {
-    // If clicking the current exact level, unfill it (decrease by 1)
-    if (index === currentWater - 1) {
-        currentWater = index;
-    } else {
-        currentWater = index + 1;
-    }
-    updateWaterUI();
-    saveWaterState();
+function getLocalDateStr(date) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
 }
 
-function updateWaterUI() {
-    if(!waterCount) return;
-    const glasses = document.querySelectorAll('.water-glass');
-    glasses.forEach((glass, idx) => {
-        if (idx < currentWater) {
-            glass.classList.add('full');
+// Analytics Helper Functions
+function getScoreLevel(score) {
+    if (score === 100) return 4;
+    if (score >= 80) return 3;
+    if (score >= 50) return 2;
+    if (score >= 25) return 1;
+    return 0;
+}
+
+function animateProgressRing(elementId, percent) {
+    const ring = document.getElementById(elementId);
+    if (!ring) return;
+    const radius = ring.r.baseVal.value;
+    const circumference = radius * 2 * Math.PI;
+    ring.style.strokeDasharray = `${circumference} ${circumference}`;
+    const offset = circumference - (percent / 100) * circumference;
+    
+    // Set level color
+    const level = getScoreLevel(percent);
+    ring.className.baseVal = `ring-fill level-${level}`;
+    
+    // Animate
+    setTimeout(() => {
+        ring.style.strokeDashoffset = offset;
+    }, 50);
+}
+
+function animateCounter(elementId, targetVal) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    let current = parseInt(el.innerText) || 0;
+    if (current === targetVal) return;
+    
+    const duration = 800; // ms
+    const startTime = performance.now();
+    
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // easeOutQuart
+        const ease = 1 - Math.pow(1 - progress, 4);
+        const val = Math.round(current + (targetVal - current) * ease);
+        el.innerText = val;
+        
+        if (progress < 1) {
+            requestAnimationFrame(update);
         } else {
-            glass.classList.remove('full');
+            el.innerText = targetVal;
+        }
+    }
+    requestAnimationFrame(update);
+}
+
+function getCurrentCalories() {
+    let k = 0;
+    const foodCbs = document.querySelectorAll('.food-checkbox');
+    foodCbs.forEach(cb => {
+        if (cb.checked) k += parseFloat(cb.dataset.k);
+    });
+    return k;
+}
+
+function calculateTodayScore() {
+    const todayStr = getLocalDateStr(new Date());
+    const data = habitsData[todayStr];
+    if (!data) return;
+    
+    // Nutrition = 100% of score (based on Calories)
+    const currentKcal = getCurrentCalories();
+    let nutritionPercent = (currentKcal / targets.k) * 100;
+    if (nutritionPercent > 100) nutritionPercent = 100;
+    if (nutritionPercent < 0) nutritionPercent = 0;
+    
+    data.score = Math.round(nutritionPercent);
+    
+    // Today UI Updates
+    animateProgressRing('today-ring-fill', data.score);
+    animateCounter('today-percent', data.score);
+    
+    // Streak logic needs history, render streaks
+    const currentStreak = calculateCurrentStreak();
+    document.getElementById('today-streak').innerText = currentStreak;
+    
+    // Calculate Yesterday Comparison
+    let dYesterday = new Date();
+    dYesterday.setDate(dYesterday.getDate() - 1);
+    const yStr = getLocalDateStr(dYesterday);
+    const yData = habitsData[yStr] || { score: 0 };
+    
+    const yScoreEl = document.getElementById('yesterday-score');
+    const yDeltaEl = document.getElementById('yesterday-delta');
+    
+    if (yScoreEl && yDeltaEl) {
+        yScoreEl.innerText = `${yData.score}%`;
+        const diff = data.score - yData.score;
+        if (diff > 0) {
+            yDeltaEl.innerText = `▲ +${diff}%`;
+            yDeltaEl.className = 'y-delta positive';
+        } else if (diff < 0) {
+            yDeltaEl.innerText = `▼ ${diff}%`;
+            yDeltaEl.className = 'y-delta negative';
+        } else {
+            yDeltaEl.innerText = `— Same`;
+            yDeltaEl.className = 'y-delta neutral';
+        }
+    }
+}
+
+function saveHabitsData() {
+    localStorage.setItem('dietTrackerHabitsPro', JSON.stringify(habitsData));
+}
+
+function renderWeeklyCards() {
+    const container = document.getElementById('weekly-cards');
+    if(!container) return;
+    container.innerHTML = '';
+    
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    let totalScore = 0;
+    let completed = 0, partial = 0, missed = 0;
+    
+    // Generate last 7 days
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = getLocalDateStr(d);
+        const dayName = i === 0 ? 'Today' : days[d.getDay()];
+        const shortDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        const data = habitsData[dateStr] || { score: 0 };
+        totalScore += data.score;
+        
+        if (data.score >= 80) completed++;
+        else if (data.score >= 50) partial++;
+        else missed++;
+        
+        const level = getScoreLevel(data.score);
+        
+        const card = document.createElement('div');
+        card.className = `day-card`;
+        
+        let habitsHtml = '';
+        if (habitsData[dateStr]) {
+             habitsHtml = `
+                <div class="history-habits-details">
+                    <div class="history-habit-item ${data.workout?'done':''}">${data.workout?'✅':'✗'} Workout</div>
+                    <div class="history-habit-item ${data.sleep?'done':''}">${data.sleep?'✅':'✗'} Sleep</div>
+                </div>
+             `;
+        } else {
+             habitsHtml = `<div class="history-habits-details"><div class="history-habit-item">No data</div></div>`;
+        }
+
+        card.innerHTML = `
+            <div class="day-card-name">${dayName}</div>
+            <div class="day-card-date">${shortDate}</div>
+            <div class="mini-ring">
+                <svg viewBox="0 0 44 44">
+                    <circle class="ring-bg level-none" cx="22" cy="22" r="18"></circle>
+                    <circle class="ring-fill level-${level}" cx="22" cy="22" r="18" style="stroke-dashoffset: ${113 - (data.score/100)*113}"></circle>
+                </svg>
+                <div class="mini-pct">${data.score}%</div>
+            </div>
+            ${habitsHtml}
+        `;
+        
+        card.addEventListener('click', () => {
+            const details = card.querySelector('.history-habits-details');
+            if(details.style.display === 'block') details.style.display = 'none';
+            else details.style.display = 'block';
+        });
+        
+        container.appendChild(card);
+    }
+    
+    const avg = Math.round(totalScore / 7);
+    animateCounter('week-percent', avg);
+    animateProgressRing('week-ring-fill', avg);
+    
+    document.getElementById('week-streak').innerText = calculateCurrentStreak();
+    document.getElementById('week-best-streak').innerText = calculateLongestStreak();
+    document.getElementById('week-completed').innerText = completed;
+    document.getElementById('week-partial').innerText = partial;
+    document.getElementById('week-missed').innerText = missed;
+}
+
+function calculateCurrentStreak() {
+    let streak = 0;
+    let d = new Date();
+    while (true) {
+        const dateStr = getLocalDateStr(d);
+        const data = habitsData[dateStr];
+        if (!data || data.score < 100) {
+            // If today is not 100% yet, check yesterday to not break the streak prematurely
+            if (streak === 0 && getLocalDateStr(new Date()) === dateStr) {
+                d.setDate(d.getDate() - 1);
+                continue; 
+            }
+            break;
+        }
+        streak++;
+        d.setDate(d.getDate() - 1);
+    }
+    return streak;
+}
+
+function calculateLongestStreak() {
+    let longest = 0;
+    let current = 0;
+    const dates = Object.keys(habitsData).sort();
+    let lastDateObj = null;
+    
+    dates.forEach(dateStr => {
+        if (habitsData[dateStr].score === 100) {
+            const d = new Date(dateStr);
+            if (lastDateObj) {
+                const diffTime = Math.abs(d - lastDateObj);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                if (diffDays === 1) {
+                    current++;
+                } else {
+                    current = 1;
+                }
+            } else {
+                current = 1;
+            }
+            lastDateObj = d;
+            if (current > longest) longest = current;
+        } else {
+            current = 0;
+            lastDateObj = null;
         }
     });
-    waterCount.innerText = currentWater;
+    return longest;
 }
 
-function saveWaterState() {
-    localStorage.setItem('dietTrackerWaterPro', currentWater.toString());
-}
-
-function loadWaterState() {
-    const saved = localStorage.getItem('dietTrackerWaterPro');
-    if (saved) {
-        currentWater = parseInt(saved);
-        updateWaterUI();
+function renderMonthlyHeatmap() {
+    const grid = document.getElementById('heatmap-grid');
+    const historyList = document.getElementById('monthly-history');
+    if(!grid || !historyList) return;
+    
+    grid.innerHTML = '';
+    historyList.innerHTML = '';
+    
+    let totalScore = 0;
+    let perfect = 0, completed = 0, partial = 0, missed = 0;
+    
+    const daysToGenerate = 28;
+    
+    for (let i = daysToGenerate - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = getLocalDateStr(d);
+        
+        const data = habitsData[dateStr] || { score: 0 };
+        totalScore += data.score;
+        
+        if (data.score === 100) perfect++;
+        else if (data.score >= 80) completed++;
+        else if (data.score >= 50) partial++;
+        else missed++;
+        
+        let level = getScoreLevel(data.score);
+        
+        // Heatmap cell
+        const cell = document.createElement('div');
+        cell.className = `heat-cell bg-level-${level}`;
+        cell.setAttribute('data-title', `${dateStr}: ${data.score}%`);
+        
+        // History row
+        let statusText = 'Missed 🔴';
+        if(data.score === 100) statusText = 'Perfect ⭐';
+        else if(data.score >= 80) statusText = 'Completed ✅';
+        else if(data.score >= 50) statusText = 'Partial 🟡';
+        
+        const row = document.createElement('div');
+        row.className = 'history-row';
+        
+        let habitsHtml = '';
+        if (habitsData[dateStr]) {
+             habitsHtml = `
+                <div class="history-habits-details">
+                    <div class="history-habit-item ${data.workout?'done':''}">${data.workout?'✅':'✗'} Workout</div>
+                    <div class="history-habit-item ${data.sleep?'done':''}">${data.sleep?'✅':'✗'} Sleep</div>
+                </div>
+             `;
+        } else {
+             habitsHtml = `<div class="history-habits-details"><div class="history-habit-item">No data</div></div>`;
+        }
+        
+        row.innerHTML = `
+            <div class="history-header">
+                <span class="history-date">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                <span class="history-pct level-${level}">${data.score}%</span>
+                <span class="history-status">${statusText}</span>
+            </div>
+            ${habitsHtml}
+        `;
+        
+        row.addEventListener('click', () => {
+            row.classList.toggle('expanded');
+        });
+        
+        grid.appendChild(cell);
+        
+        // prepend to show newest first in history
+        historyList.prepend(row);
     }
+    
+    const avg = Math.round(totalScore / daysToGenerate);
+    animateCounter('month-percent', avg);
+    animateProgressRing('month-ring-fill', avg);
+    
+    document.getElementById('month-streak').innerText = calculateCurrentStreak();
+    document.getElementById('month-best-streak').innerText = calculateLongestStreak();
+    document.getElementById('month-perfect').innerText = perfect;
+    document.getElementById('month-completed').innerText = completed;
+    document.getElementById('month-partial').innerText = partial;
+    document.getElementById('month-missed').innerText = missed;
 }
 
-initWaterTracker();
+// Ensure the habits tracker initializes on load
+initHabitsTracker();
 loadTheme();
 loadState();
 updateDashboard();
