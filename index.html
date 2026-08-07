@@ -26,6 +26,28 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
             <h1 class="app-title">Diet Tracker</h1>
+            <div class="hero-progress-card">
+                <div class="hero-progress-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="45"></circle>
+                        <circle class="ring-fill" id="today-ring-fill" cx="50" cy="50" r="45"></circle>
+                    </svg>
+                    <div class="hero-progress-text">
+                        <span id="today-percent">0</span>%
+                    </div>
+                </div>
+                <div class="hero-stats">
+                    <h3 class="hero-title">Today's Progress</h3>
+                    <div class="hero-yesterday" id="yesterday-comparison">
+                        <span class="y-label">Yesterday</span>
+                        <span class="y-val" id="yesterday-score">--%</span>
+                        <span class="y-delta" id="yesterday-delta">--</span>
+                    </div>
+                    <div class="hero-streak">
+                        <span class="stat-icon">🔥</span> <span id="today-streak">0</span> Day Streak
+                    </div>
+                </div>
+            </div>
             <div class="macros-header">
                 <div class="macro-col">
                     <div class="macro-label">PROTEIN</div>
@@ -77,42 +99,13 @@
             <div class="tracker-header">
                 <h2 class="section-title" style="margin-bottom:0;">Smart Analytics</h2>
                 <div class="tracker-tabs">
-                    <button class="tab-btn active" data-target="tab-today">Today</button>
-                    <button class="tab-btn" data-target="tab-week">This Week</button>
+                    <button class="tab-btn active" data-target="tab-week">This Week</button>
                     <button class="tab-btn" data-target="tab-month">This Month</button>
                 </div>
             </div>
 
-            <!-- TAB: Today -->
-            <div class="tracker-content active" id="tab-today">
-                <div class="hero-progress-card">
-                    <div class="hero-progress-ring">
-                        <svg viewBox="0 0 100 100">
-                            <circle class="ring-bg" cx="50" cy="50" r="45"></circle>
-                            <circle class="ring-fill" id="today-ring-fill" cx="50" cy="50" r="45"></circle>
-                        </svg>
-                        <div class="hero-progress-text">
-                            <span id="today-percent">0</span>%
-                        </div>
-                    </div>
-                    <div class="hero-stats">
-                        <h3 class="hero-title">Today's Progress</h3>
-                        <div class="hero-yesterday" id="yesterday-comparison">
-                            <span class="y-label">Yesterday</span>
-                            <span class="y-val" id="yesterday-score">--%</span>
-                            <span class="y-delta" id="yesterday-delta">--</span>
-                        </div>
-                        <div class="hero-streak">
-                            <span class="stat-icon">🔥</span> <span id="today-streak">0</span> Day Streak
-                        </div>
-                    </div>
-                </div>
-
-
-            </div>
-
             <!-- TAB: This Week -->
-            <div class="tracker-content" id="tab-week">
+            <div class="tracker-content active" id="tab-week">
                 <div class="period-summary-card">
                     <div class="period-progress-ring">
                         <svg viewBox="0 0 100 100">
@@ -224,12 +217,7 @@
             </div>
         </div>
 
-        <div class="reset-btn-container">
-            <button class="reset-btn" onclick="resetDay()">
-                <svg class="reset-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                Reset Daily Progress
-            </button>
-        </div>
+
     </div>
 </body>
 </html>

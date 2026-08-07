@@ -125,12 +125,44 @@ function loadState() {
     }
 }
 
-function resetDay() {
-    if (confirm("Are you sure you want to clear today's selection?")) {
+// A logical day starts at 3:00 AM. Time before 3:00 AM belongs to the previous calendar day.
+function getLogicalDate(dateObj = new Date()) {
+    const d = new Date(dateObj.getTime());
+    d.setHours(d.getHours() - 3);
+    return d;
+}
+
+function checkAutoReset() {
+    const currentLogicalDateStr = getLocalDateStr(getLogicalDate());
+    let activeLogicalDateStr = localStorage.getItem('dietTrackerActiveDatePro');
+    
+    if (!activeLogicalDateStr) {
+        localStorage.setItem('dietTrackerActiveDatePro', currentLogicalDateStr);
+        return;
+    }
+    
+    if (activeLogicalDateStr !== currentLogicalDateStr) {
+        // A new logical day has started.
+        // Because stats are automatically saved on every click, yesterday is already fully saved.
+        // Reset the active board for today.
         checkboxes.forEach(cb => cb.checked = false);
+        saveState();
+        
+        if (typeof habitsData !== 'undefined' && !habitsData[currentLogicalDateStr]) {
+            habitsData[currentLogicalDateStr] = { score: 0 };
+        }
+        
         updateDashboard();
+        localStorage.setItem('dietTrackerActiveDatePro', currentLogicalDateStr);
     }
 }
+
+// Check for reset when tab becomes active again
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        checkAutoReset();
+    }
+});
 
 const currentDisplayed = { p: 0, f: 0, c: 0, k: 0 };
 let hasCelebrated = false;
@@ -306,7 +338,7 @@ function initHabitsTracker() {
     }
     
     // Create today if not exists
-    const todayStr = getLocalDateStr(new Date());
+    const todayStr = getLocalDateStr(getLogicalDate());
     if (!habitsData[todayStr]) {
         habitsData[todayStr] = {
             score: 0
@@ -378,25 +410,35 @@ function animateCounter(elementId, targetVal) {
     requestAnimationFrame(update);
 }
 
-function getCurrentCalories() {
-    let k = 0;
+function getCurrentMacros() {
+    let macros = { p: 0, k: 0 };
     const foodCbs = document.querySelectorAll('.food-checkbox');
     foodCbs.forEach(cb => {
-        if (cb.checked) k += parseFloat(cb.dataset.k);
+        if (cb.checked) {
+            macros.p += parseFloat(cb.dataset.p);
+            macros.k += parseFloat(cb.dataset.k);
+        }
     });
-    return k;
+    return macros;
 }
 
 function calculateTodayScore() {
-    const todayStr = getLocalDateStr(new Date());
+    const todayStr = getLocalDateStr(getLogicalDate());
     const data = habitsData[todayStr];
     if (!data) return;
     
-    // Nutrition = 100% of score (based on Calories)
-    const currentKcal = getCurrentCalories();
-    let nutritionPercent = (currentKcal / targets.k) * 100;
-    if (nutritionPercent > 100) nutritionPercent = 100;
-    if (nutritionPercent < 0) nutritionPercent = 0;
+    // Nutrition = 100% of score (MIN of Calories and Protein Progress)
+    const current = getCurrentMacros();
+    
+    let calPercent = (current.k / targets.k) * 100;
+    if (calPercent > 100) calPercent = 100;
+    if (calPercent < 0) calPercent = 0;
+    
+    let proPercent = (current.p / targets.p) * 100;
+    if (proPercent > 100) proPercent = 100;
+    if (proPercent < 0) proPercent = 0;
+    
+    const nutritionPercent = Math.min(calPercent, proPercent);
     
     data.score = Math.round(nutritionPercent);
     
@@ -409,7 +451,7 @@ function calculateTodayScore() {
     document.getElementById('today-streak').innerText = currentStreak;
     
     // Calculate Yesterday Comparison
-    let dYesterday = new Date();
+    let dYesterday = getLogicalDate();
     dYesterday.setDate(dYesterday.getDate() - 1);
     const yStr = getLocalDateStr(dYesterday);
     const yData = habitsData[yStr] || { score: 0 };
@@ -448,7 +490,7 @@ function renderWeeklyCards() {
     
     // Generate last 7 days
     for (let i = 6; i >= 0; i--) {
-        const d = new Date();
+        const d = getLogicalDate();
         d.setDate(d.getDate() - i);
         const dateStr = getLocalDateStr(d);
         const dayName = i === 0 ? 'Today' : days[d.getDay()];
@@ -513,13 +555,13 @@ function renderWeeklyCards() {
 
 function calculateCurrentStreak() {
     let streak = 0;
-    let d = new Date();
+    let d = getLogicalDate();
     while (true) {
         const dateStr = getLocalDateStr(d);
         const data = habitsData[dateStr];
         if (!data || data.score < 100) {
             // If today is not 100% yet, check yesterday to not break the streak prematurely
-            if (streak === 0 && getLocalDateStr(new Date()) === dateStr) {
+            if (streak === 0 && getLocalDateStr(getLogicalDate()) === dateStr) {
                 d.setDate(d.getDate() - 1);
                 continue; 
             }
@@ -575,7 +617,7 @@ function renderMonthlyHeatmap() {
     const daysToGenerate = 28;
     
     for (let i = daysToGenerate - 1; i >= 0; i--) {
-        const d = new Date();
+        const d = getLogicalDate();
         d.setDate(d.getDate() - i);
         const dateStr = getLocalDateStr(d);
         
@@ -650,4 +692,5 @@ function renderMonthlyHeatmap() {
 initHabitsTracker();
 loadTheme();
 loadState();
+checkAutoReset();
 updateDashboard();
