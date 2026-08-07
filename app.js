@@ -1,5 +1,14 @@
 const targets = { p: 153, f: 71, c: 251, k: 2254 };
 
+const mealIcons = [
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.6 21.4 2.6 5.4"/><path d="m21.5 15.3-2.8-2.8c-.8-.8-2.1-.8-2.9 0l-1.3 1.3c-.8.8-.8 2.1 0 2.9l2.8 2.8c.8.8 2.1.8 2.9 0l1.3-1.3c.8-.8.8-2.1 0-2.9z"/><path d="m8.7 2.5-2.8 2.8c-.8.8-.8 2.1 0 2.9l1.3 1.3c.8.8 2.1.8 2.9 0l2.8-2.8c.8-.8.8-2.1 0-2.9l-1.3-1.3c-.8-.8-2.1-.8-2.9 0z"/></svg>`,
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="meal-icon" style="margin-right: 8px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
+];
+
+
 const meals = [
     {
         name: "Meal 1 (Breakfast)",
@@ -52,7 +61,7 @@ meals.forEach((meal, mIndex) => {
     const section = document.createElement('div');
     section.className = 'meal-section';
     section.id = `meal-${mIndex}`;
-    section.innerHTML = `<div class="meal-header">${meal.name}</div><div class="food-list"></div>`;
+    section.innerHTML = `<div class="meal-header">${mealIcons[mIndex] || ''}${meal.name}</div><div class="food-list"></div>`;
     const list = section.querySelector('.food-list');
 
     meal.items.forEach((item, iIndex) => {
@@ -114,8 +123,32 @@ function loadState() {
 function resetDay() {
     if (confirm("Are you sure you want to clear today's selection?")) {
         checkboxes.forEach(cb => cb.checked = false);
+        currentWater = 0;
+        updateWaterUI();
+        saveWaterState();
         updateDashboard();
     }
+}
+
+const currentDisplayed = { p: 0, f: 0, c: 0, k: 0 };
+let hasCelebrated = false;
+
+function animateValue(id, start, end, duration) {
+    if (start === end) return;
+    const obj = document.getElementById(id);
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const val = progress * (end - start) + start;
+        obj.innerHTML = Math.floor(val);
+        if (progress < 1) {
+            window.requestAnimationFrame(step);
+        } else {
+            obj.innerHTML = end;
+        }
+    };
+    window.requestAnimationFrame(step);
 }
 
 function updateDashboard() {
@@ -134,11 +167,30 @@ function updateDashboard() {
         }
     });
 
-    // Simple value update
-    document.getElementById('p-val').innerText = current.p;
-    document.getElementById('f-val').innerText = current.f;
-    document.getElementById('c-val').innerText = current.c;
-    document.getElementById('k-val').innerText = current.k;
+    // Animated value update
+    animateValue('p-val', currentDisplayed.p, current.p, 600);
+    animateValue('f-val', currentDisplayed.f, current.f, 600);
+    animateValue('c-val', currentDisplayed.c, current.c, 600);
+    animateValue('k-val', currentDisplayed.k, current.k, 600);
+
+    currentDisplayed.p = current.p;
+    currentDisplayed.f = current.f;
+    currentDisplayed.c = current.c;
+    currentDisplayed.k = current.k;
+
+    // Check for celebration
+    if (current.p >= targets.p && current.f >= targets.f && current.c >= targets.c && current.k >= targets.k) {
+        if (!hasCelebrated && typeof confetti === 'function') {
+            confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.6 }
+            });
+            hasCelebrated = true;
+        }
+    } else {
+        hasCelebrated = false;
+    }
 
     updateBar('p-bar', current.p, targets.p);
     updateBar('f-bar', current.f, targets.f);
@@ -177,6 +229,61 @@ themeToggle.addEventListener('click', () => {
 
 checkboxes.forEach(cb => cb.addEventListener('change', updateDashboard));
 
+// Water Tracker Logic
+const waterGlassesContainer = document.getElementById('water-glasses');
+const waterCount = document.getElementById('water-count');
+let currentWater = 0;
+const totalGlasses = 8;
+
+function initWaterTracker() {
+    if(!waterGlassesContainer) return;
+    waterGlassesContainer.innerHTML = '';
+    for (let i = 0; i < totalGlasses; i++) {
+        const glass = document.createElement('div');
+        glass.className = 'water-glass';
+        glass.addEventListener('click', () => toggleWater(i));
+        waterGlassesContainer.appendChild(glass);
+    }
+    loadWaterState();
+}
+
+function toggleWater(index) {
+    // If clicking the current exact level, unfill it (decrease by 1)
+    if (index === currentWater - 1) {
+        currentWater = index;
+    } else {
+        currentWater = index + 1;
+    }
+    updateWaterUI();
+    saveWaterState();
+}
+
+function updateWaterUI() {
+    if(!waterCount) return;
+    const glasses = document.querySelectorAll('.water-glass');
+    glasses.forEach((glass, idx) => {
+        if (idx < currentWater) {
+            glass.classList.add('full');
+        } else {
+            glass.classList.remove('full');
+        }
+    });
+    waterCount.innerText = currentWater;
+}
+
+function saveWaterState() {
+    localStorage.setItem('dietTrackerWaterPro', currentWater.toString());
+}
+
+function loadWaterState() {
+    const saved = localStorage.getItem('dietTrackerWaterPro');
+    if (saved) {
+        currentWater = parseInt(saved);
+        updateWaterUI();
+    }
+}
+
+initWaterTracker();
 loadTheme();
 loadState();
 updateDashboard();

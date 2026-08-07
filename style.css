@@ -492,6 +492,79 @@ body.light-mode .theme-toggle .sun-icon {
     letter-spacing: 0.5px;
 }
 
+/* --- Water Tracker --- */
+.water-tracker-container {
+    background: var(--dash-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 25px;
+    border: 1px solid var(--dash-border);
+    border-radius: 24px;
+    margin-bottom: 40px;
+    box-shadow: 0 15px 30px var(--dash-shadow);
+    text-align: center;
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 20px;
+    letter-spacing: -0.5px;
+}
+
+.water-glasses {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.water-glass {
+    width: 36px;
+    height: 48px;
+    border: 2px solid var(--color-p);
+    border-radius: 4px 4px 10px 10px;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    background: var(--bg-card);
+}
+
+.water-glass:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(79, 172, 254, 0.3);
+}
+
+.water-glass::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    background: var(--grad-p);
+    transition: height 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.water-glass.full::after {
+    height: 90%;
+}
+
+.water-progress-text {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.water-progress-text span {
+    font-size: 20px;
+    color: var(--color-p);
+    font-weight: 800;
+}
+
 @media (max-width: 850px) {
     .food-row {
         flex-direction: column;
