@@ -1,3 +1,98 @@
+// --- Supabase Configuration ---
+const SUPABASE_URL = 'https://lgctsdompyyzpokfqjvd.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_kazolscDsWouSbbVTTc5iQ_gR_9MBRW';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- Auth UI Elements ---
+const authScreen = document.getElementById('auth-screen');
+const appContent = document.getElementById('app-content');
+const loadingScreen = document.getElementById('loading-screen');
+const googleLoginBtn = document.getElementById('google-login-btn');
+const authError = document.getElementById('auth-error');
+
+// Profile Elements
+const profileContainer = document.getElementById('profile-container');
+const profileBtn = document.getElementById('profile-btn');
+const profileDropdown = document.getElementById('profile-dropdown');
+const profileAvatar = document.getElementById('profile-avatar');
+const profileName = document.getElementById('profile-name');
+const profileEmail = document.getElementById('profile-email');
+const signOutBtn = document.getElementById('sign-out-btn');
+
+let currentUser = null;
+
+// --- Auth Logic ---
+async function initAuth() {
+    // Check current session
+    const { data: { session }, error } = await supabase.auth.getSession();
+    handleSession(session);
+
+    // Listen for auth changes
+    supabase.auth.onAuthStateChange((event, session) => {
+        handleSession(session);
+    });
+
+    // Google Login
+    googleLoginBtn.addEventListener('click', async () => {
+        try {
+            authError.innerText = '';
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+        } catch (error) {
+            authError.innerText = error.message;
+        }
+    });
+
+    // Profile Dropdown Toggle
+    profileBtn.addEventListener('click', () => {
+        profileDropdown.classList.toggle('show');
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', (e) => {
+        if (!profileContainer.contains(e.target)) {
+            profileDropdown.classList.remove('show');
+        }
+    });
+
+    // Sign Out
+    signOutBtn.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+    });
+}
+
+function handleSession(session) {
+    loadingScreen.style.display = 'none';
+    if (session && session.user) {
+        currentUser = session.user;
+        
+        // Update Profile Menu
+        profileAvatar.src = currentUser.user_metadata.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+        profileName.innerText = currentUser.user_metadata.full_name || 'User';
+        profileEmail.innerText = currentUser.email;
+        
+        authScreen.style.display = 'none';
+        appContent.style.display = 'block';
+        profileContainer.style.display = 'block';
+        
+        // TODO: Upsert profile and fetch user's diet plan here (Phase 3/4)
+    } else {
+        currentUser = null;
+        authScreen.style.display = 'flex';
+        appContent.style.display = 'none';
+        profileContainer.style.display = 'none';
+        profileDropdown.classList.remove('show');
+    }
+}
+
+// Start Auth Flow
+initAuth();
+
 const targets = { p: 153, f: 71, c: 251, k: 2254 };
 
 const mealIcons = [
