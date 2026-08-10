@@ -1,7 +1,7 @@
 // --- Supabase Configuration ---
 const SUPABASE_URL = 'https://lgctsdompyyzpokfqjvd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_kazolscDsWouSbbVTTc5iQ_gR_9MBRW';
-let supabase = null;
+let supabaseClient = null;
 
 // --- Auth UI Elements ---
 const authScreen = document.getElementById('auth-screen');
@@ -28,10 +28,10 @@ async function initAuth() {
             throw new Error("Supabase JS client failed to load from CDN.");
         }
         
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Check current session
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
         
         if (error) {
             console.error("Supabase getSession error:", error);
@@ -40,7 +40,7 @@ async function initAuth() {
         handleSession(session);
 
         // Listen for auth changes
-        supabase.auth.onAuthStateChange((event, session) => {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
             handleSession(session);
         });
 
@@ -49,7 +49,7 @@ async function initAuth() {
     googleLoginBtn.addEventListener('click', async () => {
         try {
             authError.innerText = '';
-            const { error } = await supabase.auth.signInWithOAuth({
+            const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
                     redirectTo: window.location.origin
@@ -75,7 +75,7 @@ async function initAuth() {
 
     // Sign Out
     signOutBtn.addEventListener('click', async () => {
-        if (supabase) await supabase.auth.signOut();
+        if (supabaseClient) await supabaseClient.auth.signOut();
     });
     
     } catch (e) {
