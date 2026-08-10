@@ -49,10 +49,15 @@ async function initAuth() {
     googleLoginBtn.addEventListener('click', async () => {
         try {
             authError.innerText = '';
+            
+            // Explicit environment-aware redirect
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const redirectUrl = isLocal ? window.location.origin : 'https://gym-meals-six.vercel.app';
+            
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin
+                    redirectTo: redirectUrl
                 }
             });
             if (error) throw error;
