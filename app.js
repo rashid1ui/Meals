@@ -1,7 +1,7 @@
 // --- Supabase Configuration ---
 const SUPABASE_URL = 'https://lgctsdompyyzpokfqjvd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_kazolscDsWouSbbVTTc5iQ_gR_9MBRW';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabase = null;
 
 // --- Auth UI Elements ---
 const authScreen = document.getElementById('auth-screen');
@@ -23,14 +23,27 @@ let currentUser = null;
 
 // --- Auth Logic ---
 async function initAuth() {
-    // Check current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    handleSession(session);
+    try {
+        if (!window.supabase) {
+            throw new Error("Supabase JS client failed to load from CDN.");
+        }
+        
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange((event, session) => {
+        // Check current session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+            console.error("Supabase getSession error:", error);
+        }
+        
         handleSession(session);
-    });
+
+        // Listen for auth changes
+        supabase.auth.onAuthStateChange((event, session) => {
+            handleSession(session);
+        });
+
 
     // Google Login
     googleLoginBtn.addEventListener('click', async () => {
@@ -62,8 +75,17 @@ async function initAuth() {
 
     // Sign Out
     signOutBtn.addEventListener('click', async () => {
-        await supabase.auth.signOut();
+        if (supabase) await supabase.auth.signOut();
     });
+    
+    } catch (e) {
+        console.error("Failed to initialize Supabase Auth:", e);
+        // Ensure loading screen is dismissed on critical error
+        loadingScreen.style.display = 'none';
+        authScreen.style.display = 'flex';
+        appContent.style.display = 'none';
+        authError.innerText = "Initialization Error: " + e.message;
+    }
 }
 
 function handleSession(session) {
