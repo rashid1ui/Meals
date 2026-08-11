@@ -1,8 +1,34 @@
-export default function HomePage() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <h1 className="text-4xl font-bold mb-4">Gym Meals</h1>
-      <p className="text-xl">Welcome to your personalized diet tracker.</p>
-    </main>
-  );
+import { getUser } from '@/lib/auth/get-user'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
+
+export default async function HomePage() {
+  const user = await getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  const supabase = await createClient()
+  
+  const { data: existingPlans } = await supabase
+    .from('diet_plans')
+    .select('id')
+    .eq('user_id', user.id)
+    .limit(1)
+
+  if (existingPlans && existingPlans.length > 0) {
+    // Ensure the middleware fast-path cookie is set
+    const cookieStore = await cookies()
+    cookieStore.set('gym_meals_onboarded', 'true', {
+      path: '/',
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365
+    })
+    redirect('/dashboard')
+  } else {
+    redirect('/onboarding')
+  }
 }
