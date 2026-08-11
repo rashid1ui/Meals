@@ -35,14 +35,5 @@
         }
       }
     }
-  },
-  "/": {
-    "hints": 64,
-    "slots": {
-      "children": {
-        "hints": 160,
-        "slots": null
-      }
-    }
   }
 }
