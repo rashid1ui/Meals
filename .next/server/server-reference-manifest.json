@@ -1,5 +1,17 @@
 {
-  "node": {},
+  "node": {
+    "40010464d3f944fc1992aca3fb40bc29d837b5f392": {
+      "workers": {
+        "app/onboarding/page": {
+          "moduleId": 87210,
+          "async": false,
+          "codeHash": null
+        }
+      },
+      "filename": "app/onboarding/actions.ts",
+      "exportedName": "submitOnboarding"
+    }
+  },
   "edge": {},
-  "encryptionKey": "set9WTRFKTUjg/peYVQPioLV6skhtX9OZTxtr4oHigg="
+  "encryptionKey": "1Z+873J8G3lBNXn0ivTT+ItazrY1IhprJUJZ2LH8mmg="
 }

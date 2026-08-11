@@ -1,4 +1,16 @@
 {
-  "node": {},
+  "node": {
+    "40010464d3f944fc1992aca3fb40bc29d837b5f392": {
+      "workers": {
+        "app/onboarding/page": {
+          "moduleId": 87210,
+          "async": false,
+          "codeHash": null
+        }
+      },
+      "exportedName": "submitOnboarding",
+      "filename": "app/onboarding/actions.ts"
+    }
+  },
   "edge": {}
 }

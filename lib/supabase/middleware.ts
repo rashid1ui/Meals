@@ -63,11 +63,30 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from login page
-  if (user && request.nextUrl.pathname === '/login') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+  // Handle authenticated routing logic based on onboarding state
+  if (user) {
+    const isOnboarded = request.cookies.get('gym_meals_onboarded')?.value === 'true'
+
+    // Prevent visiting login when already authenticated
+    if (request.nextUrl.pathname === '/login') {
+      const url = request.nextUrl.clone()
+      url.pathname = isOnboarded ? '/dashboard' : '/onboarding'
+      return NextResponse.redirect(url)
+    }
+
+    // Require onboarding before accessing dashboard
+    if (request.nextUrl.pathname.startsWith('/dashboard') && !isOnboarded) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/onboarding'
+      return NextResponse.redirect(url)
+    }
+
+    // Prevent visiting onboarding if already onboarded
+    if (request.nextUrl.pathname.startsWith('/onboarding') && isOnboarded) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
