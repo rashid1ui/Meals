@@ -37,11 +37,14 @@ async function initAuth() {
             console.error("Supabase getSession error:", error);
         }
         
-        handleSession(session);
+        await handleSession(session);
 
         // Listen for auth changes
-        supabaseClient.auth.onAuthStateChange((event, session) => {
-            handleSession(session);
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+                loadingScreen.style.display = 'flex';
+                await handleSession(session);
+            }
         });
 
 
@@ -93,27 +96,123 @@ async function initAuth() {
     }
 }
 
-function handleSession(session) {
-    loadingScreen.style.display = 'none';
-    if (session && session.user) {
-        currentUser = session.user;
+async function initializeUserData(user) {
+    // Phase 3: Upsert profile
+    const { error: profileError } = await supabaseClient
+        .from('profiles')
+        .upsert({
+            id: user.id,
+            full_name: user.user_metadata?.full_name || '',
+            email: user.email,
+            avatar_url: user.user_metadata?.avatar_url || '',
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+    if (profileError) {
+        console.error("Profile upsert error:", profileError);
+        throw profileError;
+    }
+
+    // Phase 4: Default Diet Initialization
+    const { data: plans, error: planError } = await supabaseClient
+        .from('diet_plans')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+    if (planError) {
+        console.error("Error fetching diet plans:", planError);
+        throw planError;
+    }
+
+    if (plans && plans.length === 0) {
+        console.log("No diet plan found. Initializing default diet...");
+        // 1. Insert Diet Plan
+        const { data: newPlan, error: insertPlanError } = await supabaseClient
+            .from('diet_plans')
+            .insert({
+                user_id: user.id,
+                name: "Default Diet",
+                calories_target: targets.k,
+                protein_target: targets.p,
+                carbs_target: targets.c,
+                fat_target: targets.f
+            })
+            .select()
+            .single();
         
-        // Update Profile Menu
-        profileAvatar.src = currentUser.user_metadata.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
-        profileName.innerText = currentUser.user_metadata.full_name || 'User';
-        profileEmail.innerText = currentUser.email;
+        if (insertPlanError) throw insertPlanError;
         
-        authScreen.style.display = 'none';
-        appContent.style.display = 'block';
-        profileContainer.style.display = 'block';
-        
-        // TODO: Upsert profile and fetch user's diet plan here (Phase 3/4)
-    } else {
+        // 2. Insert Meals and Foods
+        for (let mIndex = 0; mIndex < meals.length; mIndex++) {
+            const meal = meals[mIndex];
+            const { data: newMeal, error: mealError } = await supabaseClient
+                .from('meals')
+                .insert({
+                    user_id: user.id,
+                    diet_plan_id: newPlan.id,
+                    name: meal.name,
+                    sort_order: mIndex
+                })
+                .select()
+                .single();
+            
+            if (mealError) throw mealError;
+            
+            const foodsToInsert = meal.items.map((item, iIndex) => ({
+                user_id: user.id,
+                meal_id: newMeal.id,
+                name: item.name,
+                quantity: Number(item.num) || 0,
+                unit: item.unit,
+                protein: item.p,
+                fat: item.f,
+                carbs: item.c,
+                calories: item.k,
+                sort_order: iIndex
+            }));
+            
+            const { error: foodsError } = await supabaseClient.from('foods').insert(foodsToInsert);
+            if (foodsError) throw foodsError;
+        }
+        console.log("Default diet initialization complete.");
+    }
+}
+
+async function handleSession(session) {
+    try {
+        if (session && session.user) {
+            currentUser = session.user;
+            
+            // Wait for DB initialization (Phase 3 & 4) before showing app
+            await initializeUserData(currentUser);
+            
+            // Update Profile Menu
+            profileAvatar.src = currentUser.user_metadata?.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+            profileName.innerText = currentUser.user_metadata?.full_name || 'User';
+            profileEmail.innerText = currentUser.email;
+            
+            authScreen.style.display = 'none';
+            appContent.style.display = 'block';
+            profileContainer.style.display = 'block';
+            authError.innerText = '';
+        } else {
+            currentUser = null;
+            authScreen.style.display = 'flex';
+            appContent.style.display = 'none';
+            profileContainer.style.display = 'none';
+            profileDropdown.classList.remove('show');
+        }
+    } catch (e) {
+        console.error("Session handling error:", e);
+        // Fallback to Auth screen on failure
         currentUser = null;
         authScreen.style.display = 'flex';
         appContent.style.display = 'none';
         profileContainer.style.display = 'none';
-        profileDropdown.classList.remove('show');
+        authError.innerText = "Error loading user data: " + e.message;
+    } finally {
+        loadingScreen.style.display = 'none';
     }
 }
 
