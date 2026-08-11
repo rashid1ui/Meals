@@ -20,6 +20,7 @@ const profileEmail = document.getElementById('profile-email');
 const signOutBtn = document.getElementById('sign-out-btn');
 
 let currentUser = null;
+let targets = { p: 0, f: 0, c: 0, k: 0 };
 
 // --- Auth Logic ---
 async function initAuth() {
