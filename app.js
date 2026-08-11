@@ -219,7 +219,6 @@ async function handleSession(session) {
 // Start Auth Flow
 initAuth();
 
-const targets = { p: 153, f: 71, c: 251, k: 2254 };
 
 const mealIcons = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="M8.46 10.46l-4.24-4.24"/><path d="M15.54 10.46l4.24-4.24"/><path d="M22 22H2"/><path d="M8 22v-3a4 4 0 0 1 8 0v3"/></svg>`,
