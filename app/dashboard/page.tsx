@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/SignOutButton'
 import Image from 'next/image'
 import Link from 'next/link'
+import DietEditor, { type FoodOption } from './components/DietEditor'
+import type { DraftMeal } from '@/lib/diet/diff'
 
 export default async function DashboardPage() {
   const user = await getUser()
@@ -45,16 +47,49 @@ export default async function DashboardPage() {
     foods: m.foods.sort((a: any, b: any) => a.sort_order - b.sort_order)
   })) || []
 
-  // Calculate actual generated macros
-  let totalCal = 0, totalP = 0, totalC = 0, totalF = 0
-  sortedMeals.forEach(meal => {
-    meal.foods.forEach((food: any) => {
-      totalCal += Number(food.calories)
-      totalP += Number(food.protein)
-      totalC += Number(food.carbs)
-      totalF += Number(food.fat)
+  // Active food_database rows power both the Add-Food search picker and the
+  // live per-100g baseline used to recalculate quantity edits. Existing plan
+  // foods don't carry a food_database FK (the `foods` table only stores
+  // already-scaled absolute values), so each one is resolved by matching its
+  // name back to this list - the same reconciliation approach already used
+  // for meal-plan regeneration. A food whose name no longer resolves (e.g.
+  // renamed/deactivated since generation) is passed through as quantity-locked
+  // rather than silently mis-scaled.
+  const { data: foodDatabaseRows } = await supabase
+    .from('food_database')
+    .select('*')
+    .eq('is_active', true)
+    .order('name')
+
+  const foodOptions: FoodOption[] = foodDatabaseRows || []
+  const foodDatabaseByName = new Map(foodOptions.map(f => [f.name, f]))
+
+  const initialMeals: DraftMeal[] = sortedMeals.map(meal => ({
+    id: meal.id,
+    name: meal.name,
+    sortOrder: meal.sort_order,
+    foods: meal.foods.map((food: any) => {
+      const match = foodDatabaseByName.get(food.name)
+      return {
+        id: food.id,
+        foodDatabaseId: match ? match.id : null,
+        name: food.name,
+        quantity: Number(food.quantity),
+        unit: food.unit,
+        calories: Number(food.calories),
+        protein: Number(food.protein),
+        carbs: Number(food.carbs),
+        fat: Number(food.fat)
+      }
     })
-  })
+  }))
+
+  const targets = {
+    calories: dietPlan.calories_target,
+    protein: dietPlan.protein_target,
+    carbs: dietPlan.carbs_target,
+    fat: dietPlan.fat_target
+  }
 
   return (
     <main className="min-h-screen bg-[#0B0E14] text-white font-['Outfit',sans-serif]">
@@ -103,79 +138,12 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        {/* Macro Targets Header */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col items-center">
-            <div className="text-gray-400 text-sm font-semibold mb-1">Calories</div>
-            <div className="text-3xl font-black text-white">{Math.round(totalCal)}</div>
-            <div className="text-xs text-gray-500 mt-1">Target: {dietPlan.calories_target}</div>
-          </div>
-          <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col items-center">
-            <div className="text-gray-400 text-sm font-semibold mb-1">Protein</div>
-            <div className="text-3xl font-black text-blue-400">{Math.round(totalP)}g</div>
-            <div className="text-xs text-gray-500 mt-1">Target: {dietPlan.protein_target}g</div>
-          </div>
-          <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col items-center">
-            <div className="text-gray-400 text-sm font-semibold mb-1">Carbs</div>
-            <div className="text-3xl font-black text-orange-400">{Math.round(totalC)}g</div>
-            <div className="text-xs text-gray-500 mt-1">Target: {dietPlan.carbs_target}g</div>
-          </div>
-          <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col items-center">
-            <div className="text-gray-400 text-sm font-semibold mb-1">Fat</div>
-            <div className="text-3xl font-black text-yellow-400">{Math.round(totalF)}g</div>
-            <div className="text-xs text-gray-500 mt-1">Target: {dietPlan.fat_target}g</div>
-          </div>
-        </div>
-
-        {/* Meals Layout */}
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold tracking-tight border-b border-gray-800 pb-4">Daily Meals</h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {sortedMeals.map((meal: any) => {
-              const mealCal = meal.foods.reduce((sum: number, f: any) => sum + Number(f.calories), 0)
-              const mealP = meal.foods.reduce((sum: number, f: any) => sum + Number(f.protein), 0)
-              const mealC = meal.foods.reduce((sum: number, f: any) => sum + Number(f.carbs), 0)
-              const mealF = meal.foods.reduce((sum: number, f: any) => sum + Number(f.fat), 0)
-
-              return (
-                <div key={meal.id} className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col">
-                  <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-4">
-                    <h3 className="text-xl font-bold">{meal.name}</h3>
-                    <div className="text-sm text-gray-400 font-semibold bg-gray-800/50 px-3 py-1 rounded-full">
-                      {Math.round(mealCal)} kcal
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 space-y-4">
-                    {meal.foods.map((food: any) => (
-                      <div key={food.id} className="flex items-center justify-between p-3 rounded-2xl bg-[#0B0E14] border border-gray-800/60 hover:border-indigo-500/30 transition-colors">
-                        <div>
-                          <div className="font-semibold text-gray-200">{food.name}</div>
-                          <div className="text-xs text-gray-500">{food.quantity} {food.unit}</div>
-                        </div>
-                        <div className="flex gap-3 text-xs font-semibold">
-                          <span className="text-blue-400">{Math.round(food.protein)}p</span>
-                          <span className="text-orange-400">{Math.round(food.carbs)}c</span>
-                          <span className="text-yellow-400">{Math.round(food.fat)}f</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between text-xs text-gray-500">
-                    <span>Meal Totals:</span>
-                    <div className="flex gap-4">
-                      <span>{Math.round(mealP)}g P</span>
-                      <span>{Math.round(mealC)}g C</span>
-                      <span>{Math.round(mealF)}g F</span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <DietEditor
+          key={dietPlan.id}
+          initialMeals={initialMeals}
+          targets={targets}
+          foodOptions={foodOptions}
+        />
       </div>
     </main>
   )

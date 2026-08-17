@@ -1,0 +1,195 @@
+import test from 'node:test'
+import assert from 'node:assert'
+import {
+  diffMeals,
+  computeMealTotals,
+  computeDailyTotals,
+  classifyTarget,
+  getFoodBadges,
+  type DraftMeal
+} from './diff'
+
+function meal(id: string, name: string, foods: DraftMeal['foods']): DraftMeal {
+  return { id, name, sortOrder: 0, foods }
+}
+
+function food(id: string, name: string, quantity: number, calories: number, protein: number, carbs: number, fat: number) {
+  return { id, foodDatabaseId: 'db-' + id, name, quantity, unit: 'grams', calories, protein, carbs, fat }
+}
+
+test('diffMeals - no changes when draft equals original', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+  const draft = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+  assert.deepStrictEqual(diffMeals(original, draft), [])
+})
+
+test('diffMeals - change food quantity is detected as increased/decreased', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+
+  const increased = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 150, 214.5, 18.9, 1.05, 14.25)])]
+  const increaseChanges = diffMeals(original, increased)
+  assert.strictEqual(increaseChanges.length, 1)
+  assert.strictEqual(increaseChanges[0].type, 'increased')
+  if (increaseChanges[0].type === 'increased') {
+    assert.strictEqual(increaseChanges[0].fromQuantity, 100)
+    assert.strictEqual(increaseChanges[0].toQuantity, 150)
+  }
+
+  const decreased = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 50, 71.5, 6.3, 0.35, 4.75)])]
+  const decreaseChanges = diffMeals(original, decreased)
+  assert.strictEqual(decreaseChanges.length, 1)
+  assert.strictEqual(decreaseChanges[0].type, 'decreased')
+})
+
+test('diffMeals - add food is detected', () => {
+  const original = [meal('m1', 'Breakfast', [])]
+  const draft = [meal('m1', 'Breakfast', [food('new-1', 'Banana', 100, 89, 1.1, 22.8, 0.3)])]
+  const changes = diffMeals(original, draft)
+  assert.strictEqual(changes.length, 1)
+  assert.strictEqual(changes[0].type, 'added')
+  if (changes[0].type === 'added') {
+    assert.strictEqual(changes[0].foodName, 'Banana')
+    assert.strictEqual(changes[0].mealName, 'Breakfast')
+  }
+})
+
+test('diffMeals - remove food is detected', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Apple', 200, 104, 0.6, 27.6, 0.4)])]
+  const draft = [meal('m1', 'Breakfast', [])]
+  const changes = diffMeals(original, draft)
+  assert.strictEqual(changes.length, 1)
+  assert.strictEqual(changes[0].type, 'removed')
+  if (changes[0].type === 'removed') {
+    assert.strictEqual(changes[0].foodName, 'Apple')
+    assert.strictEqual(changes[0].quantity, 200)
+  }
+})
+
+test('diffMeals - add meal is detected, including Pre-Workout/Post-Workout types', () => {
+  const original: DraftMeal[] = []
+
+  const withPreWorkout = diffMeals(original, [meal('new-m1', 'Pre-Workout', [])])
+  assert.strictEqual(withPreWorkout.length, 1)
+  assert.strictEqual(withPreWorkout[0].type, 'meal-added')
+  if (withPreWorkout[0].type === 'meal-added') {
+    assert.strictEqual(withPreWorkout[0].mealName, 'Pre-Workout')
+  }
+
+  const withPostWorkout = diffMeals(original, [meal('new-m2', 'Post-Workout', [])])
+  assert.strictEqual(withPostWorkout[0].type, 'meal-added')
+  if (withPostWorkout[0].type === 'meal-added') {
+    assert.strictEqual(withPostWorkout[0].mealName, 'Post-Workout')
+  }
+})
+
+test('diffMeals - move food between meals preserves quantity and is detected as moved', () => {
+  const chickenAt = (quantity: number) => food('f1', 'Chicken Breast', quantity, 120 * quantity / 100, 22.5 * quantity / 100, 0, 2.6 * quantity / 100)
+  const original = [
+    meal('dinner', 'Dinner', [chickenAt(150)]),
+    meal('post', 'Post-Workout', [])
+  ]
+  const draft = [
+    meal('dinner', 'Dinner', []),
+    meal('post', 'Post-Workout', [chickenAt(150)])
+  ]
+
+  const changes = diffMeals(original, draft)
+  assert.strictEqual(changes.length, 1)
+  assert.strictEqual(changes[0].type, 'moved')
+  if (changes[0].type === 'moved') {
+    assert.strictEqual(changes[0].foodName, 'Chicken Breast')
+    assert.strictEqual(changes[0].quantity, 150) // quantity preserved across the move
+    assert.strictEqual(changes[0].fromMealName, 'Dinner')
+    assert.strictEqual(changes[0].toMealName, 'Post-Workout')
+  }
+})
+
+test('diffMeals - moved AND resized food produces both a moved and a quantity change entry', () => {
+  const original = [
+    meal('dinner', 'Dinner', [food('f1', 'Chicken', 100, 120, 22.5, 0, 2.6)]),
+    meal('post', 'Post-Workout', [])
+  ]
+  const draft = [
+    meal('dinner', 'Dinner', []),
+    meal('post', 'Post-Workout', [food('f1', 'Chicken', 150, 180, 33.75, 0, 3.9)])
+  ]
+
+  const changes = diffMeals(original, draft)
+  assert.strictEqual(changes.length, 2)
+  const types = changes.map(c => c.type).sort()
+  assert.deepStrictEqual(types, ['increased', 'moved'])
+})
+
+test('computeMealTotals - sums foods within a meal (macro recalculation)', () => {
+  const m = meal('m1', 'Lunch', [
+    food('f1', 'Chicken', 200, 240, 45, 0, 5.2),
+    food('f2', 'Rice', 100, 365, 7.1, 80, 0.7)
+  ])
+  const totals = computeMealTotals(m)
+  assert.strictEqual(totals.calories, 605)
+  assert.strictEqual(totals.protein, 52.1)
+  assert.strictEqual(totals.carbs, 80)
+  assert.strictEqual(totals.fat, 5.9)
+})
+
+test('computeDailyTotals - sums across all meals (daily calorie recalculation)', () => {
+  const meals = [
+    meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)]),
+    meal('m2', 'Lunch', [food('f2', 'Chicken', 200, 240, 45, 0, 5.2)])
+  ]
+  const totals = computeDailyTotals(meals)
+  assert.strictEqual(totals.calories, 383)
+  assert.strictEqual(Math.round(totals.protein * 10) / 10, 57.6)
+})
+
+test('diffMeals - change summary reflects multiple simultaneous edits', () => {
+  const original = [
+    meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5), food('f2', 'Toast', 50, 130, 4, 25, 1)]),
+    meal('m2', 'Lunch', [])
+  ]
+  const draft = [
+    meal('m1', 'Breakfast', [food('f1', 'Eggs', 150, 214.5, 18.9, 1.05, 14.25)]), // increased, Toast removed
+    meal('m2', 'Lunch', [food('new-1', 'Banana', 100, 89, 1.1, 22.8, 0.3)]) // added
+  ]
+
+  const changes = diffMeals(original, draft)
+  const types = changes.map(c => c.type).sort()
+  assert.deepStrictEqual(types, ['added', 'increased', 'removed'])
+})
+
+test('diffMeals - discarding changes (reverting draft to original) yields zero changes', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+  const edited = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 300, 429, 37.8, 2.1, 28.5)])]
+  assert.notDeepStrictEqual(diffMeals(original, edited), [])
+
+  // Discard reverts draft back to a copy of original.
+  const discarded = original.map(m => ({ ...m, foods: m.foods.map(f => ({ ...f })) }))
+  assert.deepStrictEqual(diffMeals(original, discarded), [])
+})
+
+test('diffMeals - undo (reverting to the previous snapshot) restores the prior diff exactly', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+  const afterRemoval = [meal('m1', 'Breakfast', [])]
+  assert.strictEqual(diffMeals(original, afterRemoval)[0].type, 'removed')
+
+  // Undo pops back to the pre-removal snapshot (a deep copy taken before the
+  // mutation, exactly as DietEditor's history stack does).
+  const undone = original.map(m => ({ ...m, foods: m.foods.map(f => ({ ...f })) }))
+  assert.deepStrictEqual(diffMeals(original, undone), [])
+})
+
+test('getFoodBadges - returns the applicable badges for a given food id', () => {
+  const original = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)])]
+  const draft = [meal('m1', 'Breakfast', [food('f1', 'Eggs', 150, 214.5, 18.9, 1.05, 14.25)])]
+  const changes = diffMeals(original, draft)
+  assert.deepStrictEqual(getFoodBadges(changes, 'f1'), ['increased'])
+  assert.deepStrictEqual(getFoodBadges(changes, 'nonexistent'), [])
+})
+
+test('classifyTarget - on target / slightly over / over thresholds', () => {
+  assert.strictEqual(classifyTarget(2260, 2250).status, 'on-target') // +0.4%
+  assert.strictEqual(classifyTarget(2400, 2250).status, 'slightly-over') // +6.7%
+  assert.strictEqual(classifyTarget(2100, 2250).status, 'slightly-under') // -6.7%
+  assert.strictEqual(classifyTarget(2700, 2250).status, 'over') // +20%
+  assert.strictEqual(classifyTarget(1800, 2250).status, 'under') // -20%
+})
