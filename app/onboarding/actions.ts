@@ -4,25 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getUser } from '@/lib/auth/get-user'
+import { calculateDiet, validateMacros, type FoodMacro } from '@/lib/nutrition/calculator'
 
-const CALORIE_TOLERANCE = 0.05
-const PROTEIN_TOLERANCE = 5
-const CARBS_TOLERANCE = 10
-const FAT_TOLERANCE = 5
 const MAX_ATTEMPTS = 3
-
-function isValidQuantity(quantity: number, unit: string) {
-  if (typeof quantity !== 'number' || isNaN(quantity) || !isFinite(quantity) || quantity <= 0) {
-    return false
-  }
-  const u = unit.toLowerCase()
-  if (u === 'grams' || u === 'ml') return quantity <= 1000
-  if (u === 'pieces' || u === 'piece') return quantity <= 10
-  if (u === 'tbsp' || u === 'tablespoon') return quantity <= 10
-  if (u === 'tsp' || u === 'teaspoon') return quantity <= 20
-  if (u === 'scoop' || u === 'scoops') return quantity <= 5
-  return quantity <= 1000
-}
 
 export async function submitOnboarding(formData: FormData) {
   const user = await getUser()
@@ -106,7 +90,11 @@ export async function submitOnboarding(formData: FormData) {
     name: f.name,
     category: f.category,
     serving_size: f.serving_size,
-    serving_unit: f.serving_unit
+    serving_unit: f.serving_unit,
+    calories: f.calories,
+    protein: f.protein,
+    carbs: f.carbs,
+    fat: f.fat
   }))
 
   const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
@@ -115,31 +103,27 @@ export async function submitOnboarding(formData: FormData) {
   }
 
   let attempt = 1
-  let lastErrorReason = ""
   let finalValidatedDiet = null
 
-  while (attempt <= MAX_ATTEMPTS) {
-    const systemPrompt = `You are a strict meal-planning engine.
+  const systemPrompt = `You are a strict meal-planning engine.
 Build a practical daily meal plan using ONLY the food IDs provided.
-You are NOT responsible for nutritional facts. Never invent calories, protein, carbs, fat, or nutritional values.
-Only select food IDs and quantities.
+The nutrition values provided in this context are authoritative. Do not modify, estimate, or invent them.
 
 REQUIREMENTS:
 - Generate exactly ${mealsCount} meals.
-- Hit these daily targets as closely as possible based on standard nutritional math:
-  Calories: ${calories}
+- Hit these daily targets as closely as possible:
+  Calories: ${calories} kcal
   Protein: ${protein}g
   Carbohydrates: ${carbs}g
   Fat: ${fat}g
-- You can use the same food across multiple meals if it makes culinary sense.
+- Improve food variety: Avoid using the exact same primary protein in every meal. Avoid identical meal compositions.
+- Respect user preferences: You may ONLY select foods from the ALLOWED FOODS list.
 
-ALLOWED FOODS (Source of Truth for IDs and Units):
+ALLOWED FOODS (Source of Truth for IDs, Units, and Macros per serving_size):
 ${JSON.stringify(foodContext, null, 2)}
 
-${lastErrorReason ? `PREVIOUS ATTEMPT FAILED BECAUSE: ${lastErrorReason}\nPlease adjust the quantities or food selections to fix this.` : ''}
-
 OUTPUT FORMAT:
-Return ONLY raw, valid JSON. No markdown fences.
+You MUST respond with valid JSON matching exactly this schema:
 {
   "diet": {
     "name": "Personalized Diet",
@@ -158,6 +142,12 @@ Return ONLY raw, valid JSON. No markdown fences.
   }
 }`
 
+  const messages: any[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'Generate the meal plan.' }
+  ]
+
+  while (attempt <= MAX_ATTEMPTS) {
     try {
       const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
@@ -167,11 +157,9 @@ Return ONLY raw, valid JSON. No markdown fences.
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: 'Generate the meal plan.' }
-          ],
-          temperature: 0.2
+          messages,
+          temperature: 0.2,
+          response_format: { type: "json_object" }
         })
       })
 
@@ -180,108 +168,69 @@ Return ONLY raw, valid JSON. No markdown fences.
       }
 
       const aiData = await response.json()
-      let jsonStr = aiData.choices[0].message.content.trim()
-      jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+      const aiMessage = aiData.choices[0].message
       
       let parsedDiet
       try {
-        parsedDiet = JSON.parse(jsonStr)
+        parsedDiet = JSON.parse(aiMessage.content)
       } catch (e) {
-        lastErrorReason = "Your last response was not valid JSON."
+        messages.push(aiMessage)
+        messages.push({ role: 'user', content: 'Your response was not valid JSON. Please return only valid JSON matching the schema.' })
         attempt++
         continue
       }
 
       if (!parsedDiet.diet || !Array.isArray(parsedDiet.diet.meals) || parsedDiet.diet.meals.length !== mealsCount) {
-        lastErrorReason = `Your JSON structure was incorrect or meal count mismatch.`
+        messages.push(aiMessage)
+        messages.push({ role: 'user', content: `Your JSON structure was incorrect or meal count mismatch. Expected exactly ${mealsCount} meals.` })
         attempt++
         continue
       }
 
-      let validStructure = true
-      let dailyP = 0, dailyC = 0, dailyF = 0, dailyK = 0
-      
-      const validatedResponse = {
-        name: parsedDiet.diet.name || "Personalized Diet",
-        meals: [] as any[]
-      }
+      const { diet, error: calcError } = calculateDiet(
+        parsedDiet.diet.name || "Personalized Diet", 
+        parsedDiet.diet.meals, 
+        dbFoods as unknown as FoodMacro[]
+      )
 
-      for (let mIdx = 0; mIdx < parsedDiet.diet.meals.length; mIdx++) {
-        const meal = parsedDiet.diet.meals[mIdx]
-        const validatedMeal = {
-          name: meal.name || `Meal \${mIdx + 1}`,
-          sort_order: mIdx,
-          foods: [] as any[]
-        }
-
-        for (const item of meal.foods || []) {
-          const dbFood = dbFoods.find(f => f.id === item.food_id)
-          if (!dbFood) {
-            lastErrorReason = `You used an invalid food_id: \${item.food_id}.`
-            validStructure = false
-            break
-          }
-          if (!isValidQuantity(item.quantity, dbFood.serving_unit)) {
-            lastErrorReason = `You provided an invalid or absurd quantity (\${item.quantity}) for unit (\${dbFood.serving_unit}) for food \${dbFood.name}.`
-            validStructure = false
-            break
-          }
-
-          const multiplier = item.quantity / dbFood.serving_size
-          const p = dbFood.protein * multiplier
-          const c = dbFood.carbs * multiplier
-          const f = dbFood.fat * multiplier
-          const k = dbFood.calories * multiplier
-
-          validatedMeal.foods.push({
-            food_id: dbFood.id,
-            name: dbFood.name,
-            quantity: item.quantity,
-            unit: dbFood.serving_unit,
-            protein: p,
-            carbs: c,
-            fat: f,
-            calories: k
-          })
-
-          dailyP += p
-          dailyC += c
-          dailyF += f
-          dailyK += k
-        }
-        if (!validStructure) break
-        validatedResponse.meals.push(validatedMeal)
-      }
-
-      if (!validStructure) {
+      if (calcError || !diet) {
+        messages.push(aiMessage)
+        messages.push({ role: 'user', content: `Your meal plan failed calculation: ${calcError}. Correct this and try again.` })
         attempt++
         continue
       }
 
-      const calDiff = Math.abs(dailyK - calories)
-      if (calDiff > (calories * CALORIE_TOLERANCE)) {
-        lastErrorReason = `Total calories deviated from target by more than 5%.`
-        attempt++
-        continue
-      }
-      if (Math.abs(dailyP - protein) > PROTEIN_TOLERANCE) {
-        lastErrorReason = `Total protein deviated from target by more than \${PROTEIN_TOLERANCE}g.`
-        attempt++
-        continue
-      }
-      if (Math.abs(dailyC - carbs) > CARBS_TOLERANCE) {
-        lastErrorReason = `Total carbs deviated from target by more than \${CARBS_TOLERANCE}g.`
-        attempt++
-        continue
-      }
-      if (Math.abs(dailyF - fat) > FAT_TOLERANCE) {
-        lastErrorReason = `Total fat deviated from target by more than \${FAT_TOLERANCE}g.`
+      const { valid, errors } = validateMacros(diet, calories, protein, carbs, fat)
+
+      if (!valid) {
+        messages.push(aiMessage)
+        messages.push({ 
+          role: 'user', 
+          content: `Your previous meal plan failed server-side validation.
+
+Target:
+${calories} kcal
+${protein}g protein
+${carbs}g carbs
+${fat}g fat
+
+Calculated:
+${diet.daily_calories.toFixed(0)} kcal
+${diet.daily_protein.toFixed(0)}g protein
+${diet.daily_carbs.toFixed(0)}g carbs
+${diet.daily_fat.toFixed(0)}g fat
+
+Problems:
+- ${errors.join('\n- ')}
+
+Generate a corrected meal plan.` 
+        })
         attempt++
         continue
       }
 
       // Success!
-      finalValidatedDiet = validatedResponse
+      finalValidatedDiet = diet
       break
 
     } catch (err) {

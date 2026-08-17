@@ -1,0 +1,338 @@
+[
+  {
+    "requested_food": "Chicken Breast, Raw",
+    "selected_fdc_id": "171077",
+    "usda_description": "Chicken, broilers or fryers, breast, meat only, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Lean Ground Beef 93/7, Raw",
+    "selected_fdc_id": "174032",
+    "usda_description": "Beef, ground, 93% lean meat / 7% fat, raw",
+    "data_type": "SR Legacy",
+    "status": "replaced",
+    "reason": "Original FDC ID 173934 contained mismatched description or cooked macros."
+  },
+  {
+    "requested_food": "Lean Ground Beef 93/7, Raw",
+    "selected_fdc_id": "173934",
+    "usda_description": "Suspicious Match / Incorrect State",
+    "data_type": "Unknown",
+    "status": "rejected",
+    "reason": "Mismatched nutrition values (e.g. cooked vs raw) or mismatched description. Replaced with 174032"
+  },
+  {
+    "requested_food": "Turkey Breast, Raw",
+    "selected_fdc_id": "171526",
+    "usda_description": "Turkey, all classes, breast, meat and skin, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Atlantic Salmon, Raw",
+    "selected_fdc_id": "173686",
+    "usda_description": "Fish, salmon, Atlantic, wild, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Whole Egg, Raw",
+    "selected_fdc_id": "171287",
+    "usda_description": "Egg, whole, raw, fresh",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Egg Whites, Raw",
+    "selected_fdc_id": "171273",
+    "usda_description": "Egg, white, raw, fresh",
+    "data_type": "SR Legacy",
+    "status": "replaced",
+    "reason": "Original FDC ID 171275 contained mismatched description or cooked macros."
+  },
+  {
+    "requested_food": "Egg Whites, Raw",
+    "selected_fdc_id": "171275",
+    "usda_description": "Suspicious Match / Incorrect State",
+    "data_type": "Unknown",
+    "status": "rejected",
+    "reason": "Mismatched nutrition values (e.g. cooked vs raw) or mismatched description. Replaced with 171273"
+  },
+  {
+    "requested_food": "Tilapia, Raw",
+    "selected_fdc_id": "175176",
+    "usda_description": "Fish, tilapia, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Tofu, Firm, Raw",
+    "selected_fdc_id": "172449",
+    "usda_description": "Tofu, raw, firm, prepared with calcium sulfate",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Pork Tenderloin, Raw",
+    "selected_fdc_id": "174182",
+    "usda_description": "Pork, fresh, loin, tenderloin, separable lean and fat, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Tuna, Light, Canned in Water",
+    "selected_fdc_id": "173688",
+    "usda_description": "Fish, tuna, light, canned in water, drained solids",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Bison, Ground, Raw",
+    "selected_fdc_id": "174248",
+    "usda_description": "Bison, ground, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Nonfat Greek Yogurt",
+    "selected_fdc_id": "170887",
+    "usda_description": "Yogurt, Greek, plain, nonfat",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Whole Milk",
+    "selected_fdc_id": "171265",
+    "usda_description": "Milk, whole, 3.25% milkfat, with added vitamin D",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "2% Milk",
+    "selected_fdc_id": "171269",
+    "usda_description": "Milk, reduced fat, fluid, 2% milkfat",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Cottage Cheese, Lowfat 2%",
+    "selected_fdc_id": "173417",
+    "usda_description": "Cheese, cottage, lowfat, 2% milkfat",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Cheddar Cheese",
+    "selected_fdc_id": "171204",
+    "usda_description": "Cheese, cheddar",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Mozzarella, Part Skim",
+    "selected_fdc_id": "171227",
+    "usda_description": "Cheese, mozzarella, part skim milk",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "White Rice, Dry",
+    "selected_fdc_id": "169756",
+    "usda_description": "Rice, white, long-grain, regular, raw, unenriched",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Brown Rice, Dry",
+    "selected_fdc_id": "169703",
+    "usda_description": "Rice, brown, long-grain, raw",
+    "data_type": "Foundation",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Rolled Oats, Dry",
+    "selected_fdc_id": "173904",
+    "usda_description": "Oats, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Sweet Potato, Raw",
+    "selected_fdc_id": "168482",
+    "usda_description": "Sweet potato, raw, unprepared",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "White Potato, Raw",
+    "selected_fdc_id": "170026",
+    "usda_description": "Potatoes, white, flesh and skin, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Quinoa, Dry",
+    "selected_fdc_id": "170285",
+    "usda_description": "Quinoa, uncooked",
+    "data_type": "SR Legacy",
+    "status": "replaced",
+    "reason": "Original FDC ID 168917 contained mismatched description or cooked macros."
+  },
+  {
+    "requested_food": "Quinoa, Dry",
+    "selected_fdc_id": "168917",
+    "usda_description": "Suspicious Match / Incorrect State",
+    "data_type": "Unknown",
+    "status": "rejected",
+    "reason": "Mismatched nutrition values (e.g. cooked vs raw) or mismatched description. Replaced with 170285"
+  },
+  {
+    "requested_food": "Whole Wheat Pasta, Dry",
+    "selected_fdc_id": "169736",
+    "usda_description": "Pasta, whole-wheat, dry",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Lentils, Dry",
+    "selected_fdc_id": "172420",
+    "usda_description": "Lentils, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Black Beans, Dry",
+    "selected_fdc_id": "170288",
+    "usda_description": "Beans, black, mature seeds, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Chickpeas, Dry",
+    "selected_fdc_id": "169716",
+    "usda_description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Banana, Raw",
+    "selected_fdc_id": "173944",
+    "usda_description": "Bananas, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Apple, Raw",
+    "selected_fdc_id": "171688",
+    "usda_description": "Apples, raw, with skin",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Strawberries, Raw",
+    "selected_fdc_id": "167762",
+    "usda_description": "Strawberries, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Blueberries, Raw",
+    "selected_fdc_id": "171711",
+    "usda_description": "Blueberries, raw",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Orange, Raw",
+    "selected_fdc_id": "169097",
+    "usda_description": "Oranges, raw, all commercial varieties",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Avocado, Raw",
+    "selected_fdc_id": "171706",
+    "usda_description": "Avocados, raw, all commercial varieties",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Almonds, Raw",
+    "selected_fdc_id": "170567",
+    "usda_description": "Nuts, almonds",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Peanut Butter, Smooth",
+    "selected_fdc_id": "168997",
+    "usda_description": "Peanut butter, smooth style, with salt",
+    "data_type": "SR Legacy",
+    "status": "replaced",
+    "reason": "Original FDC ID 174226 contained mismatched description or cooked macros."
+  },
+  {
+    "requested_food": "Peanut Butter, Smooth",
+    "selected_fdc_id": "174226",
+    "usda_description": "Suspicious Match / Incorrect State",
+    "data_type": "Unknown",
+    "status": "rejected",
+    "reason": "Mismatched nutrition values (e.g. cooked vs raw) or mismatched description. Replaced with 168997"
+  },
+  {
+    "requested_food": "Olive Oil, Extra Virgin",
+    "selected_fdc_id": "171413",
+    "usda_description": "Oil, olive, salad or cooking",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Walnuts, Raw",
+    "selected_fdc_id": "170187",
+    "usda_description": "Walnuts, english",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  },
+  {
+    "requested_food": "Butter, Unsalted",
+    "selected_fdc_id": "173410",
+    "usda_description": "Butter, without salt",
+    "data_type": "SR Legacy",
+    "status": "verified",
+    "reason": "Valid Foundation/SR Legacy record matching preparation state."
+  }
+]
