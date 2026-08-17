@@ -11,32 +11,7 @@ export default async function OnboardingPage() {
     redirect('/login')
   }
 
-  const cookieStore = await cookies()
-  const isOnboarded = cookieStore.get('gym_meals_onboarded')?.value === 'true'
-
-  if (isOnboarded) {
-    redirect('/dashboard')
-  }
-
   const supabase = await createClient()
-
-  // Fallback: If cookie is missing (e.g. new device), check DB directly to prevent re-onboarding
-  const { data: existingPlans } = await supabase
-    .from('diet_plans')
-    .select('id')
-    .eq('user_id', user.id)
-    .limit(1)
-
-  if (existingPlans && existingPlans.length > 0) {
-    // Re-set the cookie so middleware works fast on subsequent requests
-    cookieStore.set('gym_meals_onboarded', 'true', {
-      path: '/',
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 365
-    })
-    redirect('/dashboard')
-  }
 
   const { data: dbFoods } = await supabase
     .from('food_database')

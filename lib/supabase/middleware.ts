@@ -3,9 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+    request,
   })
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -24,11 +22,9 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request,
           })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -63,29 +59,58 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Handle authenticated routing logic based on onboarding state
+  // Handle authenticated routing logic based on actual DB state
   if (user) {
-    const isOnboarded = request.cookies.get('gym_meals_onboarded')?.value === 'true'
+    const isLogin = request.nextUrl.pathname === '/login'
+    const isDashboard = request.nextUrl.pathname.startsWith('/dashboard')
+    const isOnboarding = request.nextUrl.pathname.startsWith('/onboarding')
 
-    // Prevent visiting login when already authenticated
-    if (request.nextUrl.pathname === '/login') {
-      const url = request.nextUrl.clone()
-      url.pathname = isOnboarded ? '/dashboard' : '/onboarding'
-      return NextResponse.redirect(url)
-    }
+    // If we are hitting a core routing page, verify the exact DB state to prevent loops
+    if (isLogin || isDashboard || isOnboarding) {
+      const { data: plans } = await supabase
+        .from('diet_plans')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1)
 
-    // Require onboarding before accessing dashboard
-    if (request.nextUrl.pathname.startsWith('/dashboard') && !isOnboarded) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/onboarding'
-      return NextResponse.redirect(url)
-    }
+      const hasPlan = plans && plans.length > 0
 
-    // Prevent visiting onboarding if already onboarded
-    if (request.nextUrl.pathname.startsWith('/onboarding') && isOnboarded) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      // Sync the cookie state just in case, though we now rely on DB for these core routes
+      if (hasPlan) {
+        supabaseResponse.cookies.set('gym_meals_onboarded', 'true', { path: '/', maxAge: 60 * 60 * 24 * 365 })
+      } else {
+        supabaseResponse.cookies.delete('gym_meals_onboarded')
+      }
+
+      if (isLogin) {
+        const url = request.nextUrl.clone()
+        url.pathname = hasPlan ? '/dashboard' : '/onboarding'
+        const redirectRes = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          redirectRes.cookies.set(cookie.name, cookie.value, cookie)
+        })
+        return redirectRes
+      }
+
+      if (isDashboard && !hasPlan) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        const redirectRes = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          redirectRes.cookies.set(cookie.name, cookie.value, cookie)
+        })
+        return redirectRes
+      }
+
+      if (isOnboarding && hasPlan) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        const redirectRes = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          redirectRes.cookies.set(cookie.name, cookie.value, cookie)
+        })
+        return redirectRes
+      }
     }
   }
 

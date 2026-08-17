@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -9,17 +8,26 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    
+
     if (!error) {
-      // Check onboarding status by seeing if they have any diet plans (legacy logic)
-      const { data: plans } = await supabase.from('diet_plans').select('id').limit(1)
-      const isOnboarded = plans && plans.length > 0
-      
+      const { data: { user } } = await supabase.auth.getUser()
+
+      let isOnboarded = false
+      if (user) {
+        // Check onboarding status by seeing if they have any diet plans (legacy logic)
+        const { data: plans } = await supabase
+          .from('diet_plans')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1)
+        isOnboarded = Boolean(plans && plans.length > 0)
+      }
+
       const nextPath = isOnboarded ? '/dashboard' : '/onboarding'
-      
+
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
-      
+
       let redirectUrl = ''
       if (isLocalEnv) {
         redirectUrl = `${origin}${nextPath}`
@@ -30,7 +38,7 @@ export async function GET(request: Request) {
       }
 
       const response = NextResponse.redirect(redirectUrl)
-      
+
       // Set a secure cookie so middleware knows onboarding state without querying DB
       if (isOnboarded) {
         response.cookies.set('gym_meals_onboarded', 'true', {
@@ -40,7 +48,7 @@ export async function GET(request: Request) {
           maxAge: 60 * 60 * 24 * 365 // 1 year
         })
       }
-      
+
       return response
     }
   }
