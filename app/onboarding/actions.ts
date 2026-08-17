@@ -147,8 +147,19 @@ You MUST respond with valid JSON matching exactly this schema:
     { role: 'user', content: 'Generate the meal plan.' }
   ]
 
+  const ACTION_TIMEOUT_MS = 50000
+  const actionStartTime = Date.now()
+
   while (attempt <= MAX_ATTEMPTS) {
+    const elapsed = Date.now() - actionStartTime
+    if (elapsed > ACTION_TIMEOUT_MS) {
+      return { error: 'DeepSeek AI is taking too long to respond. Please try again.' }
+    }
+
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), ACTION_TIMEOUT_MS - elapsed)
+
       const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -160,8 +171,11 @@ You MUST respond with valid JSON matching exactly this schema:
           messages,
           temperature: 0.2,
           response_format: { type: "json_object" }
-        })
+        }),
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error('AI Provider Error')
@@ -233,8 +247,11 @@ Generate a corrected meal plan.`
       finalValidatedDiet = diet
       break
 
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return { error: 'DeepSeek AI is taking too long to respond. Please try again or adjust your targets.' }
+      }
       return { error: 'An internal server error occurred while generating the diet.' }
     }
   }
