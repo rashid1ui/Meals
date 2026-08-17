@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/SignOutButton'
 import Image from 'next/image'
+import Link from 'next/link'
 
 export default async function DashboardPage() {
   const user = await getUser()
@@ -82,6 +83,12 @@ export default async function DashboardPage() {
               {profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
             </div>
           )}
+          <Link
+            href="/settings"
+            className="text-sm font-semibold text-gray-400 hover:text-white transition-colors"
+          >
+            Settings
+          </Link>
           <div className="ml-2 pl-4 border-l border-gray-700">
             <SignOutButton />
           </div>
