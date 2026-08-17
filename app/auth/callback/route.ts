@@ -14,6 +14,20 @@ export async function GET(request: Request) {
 
       let isOnboarded = false
       if (user) {
+        // Initialize profile safely
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email || '',
+            full_name: user.user_metadata?.full_name || null,
+            avatar_url: user.user_metadata?.avatar_url || null,
+            updated_at: new Date().toISOString()
+          })
+          
+        if (profileError && profileError.code !== '23505') { // Ignore unique constraint violation
+          console.error("Failed to initialize profile:", profileError)
+        }
         // Check onboarding status by seeing if they have any diet plans (legacy logic)
         const { data: plans } = await supabase
           .from('diet_plans')
