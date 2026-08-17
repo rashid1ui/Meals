@@ -3,6 +3,8 @@ import { getUser } from '@/lib/auth/get-user'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
+export const maxDuration = 60
+
 export default async function OnboardingPage() {
   const user = await getUser()
 
