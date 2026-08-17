@@ -56,12 +56,12 @@ export async function submitOnboarding(formData: FormData) {
   // Parse inputs
   const calories = parseInt(formData.get('calories') as string)
   const protein = parseInt(formData.get('protein') as string)
-  const carbs = parseInt(formData.get('carbs') as string)
+  const carbs = parseInt(formData.get('carbsTarget') as string)
   const fat = parseInt(formData.get('fat') as string)
   const mealsCount = parseInt(formData.get('meals') as string)
   
   const proteinsList = JSON.parse(formData.get('proteins') as string || '[]')
-  const carbsList = JSON.parse(formData.get('carbs') as string || '[]')
+  const carbsList = JSON.parse(formData.get('carbFoodIds') as string || '[]')
   const fatsList = JSON.parse(formData.get('fats') as string || '[]')
 
   if (!calories || !protein || !carbs || !fat || !mealsCount) {

@@ -74,11 +74,11 @@ export default function OnboardingForm({ foods }: Props) {
       const formData = new FormData()
       formData.append('calories', calories)
       formData.append('protein', protein)
-      formData.append('carbs', carbs)
+      formData.append('carbsTarget', carbs)
       formData.append('fat', fat)
       formData.append('meals', meals)
       formData.append('proteins', JSON.stringify(selectedProteins))
-      formData.append('carbs', JSON.stringify(selectedCarbs))
+      formData.append('carbFoodIds', JSON.stringify(selectedCarbs))
       formData.append('fats', JSON.stringify(selectedFats))
 
       const result = await submitOnboarding(formData)
