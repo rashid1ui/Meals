@@ -14,9 +14,9 @@ type Props = {
 }
 
 export default function OnboardingForm({ foods }: Props) {
-  const PROTEINS = foods.filter(f => ['protein', 'dairy'].includes(f.category))
-  const CARBS = foods.filter(f => ['carbohydrate', 'fruit'].includes(f.category))
-  const FATS = foods.filter(f => ['fat'].includes(f.category))
+  const PROTEINS = foods.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim()))
+  const CARBS = foods.filter(f => ['carbohydrate', 'fruit'].includes((f.category || '').toLowerCase().trim()))
+  const FATS = foods.filter(f => ['fat'].includes((f.category || '').toLowerCase().trim()))
 
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -117,7 +117,7 @@ export default function OnboardingForm({ foods }: Props) {
       {step === 1 && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div>
-            <h2 className="text-3xl font-extrabold mb-2">Let's build your diet</h2>
+            <h2 className="text-3xl font-extrabold mb-2">Let&apos;s build your diet</h2>
             <p className="text-gray-400">First, enter your daily targets.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -158,12 +158,18 @@ export default function OnboardingForm({ foods }: Props) {
             <p className="text-gray-400">Choose the protein sources you prefer.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {PROTEINS.map(item => (
-              <button key={item.id} onClick={() => toggleSelection(item.id, selectedProteins, setSelectedProteins)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedProteins.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                <span className="font-semibold">{item.name}</span>
-                {selectedProteins.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-              </button>
-            ))}
+            {PROTEINS.length > 0 ? (
+              PROTEINS.map(item => (
+                <button key={item.id} onClick={() => toggleSelection(item.id, selectedProteins, setSelectedProteins)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedProteins.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
+                  <span className="font-semibold">{item.name}</span>
+                  {selectedProteins.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
+                </button>
+              ))
+            ) : (
+              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
+                No protein sources available. Please contact support.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -176,12 +182,18 @@ export default function OnboardingForm({ foods }: Props) {
             <p className="text-gray-400">Choose the carbohydrate sources you prefer.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {CARBS.map(item => (
-              <button key={item.id} onClick={() => toggleSelection(item.id, selectedCarbs, setSelectedCarbs)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedCarbs.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                <span className="font-semibold">{item.name}</span>
-                {selectedCarbs.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-              </button>
-            ))}
+            {CARBS.length > 0 ? (
+              CARBS.map(item => (
+                <button key={item.id} onClick={() => toggleSelection(item.id, selectedCarbs, setSelectedCarbs)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedCarbs.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
+                  <span className="font-semibold">{item.name}</span>
+                  {selectedCarbs.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
+                </button>
+              ))
+            ) : (
+              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
+                No carbohydrate sources available. Please contact support.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -194,12 +206,18 @@ export default function OnboardingForm({ foods }: Props) {
             <p className="text-gray-400">Choose the fat sources you prefer.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {FATS.map(item => (
-              <button key={item.id} onClick={() => toggleSelection(item.id, selectedFats, setSelectedFats)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedFats.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                <span className="font-semibold">{item.name}</span>
-                {selectedFats.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-              </button>
-            ))}
+            {FATS.length > 0 ? (
+              FATS.map(item => (
+                <button key={item.id} onClick={() => toggleSelection(item.id, selectedFats, setSelectedFats)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedFats.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
+                  <span className="font-semibold">{item.name}</span>
+                  {selectedFats.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
+                </button>
+              ))
+            ) : (
+              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
+                No fat sources available. Please contact support.
+              </div>
+            )}
           </div>
         </div>
       )}
