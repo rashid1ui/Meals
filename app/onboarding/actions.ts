@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { getUser } from '@/lib/auth/get-user'
 import { calculateDiet, validateMacros, type FoodMacro } from '@/lib/nutrition/calculator'
 
-const MAX_ATTEMPTS = 3
+const MAX_ATTEMPTS = 4
 
 export async function submitOnboarding(formData: FormData) {
   const user = await getUser()
@@ -257,7 +257,7 @@ Generate a corrected meal plan.`
   }
 
   if (!finalValidatedDiet) {
-    return { error: 'AI failed to generate a valid diet within required tolerances after 3 attempts. Try adjusting targets.' }
+    return { error: `AI failed to generate a valid diet within required tolerances after ${MAX_ATTEMPTS} attempts. Try adjusting targets.` }
   }
 
   // 1. Insert Diet Plan

@@ -1,7 +1,26 @@
 export const CALORIE_TOLERANCE = 0.05
-export const PROTEIN_TOLERANCE = 5
-export const CARBS_TOLERANCE = 10
-export const FAT_TOLERANCE = 5
+
+// Protein/carbs/fat tolerances scale with the user's target instead of using a
+// single fixed gram value, so a 300g protein target isn't held to the same
+// absolute margin as a 60g target. Each tolerance is the larger of:
+//   - a percentage of the target (bigger targets get proportionally more room), or
+//   - a minimum gram floor (small targets never get an unreasonably tiny margin)
+// 10% is intentionally looser than the 5% calorie tolerance because macros are
+// hit via discrete, whole-gram food quantities and are inherently coarser-grained
+// than total calories. The floors match the previous fixed tolerances, so small
+// targets are never worse off than before this change.
+export const PROTEIN_TOLERANCE_PERCENT = 0.10
+export const PROTEIN_TOLERANCE_MIN_GRAMS = 5
+
+export const CARBS_TOLERANCE_PERCENT = 0.10
+export const CARBS_TOLERANCE_MIN_GRAMS = 10
+
+export const FAT_TOLERANCE_PERCENT = 0.10
+export const FAT_TOLERANCE_MIN_GRAMS = 5
+
+function macroTolerance(target: number, percent: number, minGrams: number): number {
+  return Math.max(minGrams, target * percent)
+}
 
 export interface FoodMacro {
   id: string
@@ -144,20 +163,23 @@ export function validateMacros(diet: CalculatedDiet, targetKcal: number, targetP
     errors.push(`Calories are ${pct}% ${direction} target (Target: ${targetKcal}, Actual: ${diet.daily_calories.toFixed(0)})`)
   }
   
+  const pTolerance = macroTolerance(targetP, PROTEIN_TOLERANCE_PERCENT, PROTEIN_TOLERANCE_MIN_GRAMS)
   const pDiff = Math.abs(diet.daily_protein - targetP)
-  if (pDiff > PROTEIN_TOLERANCE) {
+  if (pDiff > pTolerance) {
     const direction = diet.daily_protein > targetP ? 'above' : 'below'
     errors.push(`Protein is ${pDiff.toFixed(0)}g ${direction} target (Target: ${targetP}g, Actual: ${diet.daily_protein.toFixed(0)}g)`)
   }
-  
+
+  const cTolerance = macroTolerance(targetC, CARBS_TOLERANCE_PERCENT, CARBS_TOLERANCE_MIN_GRAMS)
   const cDiff = Math.abs(diet.daily_carbs - targetC)
-  if (cDiff > CARBS_TOLERANCE) {
+  if (cDiff > cTolerance) {
     const direction = diet.daily_carbs > targetC ? 'above' : 'below'
     errors.push(`Carbohydrates are ${cDiff.toFixed(0)}g ${direction} target (Target: ${targetC}g, Actual: ${diet.daily_carbs.toFixed(0)}g)`)
   }
-  
+
+  const fTolerance = macroTolerance(targetF, FAT_TOLERANCE_PERCENT, FAT_TOLERANCE_MIN_GRAMS)
   const fDiff = Math.abs(diet.daily_fat - targetF)
-  if (fDiff > FAT_TOLERANCE) {
+  if (fDiff > fTolerance) {
     const direction = diet.daily_fat > targetF ? 'above' : 'below'
     errors.push(`Fat is ${fDiff.toFixed(0)}g ${direction} target (Target: ${targetF}g, Actual: ${diet.daily_fat.toFixed(0)}g)`)
   }
