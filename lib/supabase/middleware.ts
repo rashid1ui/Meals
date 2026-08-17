@@ -64,6 +64,10 @@ export async function updateSession(request: NextRequest) {
     const isLogin = request.nextUrl.pathname === '/login'
     const isDashboard = request.nextUrl.pathname.startsWith('/dashboard')
     const isOnboarding = request.nextUrl.pathname.startsWith('/onboarding')
+    // Explicit "start a new meal plan" navigation (Settings -> /onboarding?newPlan=true)
+    // intentionally bypasses the "already onboarded" redirect below. Authentication
+    // is unaffected - the user must still be authenticated to reach this branch at all.
+    const isNewPlanRequest = request.nextUrl.searchParams.get('newPlan') === 'true'
 
     // If we are hitting a core routing page, verify the exact DB state to prevent loops
     if (isLogin || isDashboard || isOnboarding) {
@@ -102,7 +106,7 @@ export async function updateSession(request: NextRequest) {
         return redirectRes
       }
 
-      if (isOnboarding && hasPlan) {
+      if (isOnboarding && hasPlan && !isNewPlanRequest) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
         const redirectRes = NextResponse.redirect(url)

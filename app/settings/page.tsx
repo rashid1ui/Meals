@@ -5,11 +5,6 @@ import { SignOutButton } from '@/components/SignOutButton'
 import Link from 'next/link'
 import GenerateNewPlanButton from './GenerateNewPlanButton'
 
-// Server Actions on this page (regenerateDietPlan) call the same DeepSeek
-// generation engine as onboarding, which can take close to 50s - match
-// onboarding's maxDuration so the platform doesn't cut the request short.
-export const maxDuration = 60
-
 export default async function SettingsPage() {
   const user = await getUser()
 
@@ -73,7 +68,7 @@ export default async function SettingsPage() {
         <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl">
           <h2 className="text-xl font-bold tracking-tight">Meal Plan</h2>
           <p className="text-gray-400 mt-1 mb-6">
-            Generate a fresh meal plan using your current nutrition targets and food preferences.
+            Start over with new nutrition targets and food preferences.
           </p>
           <GenerateNewPlanButton />
         </div>

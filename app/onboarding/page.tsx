@@ -5,12 +5,19 @@ import { createClient } from '@/lib/supabase/server'
 
 export const maxDuration = 60
 
-export default async function OnboardingPage() {
+type OnboardingPageProps = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const user = await getUser()
 
   if (!user) {
     redirect('/login')
   }
+
+  const { newPlan } = await searchParams
+  const isNewPlanFlow = newPlan === 'true'
 
   const supabase = await createClient()
 
@@ -43,7 +50,7 @@ export default async function OnboardingPage() {
       <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[150px] pointer-events-none" />
 
       <div className="w-full relative z-10 py-12">
-        <OnboardingForm foods={dbFoods || []} />
+        <OnboardingForm foods={dbFoods || []} isNewPlanFlow={isNewPlanFlow} />
       </div>
     </main>
   )

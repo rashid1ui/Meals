@@ -13,6 +13,11 @@ export async function submitOnboarding(formData: FormData) {
 
   const supabase = await createClient()
 
+  // Explicit "start a new meal plan" flow (Settings -> /onboarding?newPlan=true).
+  // Signalled through the submitted form so it survives the client-rendered,
+  // no-page-reload wizard between page load and final submission.
+  const isNewPlanFlow = formData.get('newPlan') === 'true'
+
   // Prevent duplicate diet generation - Check 1: Existing Plans
   const { data: existingPlans } = await supabase
     .from('diet_plans')
@@ -20,8 +25,11 @@ export async function submitOnboarding(formData: FormData) {
     .eq('user_id', user.id)
     .limit(1)
 
-  if (existingPlans && existingPlans.length > 0) {
-    // Already onboarded
+  const previousPlanId = existingPlans?.[0]?.id ?? null
+
+  if (previousPlanId && !isNewPlanFlow) {
+    // Already onboarded, and this is normal/direct onboarding access rather
+    // than an intentional new-plan request - existing behavior, unchanged.
     const cookieStore = await cookies()
     cookieStore.set('gym_meals_onboarded', 'true', { path: '/' })
     redirect('/dashboard')
@@ -139,9 +147,26 @@ export async function submitOnboarding(formData: FormData) {
     })
 
   } catch (err) {
-    // Rollback diet plan
+    // Rollback diet plan. The previous plan (if any) was never touched by
+    // this branch, so it remains fully intact.
     await supabase.from('diet_plans').delete().eq('id', newPlan.id)
     return { error: 'Failed to save meals. Rolling back.' }
+  }
+
+  // Activate: only now that the new plan is fully and successfully persisted
+  // do we retire the previous one (new-plan flow only), in dependency order.
+  if (previousPlanId) {
+    const { data: oldMeals } = await supabase
+      .from('meals')
+      .select('id')
+      .eq('diet_plan_id', previousPlanId)
+
+    const oldMealIds = (oldMeals || []).map(m => m.id)
+    if (oldMealIds.length > 0) {
+      await supabase.from('foods').delete().in('meal_id', oldMealIds)
+    }
+    await supabase.from('meals').delete().eq('diet_plan_id', previousPlanId)
+    await supabase.from('diet_plans').delete().eq('id', previousPlanId)
   }
 
   // Update profile modified_at just in case

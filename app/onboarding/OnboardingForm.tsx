@@ -11,9 +11,10 @@ type Food = {
 
 type Props = {
   foods: Food[]
+  isNewPlanFlow?: boolean
 }
 
-export default function OnboardingForm({ foods }: Props) {
+export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) {
   const PROTEINS = foods.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim()))
   const CARBS = foods.filter(f => ['carbohydrate', 'fruit'].includes((f.category || '').toLowerCase().trim()))
   const FATS = foods.filter(f => ['fat'].includes((f.category || '').toLowerCase().trim()))
@@ -80,6 +81,7 @@ export default function OnboardingForm({ foods }: Props) {
       formData.append('proteins', JSON.stringify(selectedProteins))
       formData.append('carbFoodIds', JSON.stringify(selectedCarbs))
       formData.append('fats', JSON.stringify(selectedFats))
+      formData.append('newPlan', isNewPlanFlow ? 'true' : 'false')
 
       const result = await submitOnboarding(formData)
       if (result?.error) {
