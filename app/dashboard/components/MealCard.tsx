@@ -7,8 +7,19 @@ import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
 import { PlusIcon, CheckIcon, CircleIcon, HalfCircleIcon, SpinnerIcon } from '@/components/ui/icons'
+
+const STATUS_ICON: Record<MealTrackingStatus, typeof CheckIcon> = {
+  none: CircleIcon,
+  partial: HalfCircleIcon,
+  complete: CheckIcon
+}
+
+const STATUS_TEXT_CLASS: Record<MealTrackingStatus, string> = {
+  none: 'text-muted-foreground hover:text-foreground',
+  partial: 'text-warning',
+  complete: 'text-success'
+}
 
 export type MealTrackingStatus = 'none' | 'partial' | 'complete'
 
@@ -91,70 +102,73 @@ export default function MealCard({
         isNext ? 'border-primary/50' : ''
       } ${recede ? 'opacity-[0.92]' : ''}`}
     >
-      <div className="border-b border-border pb-4 mb-4 space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          {/* Name gets its own full-width line - badges wrap freely beneath
-              instead of competing with it in one nowrap row (that squeezed
-              the name down to "L..." on a 375px viewport with 3 badges). */}
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="font-display text-xl font-bold text-foreground truncate">{meal.name}</h3>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {isNext && <Badge variant="calories">Next</Badge>}
-              {isNewMeal && <Badge variant="success">New</Badge>}
-              {completion && status !== 'none' && (
-                <Badge variant={status === 'complete' ? 'success' : 'warning'}>{STATUS_LABEL[status]}</Badge>
-              )}
-            </div>
+      <div className="border-b border-border pb-3 mb-3 space-y-2">
+        {/* Eyebrow: Next (static label) + the meal-completion state, which
+            IS the toggle button - reads as plain status text ("○ Not
+            eaten") rather than a heavy standalone control, while staying
+            fully clickable with a 44px-tall hit area via padding. */}
+        {(isNext || isNewMeal || completion) && (
+          <div className="flex items-center gap-2 flex-wrap -mt-1 -ml-1">
+            {isNext && (
+              <span className="text-[11px] font-bold uppercase tracking-wide text-primary px-1">Next</span>
+            )}
+            {isNewMeal && (
+              <span className="text-[11px] font-bold uppercase tracking-wide text-success px-1">New</span>
+            )}
+            {completion && (() => {
+              const StatusIcon = STATUS_ICON[status]
+              return (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+                  aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
+                  onClick={completion.onToggleMeal}
+                  disabled={completion.togglingMeal}
+                  className={`inline-flex items-center gap-1.5 min-h-[36px] px-1 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
+                >
+                  {completion.togglingMeal ? (
+                    <SpinnerIcon size={14} className="animate-spin" />
+                  ) : (
+                    <StatusIcon size={14} />
+                  )}
+                  {STATUS_LABEL[status]}
+                </button>
+              )
+            })()}
           </div>
-          <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display text-xl font-bold text-foreground truncate flex items-center gap-2">
+            {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
+            {meal.name}
+          </h3>
+          <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground">
             {Math.round(totals.calories)} kcal
           </span>
         </div>
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-3 flex-wrap font-mono tabular-nums text-xs font-semibold">
-            <span className="text-protein">Protein {Math.round(totals.protein)}g</span>
-            <span className="text-carbs">Carbs {Math.round(totals.carbs)}g</span>
-            <span className="text-fat">Fat {Math.round(totals.fat)}g</span>
-          </div>
-          {completion && (
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
-              aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
-              onClick={completion.onToggleMeal}
-              disabled={completion.togglingMeal}
-              className={`shrink-0 w-11 h-11 flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed ${
-                status === 'complete'
-                  ? 'bg-success/15 border-success/40 text-success'
-                  : status === 'partial'
-                    ? 'bg-warning/15 border-warning/40 text-warning'
-                    : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
-              }`}
-            >
-              {completion.togglingMeal ? (
-                <SpinnerIcon size={18} className="animate-spin" />
-              ) : status === 'complete' ? (
-                <CheckIcon size={18} />
-              ) : status === 'partial' ? (
-                <HalfCircleIcon size={18} />
-              ) : (
-                <CircleIcon size={18} />
-              )}
-            </button>
-          )}
+        {/* Macro summary - highest-priority scan line after name/kcal, so
+            each value+label pair stays a single colored unit rather than a
+            neutral label next to a colored number. */}
+        <div className="flex gap-x-3 gap-y-1 flex-wrap font-mono tabular-nums text-sm font-semibold">
+          <span className="text-protein">{Math.round(totals.protein)}g Protein</span>
+          <span className="text-carbs">{Math.round(totals.carbs)}g Carbs</span>
+          <span className="text-fat">{Math.round(totals.fat)}g Fat</span>
         </div>
 
+        {/* Target vs actual - compact fraction + bar, not a second stat
+            block. Only meaningful once there's something to eat. */}
         {actual && meal.foods.length > 0 && (
-          <div className="pt-2 space-y-1.5">
-            <div className="flex items-center justify-between gap-x-3 gap-y-1 flex-wrap text-xs font-mono tabular-nums">
-              <span className="text-muted-foreground whitespace-nowrap">
-                Target <span className="font-semibold text-foreground">{Math.round(totals.calories)}</span>
-                <span className="mx-1.5 text-border">·</span>
-                Actual <span className="font-semibold text-foreground">{Math.round(actual.calories)} kcal</span>
+          <div className="pt-1 space-y-1">
+            <div className="flex items-baseline justify-between gap-2 text-xs font-mono tabular-nums text-muted-foreground">
+              <span>
+                <span className="font-bold text-foreground">{Math.round(actual.calories)}</span>
+                {' / '}
+                {Math.round(totals.calories)} kcal
               </span>
-              <span className="font-semibold text-primary whitespace-nowrap">{actualPct}% complete</span>
+              <span className="font-semibold text-primary">{actualPct}% complete</span>
             </div>
             <div
               role="progressbar"
@@ -162,7 +176,7 @@ export default function MealCard({
               aria-valuenow={Math.round(actual.calories)}
               aria-valuemin={0}
               aria-valuemax={Math.round(totals.calories)}
-              className="h-1.5 rounded-full bg-surface-elevated border border-border overflow-hidden"
+              className="h-1.5 rounded-full bg-surface-elevated overflow-hidden"
             >
               <div
                 className="h-full rounded-full bg-primary transition-[width] duration-300"
@@ -173,7 +187,12 @@ export default function MealCard({
         )}
       </div>
 
-      <div className="flex-1 space-y-3">
+      <div className="flex-1">
+        {meal.foods.length > 0 && (
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            Foods
+          </span>
+        )}
         {meal.foods.length === 0 && !showAddFood ? (
           <div className="text-center py-6 px-4 rounded-lg border border-dashed border-border">
             <p className="text-sm font-semibold text-foreground">No foods in this meal yet.</p>
@@ -218,10 +237,10 @@ export default function MealCard({
       ) : (
         <button
           onClick={() => setShowAddFood(true)}
-          className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 text-sm font-semibold text-muted-foreground bg-transparent border border-dashed border-border hover:border-primary hover:text-primary rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
         >
-          <PlusIcon size={16} />
-          Add Food
+          <PlusIcon size={14} />
+          Add food
         </button>
       )}
     </Card>
