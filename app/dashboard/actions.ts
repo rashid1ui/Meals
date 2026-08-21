@@ -30,6 +30,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
       .from('diet_plans')
       .select('*')
       .eq('user_id', user.id)
+      .eq('is_active', true)
       .limit(1)
 
     if (currentPlanError) {
@@ -108,7 +109,11 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     }
 
     // 6. Persist as a new plan first; only remove the old one once the new
-    // one is fully and successfully saved.
+    // one is fully and successfully saved. Inserted inactive - a unique DB
+    // index (diet_plans_one_active_per_user) allows only one is_active=true
+    // row per user, so this can't be active while currentPlan still is.
+    // Dashboard edits don't create plan history (unlike onboarding's new-plan
+    // flow) - the old row is deleted once the swap completes, same as before.
     const { data: newPlan, error: insertPlanError } = await supabase
       .from('diet_plans')
       .insert({
@@ -117,7 +122,8 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
         calories_target: currentPlan.calories_target,
         protein_target: currentPlan.protein_target,
         carbs_target: currentPlan.carbs_target,
-        fat_target: currentPlan.fat_target
+        fat_target: currentPlan.fat_target,
+        is_active: false
       })
       .select()
       .single()
@@ -174,7 +180,13 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     }
 
     // 7. Activate: only now that the new plan is fully and successfully
-    // persisted do we retire the old one, in dependency order.
+    // persisted do we retire the old one, in dependency order. Old is
+    // deactivated before new is activated so the two updates never violate
+    // the one-active-per-user unique index. Edits don't create history, so
+    // the old (now-inactive) row is deleted afterward, same as before.
+    await supabase.from('diet_plans').update({ is_active: false }).eq('id', currentPlan.id)
+    await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
+
     if (currentMealIds.length > 0) {
       await supabase.from('foods').delete().in('meal_id', currentMealIds)
     }

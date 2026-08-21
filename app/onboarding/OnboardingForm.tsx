@@ -89,8 +89,8 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
         setLoading(false)
       }
       // If successful, the server action redirects to /dashboard
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate meal plan.')
+    } catch (err: unknown) {
+      setError((err instanceof Error && err.message) || 'Failed to generate meal plan.')
       setLoading(false)
     }
   }

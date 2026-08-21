@@ -61,8 +61,7 @@ function getCat(name) {
 async function run() {
   const foods = [];
   const review = [];
-  const validation = [];
-  
+
   let verified = 0;
   let replaced = 0;
   let rejected = 0; // We filtered out rejected foods previously, ensuring only good ones make it

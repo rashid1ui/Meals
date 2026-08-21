@@ -23,6 +23,7 @@ export async function submitOnboarding(formData: FormData) {
     .from('diet_plans')
     .select('id')
     .eq('user_id', user.id)
+    .eq('is_active', true)
     .limit(1)
 
   const previousPlanId = existingPlans?.[0]?.id ?? null
@@ -86,7 +87,13 @@ export async function submitOnboarding(formData: FormData) {
 
   const finalValidatedDiet = genResult.diet
 
-  // 1. Insert Diet Plan
+  // 1. Insert Diet Plan. When replacing an existing active plan (new-plan
+  // flow), the new row must start inactive - a unique DB index
+  // (diet_plans_one_active_per_user) allows at most one is_active=true row
+  // per user, so it can't be inserted active while the old one still is.
+  // It's flipped to active only after being fully built out below. A
+  // first-time plan (no previousPlanId) has no such conflict and can be
+  // inserted active immediately, exactly as before.
   const { data: newPlan, error: insertPlanError } = await supabase
     .from('diet_plans')
     .insert({
@@ -95,7 +102,8 @@ export async function submitOnboarding(formData: FormData) {
       calories_target: calories,
       protein_target: protein,
       carbs_target: carbs,
-      fat_target: fat
+      fat_target: fat,
+      is_active: !previousPlanId
     })
     .select()
     .single()
@@ -120,7 +128,7 @@ export async function submitOnboarding(formData: FormData) {
       
       if (insertMealError || !newMeal) throw new Error('Meal insert failed')
 
-      const foodsToInsert = meal.foods.map((food: any, idx: number) => ({
+      const foodsToInsert = meal.foods.map((food, idx: number) => ({
         user_id: user.id,
         meal_id: newMeal.id,
         name: food.name,
@@ -146,7 +154,7 @@ export async function submitOnboarding(formData: FormData) {
       maxAge: 60 * 60 * 24 * 365
     })
 
-  } catch (err) {
+  } catch {
     // Rollback diet plan. The previous plan (if any) was never touched by
     // this branch, so it remains fully intact.
     await supabase.from('diet_plans').delete().eq('id', newPlan.id)
@@ -154,19 +162,14 @@ export async function submitOnboarding(formData: FormData) {
   }
 
   // Activate: only now that the new plan is fully and successfully persisted
-  // do we retire the previous one (new-plan flow only), in dependency order.
+  // do we hand off "active" status (new-plan flow only). The previous plan is
+  // NOT deleted - it becomes plan history (is_active=false), visible under
+  // "Previous Plans" on the dashboard. Old is deactivated before the new one
+  // is activated so the two updates never violate the one-active-per-user
+  // unique index (both is_active=false momentarily is always valid).
   if (previousPlanId) {
-    const { data: oldMeals } = await supabase
-      .from('meals')
-      .select('id')
-      .eq('diet_plan_id', previousPlanId)
-
-    const oldMealIds = (oldMeals || []).map(m => m.id)
-    if (oldMealIds.length > 0) {
-      await supabase.from('foods').delete().in('meal_id', oldMealIds)
-    }
-    await supabase.from('meals').delete().eq('diet_plan_id', previousPlanId)
-    await supabase.from('diet_plans').delete().eq('id', previousPlanId)
+    await supabase.from('diet_plans').update({ is_active: false }).eq('id', previousPlanId)
+    await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
   }
 
   // Update profile modified_at just in case

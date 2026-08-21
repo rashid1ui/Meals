@@ -21,6 +21,11 @@ export interface GenerateDietParams {
 
 export type GenerateDietResult = { diet: CalculatedDiet } | { error: string }
 
+interface ChatMessage {
+  role: string
+  content: string
+}
+
 export async function generateValidatedDiet(params: GenerateDietParams): Promise<GenerateDietResult> {
   const { dbFoods, calories, protein, carbs, fat, mealsCount } = params
 
@@ -81,7 +86,7 @@ You MUST respond with valid JSON matching exactly this schema:
   }
 }`
 
-  const messages: any[] = [
+  const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: 'Generate the meal plan.' }
   ]
@@ -125,7 +130,7 @@ You MUST respond with valid JSON matching exactly this schema:
       let parsedDiet
       try {
         parsedDiet = JSON.parse(aiMessage.content)
-      } catch (e) {
+      } catch {
         messages.push(aiMessage)
         messages.push({ role: 'user', content: 'Your response was not valid JSON. Please return only valid JSON matching the schema.' })
         attempt++

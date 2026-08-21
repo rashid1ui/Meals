@@ -2,6 +2,7 @@ import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/SignOutButton'
+import Avatar from '@/components/Avatar'
 import Link from 'next/link'
 import GenerateNewPlanButton from './GenerateNewPlanButton'
 
@@ -36,17 +37,11 @@ export default async function SettingsPage() {
             <div className="text-sm font-semibold">{profile?.full_name || 'Athlete'}</div>
             <div className="text-xs text-gray-400">{user.email}</div>
           </div>
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt="Avatar"
-              className="w-10 h-10 rounded-full border-2 border-indigo-500/30 object-cover"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gray-800 border-2 border-gray-700 flex items-center justify-center">
-              {profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
-            </div>
-          )}
+          <Avatar
+            src={profile?.avatar_url}
+            alt="Avatar"
+            fallbackText={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
+          />
           <div className="ml-2 pl-4 border-l border-gray-700">
             <SignOutButton />
           </div>

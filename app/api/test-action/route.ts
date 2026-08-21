@@ -5,8 +5,10 @@ export async function POST(req: Request) {
     const formData = await req.formData()
     const result = await submitOnboarding(formData)
     return Response.json({ result })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('API Error:', err)
-    return Response.json({ error: err.message, stack: err.stack }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : undefined
+    return Response.json({ error: message, stack }, { status: 500 })
   }
 }

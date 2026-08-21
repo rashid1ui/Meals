@@ -33,6 +33,7 @@ export async function GET(request: Request) {
           .from('diet_plans')
           .select('id')
           .eq('user_id', user.id)
+          .eq('is_active', true)
           .limit(1)
         isOnboarded = Boolean(plans && plans.length > 0)
       }

@@ -90,7 +90,22 @@ export function calculateFoodMacros(quantity: number, dbFood: FoodMacro): Calcul
   }
 }
 
-export function calculateDiet(dietName: string, parsedMeals: any[], dbFoods: FoodMacro[]): { diet?: CalculatedDiet, error?: string } {
+// Shape of a single meal as it appears in the AI's parsed JSON output before
+// server-side calculation. Untrusted external input - isValidQuantity() and
+// the food_id lookup below are what actually guard against bad data at
+// runtime; this type only documents the expected shape for callers.
+interface ParsedMealFood {
+  food_id: string
+  quantity: number
+  unit?: string
+}
+
+interface ParsedMeal {
+  name?: string
+  foods?: ParsedMealFood[]
+}
+
+export function calculateDiet(dietName: string, parsedMeals: ParsedMeal[], dbFoods: FoodMacro[]): { diet?: CalculatedDiet, error?: string } {
   let daily_calories = 0
   let daily_protein = 0
   let daily_carbs = 0

@@ -24,7 +24,7 @@ const mockRice: FoodMacro = {
   fat: 0.7
 }
 
-test('isValidQuantity', (t) => {
+test('isValidQuantity', () => {
   assert.strictEqual(isValidQuantity(100, 'grams'), true)
   assert.strictEqual(isValidQuantity(1000, 'grams'), true)
   assert.strictEqual(isValidQuantity(1001, 'grams'), false)
@@ -89,12 +89,14 @@ test('calculateDiet - absurd quantity', () => {
       foods: [ { food_id: 'chicken-id', quantity: 5000 } ]
     }
   ]
-  const { diet, error } = calculateDiet('My Diet', parsedMeals, [mockChicken])
+  const { error } = calculateDiet('My Diet', parsedMeals, [mockChicken])
   assert.ok(error?.includes('absurd quantity'))
 })
 
 test('validateMacros - PASS', () => {
-  const diet: any = {
+  const diet: CalculatedDiet = {
+    name: 'Test Diet',
+    meals: [],
     daily_calories: 2000,
     daily_protein: 150,
     daily_carbs: 200,
@@ -105,7 +107,7 @@ test('validateMacros - PASS', () => {
 })
 
 test('validateMacros - FAIL calories', () => {
-  const diet: any = { daily_calories: 2200, daily_protein: 150, daily_carbs: 200, daily_fat: 65 }
+  const diet: CalculatedDiet = { name: 'Test Diet', meals: [], daily_calories: 2200, daily_protein: 150, daily_carbs: 200, daily_fat: 65 }
   // 2200 is 10% above 2000. Limit is 5%.
   const result = validateMacros(diet, 2000, 150, 200, 65)
   assert.strictEqual(result.valid, false)
@@ -113,7 +115,7 @@ test('validateMacros - FAIL calories', () => {
 })
 
 test('validateMacros - FAIL protein', () => {
-  const diet: any = { daily_calories: 2000, daily_protein: 130, daily_carbs: 200, daily_fat: 65 }
+  const diet: CalculatedDiet = { name: 'Test Diet', meals: [], daily_calories: 2000, daily_protein: 130, daily_carbs: 200, daily_fat: 65 }
   // Target is 150g protein. Tolerance is now proportional: max(5, 150 * 0.10) = 15g.
   // 130 is 20g off, which is still outside that 15g tolerance.
   const result = validateMacros(diet, 2000, 150, 200, 65)

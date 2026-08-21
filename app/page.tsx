@@ -16,6 +16,7 @@ export default async function HomePage() {
     .from('diet_plans')
     .select('id')
     .eq('user_id', user.id)
+    .eq('is_active', true)
     .limit(1)
 
   if (existingPlans && existingPlans.length > 0) {
