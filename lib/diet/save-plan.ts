@@ -52,6 +52,77 @@ export interface OriginalFoodRecord {
   fat: number
 }
 
+export interface NamedFood {
+  id: string
+  name: string
+}
+
+export interface NamedMeal {
+  name: string
+  foods: NamedFood[]
+}
+
+export interface NamedMealWithId extends NamedMeal {
+  id: string
+}
+
+export interface FoodRelinkPair {
+  oldFoodId: string
+  newFoodId: string
+  newMealId: string
+}
+
+// saveDietPlan below always deletes and re-inserts every meal/food row on
+// every edit-save (even a same-day quantity tweak to one food), so every
+// food gets a brand new id - not just the one that was actually touched.
+// Without this, today's already-recorded food_tracking completions (which
+// key off food_id) go orphaned for the ENTIRE day on any edit: the
+// Dashboard's checkboxes appear to reset even for meals nobody touched, and
+// re-checking one to "fix" it double-counts it in daily_tracking (the old
+// orphaned row and the new one are both still completed=true).
+//
+// This computes a conservative id migration: a food is matched old->new
+// only when its name occurs exactly once in the same-named old meal AND
+// exactly once in the same-named new meal - i.e. only when there's no
+// ambiguity about which new row replaces it. A meal that's new, renamed, or
+// has an ambiguous (repeated) food name is simply left unmatched, which is
+// exactly today's existing (imperfect but safe) behavior - never a guess
+// that could attach a completion to the wrong food.
+export function computeFoodRelinkPairs(
+  oldMeals: NamedMeal[],
+  newMeals: NamedMealWithId[]
+): FoodRelinkPair[] {
+  const oldFoodsByMealName = new Map<string, NamedFood[]>()
+  for (const meal of oldMeals) {
+    oldFoodsByMealName.set(meal.name, meal.foods)
+  }
+
+  const pairs: FoodRelinkPair[] = []
+
+  for (const newMeal of newMeals) {
+    const oldFoods = oldFoodsByMealName.get(newMeal.name)
+    if (!oldFoods || oldFoods.length === 0 || newMeal.foods.length === 0) continue
+
+    const oldNameCounts = new Map<string, number>()
+    for (const f of oldFoods) oldNameCounts.set(f.name, (oldNameCounts.get(f.name) || 0) + 1)
+
+    const newNameCounts = new Map<string, number>()
+    for (const f of newMeal.foods) newNameCounts.set(f.name, (newNameCounts.get(f.name) || 0) + 1)
+
+    for (const [name, count] of oldNameCounts) {
+      if (count === 1 && newNameCounts.get(name) === 1) {
+        const oldFood = oldFoods.find(f => f.name === name)
+        const newFood = newMeal.foods.find(f => f.name === name)
+        if (oldFood && newFood) {
+          pairs.push({ oldFoodId: oldFood.id, newFoodId: newFood.id, newMealId: newMeal.id })
+        }
+      }
+    }
+  }
+
+  return pairs
+}
+
 // Pure structural validation, independent of the database. Deliberately does
 // NOT apply validateMacros's AI-generation tolerance gate - manual edits are
 // never blocked by macro tolerance, only by structural validity.
