@@ -38,7 +38,7 @@ export default function ResetAccountButton() {
       
       router.push('/login')
       router.refresh()
-    } catch (err: unknown) {
+    } catch {
       setError('An unexpected error occurred. Please try again.')
       setLoading(false)
     }

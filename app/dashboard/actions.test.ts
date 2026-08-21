@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert'
-import { validateMealsShape, resolveMeal, type OriginalFoodRecord } from '@/lib/diet/save-plan'
+import {
+  validateMealsShape,
+  resolveMeal,
+  computeFoodRelinkPairs,
+  type OriginalFoodRecord
+} from '@/lib/diet/save-plan'
 import type { FoodMacro } from '@/lib/nutrition/calculator'
 
 const chickenDbRow: FoodMacro = {
@@ -102,4 +107,88 @@ test('resolveMeal - trims the meal name (matches persistence behavior)', () => {
   const result = resolveMeal({ name: '  Post-Workout  ', foods: [] }, new Map(), new Map())
   assert.ok('meal' in result)
   if ('meal' in result) assert.strictEqual(result.meal.name, 'Post-Workout')
+})
+
+// computeFoodRelinkPairs - saveDietPlan deletes and re-inserts every food on
+// every edit, giving unmatched foods a brand new id. This is what keeps
+// today's already-recorded food_tracking completions attached to the right
+// food across that id churn, instead of going orphaned and (if the user
+// re-checks the now-apparently-unchecked box) double-counted.
+
+test('computeFoodRelinkPairs - matches an untouched food in an untouched meal by (meal name, food name)', () => {
+  const oldMeals = [{ name: 'Breakfast', foods: [{ id: 'old-egg', name: 'Whole Egg, Raw' }] }]
+  const newMeals = [{ id: 'new-meal-1', name: 'Breakfast', foods: [{ id: 'new-egg', name: 'Whole Egg, Raw' }] }]
+
+  const pairs = computeFoodRelinkPairs(oldMeals, newMeals)
+  assert.deepStrictEqual(pairs, [{ oldFoodId: 'old-egg', newFoodId: 'new-egg', newMealId: 'new-meal-1' }])
+})
+
+test('computeFoodRelinkPairs - a food whose quantity changed is still matched by name (macros in the tracking row stay untouched)', () => {
+  const oldMeals = [{ name: 'Lunch', foods: [{ id: 'old-chicken', name: 'Chicken Breast, Raw' }] }]
+  const newMeals = [{ id: 'new-meal-1', name: 'Lunch', foods: [{ id: 'new-chicken', name: 'Chicken Breast, Raw' }] }]
+
+  const pairs = computeFoodRelinkPairs(oldMeals, newMeals)
+  assert.strictEqual(pairs.length, 1)
+  assert.strictEqual(pairs[0].oldFoodId, 'old-chicken')
+  assert.strictEqual(pairs[0].newFoodId, 'new-chicken')
+})
+
+test('computeFoodRelinkPairs - does not match a food that was actually removed', () => {
+  const oldMeals = [{ name: 'Dinner', foods: [{ id: 'old-rice', name: 'White Rice, Dry' }] }]
+  const newMeals = [{ id: 'new-meal-1', name: 'Dinner', foods: [] }]
+
+  assert.deepStrictEqual(computeFoodRelinkPairs(oldMeals, newMeals), [])
+})
+
+test('computeFoodRelinkPairs - does not match foods in a brand-new meal with no old counterpart', () => {
+  const oldMeals: { name: string; foods: { id: string; name: string }[] }[] = []
+  const newMeals = [{ id: 'new-meal-1', name: 'Midnight Snack', foods: [{ id: 'new-food', name: 'Almonds, Raw' }] }]
+
+  assert.deepStrictEqual(computeFoodRelinkPairs(oldMeals, newMeals), [])
+})
+
+test('computeFoodRelinkPairs - refuses to guess when a food name is ambiguous (repeated) within a meal', () => {
+  const oldMeals = [{
+    name: 'Snack',
+    foods: [{ id: 'old-almonds-1', name: 'Almonds, Raw' }, { id: 'old-almonds-2', name: 'Almonds, Raw' }]
+  }]
+  const newMeals = [{
+    id: 'new-meal-1',
+    name: 'Snack',
+    foods: [{ id: 'new-almonds-1', name: 'Almonds, Raw' }, { id: 'new-almonds-2', name: 'Almonds, Raw' }]
+  }]
+
+  // Two same-named foods on each side - which old maps to which new is
+  // genuinely ambiguous, so neither is matched rather than guessed.
+  assert.deepStrictEqual(computeFoodRelinkPairs(oldMeals, newMeals), [])
+})
+
+test('computeFoodRelinkPairs - matches only the unambiguous foods when a meal has a mix of unique and repeated names', () => {
+  const oldMeals = [{
+    name: 'Breakfast',
+    foods: [
+      { id: 'old-egg', name: 'Whole Egg, Raw' },
+      { id: 'old-almonds-1', name: 'Almonds, Raw' },
+      { id: 'old-almonds-2', name: 'Almonds, Raw' }
+    ]
+  }]
+  const newMeals = [{
+    id: 'new-meal-1',
+    name: 'Breakfast',
+    foods: [
+      { id: 'new-egg', name: 'Whole Egg, Raw' },
+      { id: 'new-almonds-1', name: 'Almonds, Raw' },
+      { id: 'new-almonds-2', name: 'Almonds, Raw' }
+    ]
+  }]
+
+  const pairs = computeFoodRelinkPairs(oldMeals, newMeals)
+  assert.deepStrictEqual(pairs, [{ oldFoodId: 'old-egg', newFoodId: 'new-egg', newMealId: 'new-meal-1' }])
+})
+
+test('computeFoodRelinkPairs - does not match across differently-named meals', () => {
+  const oldMeals = [{ name: 'Breakfast', foods: [{ id: 'old-egg', name: 'Whole Egg, Raw' }] }]
+  const newMeals = [{ id: 'new-meal-1', name: 'Brunch', foods: [{ id: 'new-egg', name: 'Whole Egg, Raw' }] }]
+
+  assert.deepStrictEqual(computeFoodRelinkPairs(oldMeals, newMeals), [])
 })

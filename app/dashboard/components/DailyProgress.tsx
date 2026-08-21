@@ -1,6 +1,7 @@
 'use client'
 
 import { classifyTarget, type MacroTotals, type TargetStatus } from '@/lib/diet/diff'
+import type { DailyTrackingSummary } from '../tracking-actions'
 import type { Targets } from './DietEditor'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
@@ -50,7 +51,7 @@ function CalorieHero({ current, target }: HeroProps) {
     <Card elevated className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Today&apos;s Nutrition
+          Today&apos;s Actual Progress
         </span>
         <Badge variant={STATUS_BADGE_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
       </div>
@@ -62,12 +63,12 @@ function CalorieHero({ current, target }: HeroProps) {
           </span>
           <span className="text-muted-foreground">/ {Math.round(target)} kcal</span>
         </div>
-        <p className="text-sm font-semibold text-muted-foreground mt-1">{pct}% of daily target</p>
+        <p className="text-sm font-semibold text-muted-foreground mt-1">{pct}% of daily target consumed</p>
       </div>
 
       <div
         role="progressbar"
-        aria-label="Calories consumed toward daily target"
+        aria-label="Calories actually consumed toward daily target"
         aria-valuenow={Math.round(current)}
         aria-valuemin={0}
         aria-valuemax={Math.round(target)}
@@ -117,7 +118,7 @@ function MacroTile({ label, value, target, unit, valueClass, barClass }: TilePro
       </div>
       <div
         role="progressbar"
-        aria-label={`${label} consumed toward daily target`}
+        aria-label={`${label} actually consumed toward daily target`}
         aria-valuenow={Math.round(value)}
         aria-valuemin={0}
         aria-valuemax={Math.round(target)}
@@ -144,15 +145,27 @@ function MacroTile({ label, value, target, unit, valueClass, barClass }: TilePro
 }
 
 type Props = {
-  totals: MacroTotals
+  tracking: DailyTrackingSummary
   targets: Targets
 }
 
-// Calories already dominate CalorieHero above - repeating it as a fourth
-// identical tile here would flatten the hierarchy the hero exists to create.
-// Protein/carbs/fat stay secondary, in a 3-column row instead of a
-// calories-inclusive 4up grid.
-export default function MacroSummaryCards({ totals, targets }: Props) {
+// The ONE daily progress section (replaces the old Today's Nutrition hero +
+// macro cards + separate Today's Progress card, which duplicated the exact
+// same calorie/protein/carb/fat percentages twice). Everything here reads
+// from tracking.consumed - actually-logged consumption - never the planned
+// diet total. The meals/foods completion counts at the bottom are the only
+// information that ISN'T already shown above, so they're kept as a compact
+// strip rather than a second full section.
+export default function DailyProgress({ tracking, targets }: Props) {
+  const totals: MacroTotals = tracking.consumed
+  const totalMeals = tracking.meals.length
+  const completedMeals = tracking.meals.filter(m => m.status === 'complete').length
+  const totalFoods = tracking.meals.reduce((sum, m) => sum + m.foods.length, 0)
+  const completedFoods = tracking.meals.reduce(
+    (sum, m) => sum + m.foods.filter(f => f.status === 'complete').length,
+    0
+  )
+
   return (
     <div className="space-y-4">
       <CalorieHero current={totals.calories} target={targets.calories} />
@@ -183,6 +196,17 @@ export default function MacroSummaryCards({ totals, targets }: Props) {
           barClass="bg-fat"
         />
       </div>
+
+      {totalMeals > 0 && (
+        <div className="flex items-center justify-center gap-8 text-sm font-mono tabular-nums text-muted-foreground">
+          <span>
+            <span className="font-bold text-foreground">{completedMeals}/{totalMeals}</span> meals eaten
+          </span>
+          <span>
+            <span className="font-bold text-foreground">{completedFoods}/{totalFoods}</span> foods eaten
+          </span>
+        </div>
+      )}
     </div>
   )
 }

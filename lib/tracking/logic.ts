@@ -2,6 +2,8 @@
 // lib/diet/diff.ts's split: this module is unit-testable in isolation, and
 // app/dashboard/tracking-actions.ts is the thin DB-touching wrapper around it.
 
+import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
+
 export interface TrackableFood {
   id: string
   name: string
@@ -12,15 +14,39 @@ export interface TrackableFood {
   fat: number
 }
 
-export type MealStatus = 'none' | 'partial' | 'complete'
+export type TrackingStatus = 'none' | 'partial' | 'complete'
 
+// Kept as an alias - "meal status" and "food status" are the exact same
+// tri-state, just applied at two levels. Existing callers importing
+// `MealStatus` keep working unchanged.
+export type MealStatus = TrackingStatus
+
+// Floating-point/rounding guard, not a real quantity threshold - a consumed
+// quantity within 0.01g/ml of 0 or of the planned amount is treated as
+// exactly that boundary, so unit conversions (e.g. 3 pieces at 33.33g each)
+// never get stuck showing "partial" for a food the user fully logged.
+const QUANTITY_EPSILON = 0.01
+
+// A food's completion is a quantity comparison, not a flag: 0 consumed is
+// 'none', anything at or above the current planned quantity is 'complete',
+// anything in between is 'partial'. Comparing against the LIVE planned
+// quantity (not a snapshot) means editing the plan later correctly re-grades
+// an already-logged food (see app/dashboard/tracking-actions.ts).
+export function computeFoodStatus(consumedQuantity: number, plannedQuantity: number): TrackingStatus {
+  if (consumedQuantity <= QUANTITY_EPSILON) return 'none'
+  if (consumedQuantity >= plannedQuantity - QUANTITY_EPSILON) return 'complete'
+  return 'partial'
+}
+
+// A meal's status is purely derived from its foods' statuses - there is no
+// independent "meal complete" flag anywhere (matches the product requirement
+// that meal completion can never be set independently of food completion).
 // A meal with zero foods is never "complete" - there's nothing to eat, so it
 // stays 'none' rather than vacuously true.
-export function computeMealStatus(foodIds: string[], completedFoodIds: ReadonlySet<string>): MealStatus {
-  if (foodIds.length === 0) return 'none'
-  const completedCount = foodIds.filter(id => completedFoodIds.has(id)).length
-  if (completedCount === 0) return 'none'
-  if (completedCount === foodIds.length) return 'complete'
+export function deriveMealStatus(foodStatuses: TrackingStatus[]): TrackingStatus {
+  if (foodStatuses.length === 0) return 'none'
+  if (foodStatuses.every(s => s === 'none')) return 'none'
+  if (foodStatuses.every(s => s === 'complete')) return 'complete'
   return 'partial'
 }
 
@@ -47,16 +73,31 @@ export function sumMacros(items: MacroTotals[]): MacroTotals {
   )
 }
 
-// Sums only the foods whose id is in completedFoodIds - "consumed" is never
-// the whole meal just because it exists in the plan; only completed foods
-// count (see the calling code in tracking-actions.ts for the enforcement of
-// this at the database level too - this is the pure version of that rule).
-export function sumCompletedMacros(foods: TrackableFood[], completedFoodIds: ReadonlySet<string>): MacroTotals {
-  return sumMacros(foods.filter(f => completedFoodIds.has(f.id)))
-}
-
 export function pctOf(value: number, target: number): number {
   return target > 0 ? (value / target) * 100 : 0
+}
+
+// Scales a food's own currently-planned macros down to whatever quantity was
+// actually consumed - reuses calculateFoodMacros (the SAME linear
+// quantity-scaling the solver/calculator already use everywhere else) rather
+// than inventing a second nutrition calculation. The food's own planned
+// quantity/macros are used as the scaling "serving" basis instead of a fresh
+// food_database lookup, since foods.calories/protein/carbs/fat are already
+// the correct absolute values for foods.quantity - exactly what
+// calculateFoodMacros expects as serving_size/calories/etc.
+export function computeActualFoodMacros(consumedQuantity: number, plannedFood: TrackableFood): MacroTotals {
+  const basis: FoodMacro = {
+    id: plannedFood.id,
+    name: plannedFood.name,
+    serving_size: plannedFood.quantity,
+    serving_unit: 'grams',
+    calories: plannedFood.calories,
+    protein: plannedFood.protein,
+    carbs: plannedFood.carbs,
+    fat: plannedFood.fat
+  }
+  const scaled = calculateFoodMacros(consumedQuantity, basis)
+  return { calories: scaled.calories, protein: scaled.protein, carbs: scaled.carbs, fat: scaled.fat }
 }
 
 export interface FoodTrackingRowInput {
@@ -64,7 +105,10 @@ export interface FoodTrackingRowInput {
   trackingDate: string
   mealId: string
   mealName: string
-  completed: boolean
+  // The ACTUAL consumed quantity/macros to persist for this food - never the
+  // full planned amount unless that's genuinely what was eaten. `completed`
+  // is derived from quantity below rather than passed in, so the stored flag
+  // can never disagree with the stored quantity.
   food: TrackableFood
 }
 
@@ -103,7 +147,7 @@ export function buildFoodTrackingRow(
     food_id: input.food.id,
     meal_id: input.mealId,
     meal_name: input.mealName,
-    completed: input.completed,
+    completed: input.food.quantity > QUANTITY_EPSILON,
     quantity: input.food.quantity,
     food_name: input.food.name,
     protein: input.food.protein,
