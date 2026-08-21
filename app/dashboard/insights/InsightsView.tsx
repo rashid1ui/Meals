@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary } from '../tracking-actions'
 import Card from '@/components/ui/Card'
 import { AlertIcon } from '@/components/ui/icons'
+import DailyCalendar from './DailyCalendar'
 
 type Tab = 'week' | 'month'
 
@@ -141,6 +142,8 @@ export default function InsightsView() {
       </div>
 
       <PeriodPanel key={tab} tab={tab} />
+
+      <DailyCalendar />
     </div>
   )
 }

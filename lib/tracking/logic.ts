@@ -77,6 +77,23 @@ export function pctOf(value: number, target: number): number {
   return target > 0 ? (value / target) * 100 : 0
 }
 
+// A single day's overall adherence, for the Insights calendar - the average
+// of each macro's own percent-of-target (via pctOf, the same helper the
+// weekly/monthly averages already use), each capped at 100 so overeating one
+// macro can't inflate the score past what "fully on target" means. Not a new
+// nutrition calculation - purely an aggregation of the existing per-macro
+// percentages into one number for a calendar cell.
+export function computeDayAdherencePct(consumed: MacroTotals, target: MacroTotals): number {
+  const cappedPct = (value: number, targetValue: number) => Math.min(100, pctOf(value, targetValue))
+  const avg =
+    (cappedPct(consumed.calories, target.calories) +
+      cappedPct(consumed.protein, target.protein) +
+      cappedPct(consumed.carbs, target.carbs) +
+      cappedPct(consumed.fat, target.fat)) /
+    4
+  return Math.round(avg)
+}
+
 // Scales a food's own currently-planned macros down to whatever quantity was
 // actually consumed - reuses calculateFoodMacros (the SAME linear
 // quantity-scaling the solver/calculator already use everywhere else) rather

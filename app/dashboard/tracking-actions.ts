@@ -14,6 +14,7 @@ import {
   computeFoodStatus,
   deriveMealStatus,
   computeActualFoodMacros,
+  computeDayAdherencePct,
   sumMacros,
   zeroMacros,
   pctOf,
@@ -470,4 +471,65 @@ export async function getMonthlyTracking(year: number, month: number): Promise<R
   const start = `${year}-${String(month).padStart(2, '0')}-01`
   const end = lastDayOfMonthUTC(year, month)
   return getPeriodTracking(start, end)
+}
+
+export type CalendarDay = {
+  date: string
+  // null = no daily_tracking row for this date at all (nothing was ever
+  // logged that day) - distinct from a row that exists with 0 consumed,
+  // which is a real 0%. The Insights calendar renders null as "-".
+  adherencePct: number | null
+}
+
+// One row per calendar day of the given month, in order - powers the
+// Insights page's "Daily Progress" calendar. Reuses the exact same
+// daily_tracking rows and per-macro percentage math (pctOf, via
+// computeDayAdherencePct) as the Weekly/Monthly Nutrition averages above;
+// this is a per-day view of the same underlying data, not a second
+// calculation system.
+export async function getCalendarTracking(year: number, month: number): Promise<Result<CalendarDay[]>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const supabase = await createClient()
+
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const end = lastDayOfMonthUTC(year, month)
+
+  const { data: dailyRows, error } = await supabase
+    .from('daily_tracking')
+    .select('tracking_date, calories, protein, carbs, fat, calories_target, protein_target, carbs_target, fat_target')
+    .eq('user_id', user.id)
+    .gte('tracking_date', start)
+    .lte('tracking_date', end)
+
+  if (error) {
+    console.error('[tracking] getCalendarTracking failed:', error)
+    return { error: 'Failed to load calendar data. Please try again.' }
+  }
+
+  const byDate = new Map((dailyRows || []).map(r => [r.tracking_date, r]))
+  const totalDays = daysBetweenInclusive(start, end)
+
+  const days: CalendarDay[] = []
+  for (let i = 0; i < totalDays; i++) {
+    const date = shiftDateUTC(start, i)
+    const row = byDate.get(date)
+    days.push({
+      date,
+      adherencePct: row
+        ? computeDayAdherencePct(
+            { calories: Number(row.calories), protein: Number(row.protein), carbs: Number(row.carbs), fat: Number(row.fat) },
+            {
+              calories: row.calories_target,
+              protein: row.protein_target,
+              carbs: row.carbs_target,
+              fat: row.fat_target
+            }
+          )
+        : null
+    })
+  }
+
+  return { data: days }
 }

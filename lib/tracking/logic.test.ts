@@ -4,7 +4,9 @@ import {
   computeFoodStatus,
   deriveMealStatus,
   sumMacros,
+  zeroMacros,
   computeActualFoodMacros,
+  computeDayAdherencePct,
   buildFoodTrackingRow,
   type TrackableFood
 } from './logic'
@@ -161,4 +163,38 @@ test('sumMacros - sums a list of already-actual per-food macros into a meal/day 
   ])
   assert.strictEqual(Math.round(totals.calories), 239)
   assert.strictEqual(Math.round(totals.protein * 10) / 10, 35.4)
+})
+
+// computeDayAdherencePct - the Insights calendar's per-day cell percentage:
+// average of each macro's own percent-of-target, capped per-macro at 100.
+
+test('computeDayAdherencePct - hitting every macro target exactly is 100%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(target, target), 100)
+})
+
+test('computeDayAdherencePct - eating nothing is 0%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(zeroMacros(), target), 0)
+})
+
+test('computeDayAdherencePct - averages across macros, not just calories', () => {
+  // calories 100%, protein 50%, carbs 0%, fat 100% -> average 62.5 -> rounds to 63
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  const consumed = { calories: 2000, protein: 75, carbs: 0, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 63)
+})
+
+test('computeDayAdherencePct - overeating one macro cannot push the day above 100%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  // Double every macro - each would be 200% uncapped, but capped at 100% each.
+  const consumed = { calories: 4000, protein: 300, carbs: 400, fat: 120 }
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 100)
+})
+
+test('computeDayAdherencePct - a zero target macro contributes 0%, never divides by zero', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 0 }
+  const consumed = { calories: 2000, protein: 150, carbs: 200, fat: 50 }
+  // fat has no target, so pctOf(50, 0) is defined as 0 - average is (100+100+100+0)/4 = 75.
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 75)
 })
