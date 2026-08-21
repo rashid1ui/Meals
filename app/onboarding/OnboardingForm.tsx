@@ -2,6 +2,12 @@
 
 import { useState } from 'react'
 import { submitOnboarding } from './actions'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
+import FoodStep from './FoodStep'
+import GeneratingPanel from './GeneratingPanel'
+import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 
 type Food = {
   id: string
@@ -14,6 +20,13 @@ type Props = {
   isNewPlanFlow?: boolean
 }
 
+const STEP_LABELS = ['Targets', 'Protein', 'Carbs', 'Fat']
+
+// Non-blocking sanity check only - protein/carbs/fat grams don't have to add
+// up exactly to the calorie target (users round, and that's fine), but a
+// large mismatch is worth surfacing before generation runs.
+const CALORIE_MISMATCH_TOLERANCE = 0.1
+
 export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) {
   const PROTEINS = foods.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim()))
   const CARBS = foods.filter(f => ['carbohydrate', 'fruit'].includes((f.category || '').toLowerCase().trim()))
@@ -22,6 +35,10 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [generationFailed, setGenerationFailed] = useState(false)
+  // Remounts GeneratingPanel on each attempt so its stage timer resets
+  // cleanly on retry, instead of resetting state imperatively in an effect.
+  const [attempt, setAttempt] = useState(0)
 
   // Form State
   const [calories, setCalories] = useState('2250')
@@ -29,7 +46,7 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
   const [carbs, setCarbs] = useState('250')
   const [fat, setFat] = useState('70')
   const [meals, setMeals] = useState('4')
-  
+
   const [selectedProteins, setSelectedProteins] = useState<string[]>([])
   const [selectedCarbs, setSelectedCarbs] = useState<string[]>([])
   const [selectedFats, setSelectedFats] = useState<string[]>([])
@@ -65,6 +82,8 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
 
   const handleSubmit = async () => {
     setError(null)
+    setGenerationFailed(false)
+    setAttempt(prev => prev + 1)
     if (selectedFats.length === 0) {
       setError('Please select at least one fat source.')
       return
@@ -87,162 +106,199 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
       if (result?.error) {
         setError(result.error)
         setLoading(false)
+        setGenerationFailed(true)
       }
       // If successful, the server action redirects to /dashboard
     } catch (err: unknown) {
       setError((err instanceof Error && err.message) || 'Failed to generate meal plan.')
       setLoading(false)
+      setGenerationFailed(true)
     }
   }
 
+  if (loading || generationFailed) {
+    return (
+      <div className="w-full max-w-xl mx-auto">
+        <GeneratingPanel
+          key={attempt}
+          status={generationFailed ? 'error' : 'generating'}
+          errorMessage={error}
+          onRetry={handleSubmit}
+        />
+      </div>
+    )
+  }
+
+  const derivedCalories = Math.round(
+    (parseFloat(protein) || 0) * 4 + (parseFloat(carbs) || 0) * 4 + (parseFloat(fat) || 0) * 9
+  )
+  const enteredCalories = parseFloat(calories) || 0
+  const calorieMismatch =
+    enteredCalories > 0 &&
+    Math.abs(derivedCalories - enteredCalories) / enteredCalories > CALORIE_MISMATCH_TOLERANCE
+
   return (
-    <div className="w-full max-w-xl mx-auto bg-[#161B22] border border-gray-800 rounded-3xl p-8 shadow-2xl relative z-10 text-white font-['Outfit',sans-serif]">
+    <Card className="w-full max-w-xl mx-auto p-8 space-y-8">
       {/* Progress */}
-      <div className="flex justify-between items-center mb-8">
-        <div className="text-sm font-semibold text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full">
-          Step {step} of 4
+      <div className="space-y-2">
+        <div className="flex justify-between items-baseline">
+          <span className="font-display text-lg font-semibold text-primary">{STEP_LABELS[step - 1]}</span>
+          <span className="text-xs text-muted-foreground">Step {step} of 4</span>
         </div>
-        <div className="flex gap-2">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className={`w-3 h-3 rounded-full ${i <= step ? 'bg-indigo-500' : 'bg-gray-700'}`} />
+        <div
+          className="flex gap-1.5"
+          role="progressbar"
+          aria-valuenow={step}
+          aria-valuemin={1}
+          aria-valuemax={4}
+          aria-label="Onboarding progress"
+        >
+          {STEP_LABELS.map((label, i) => (
+            <div
+              key={label}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? 'bg-primary' : 'bg-surface-elevated'}`}
+            />
           ))}
         </div>
       </div>
 
-      {error && (
-        <div className="w-full p-4 mb-6 text-sm text-red-200 bg-red-900/40 border border-red-500/30 rounded-xl">
-          {error}
+      {error && !generationFailed && (
+        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+          <AlertIcon size={18} className="shrink-0 mt-0.5" />
+          <span>{error}</span>
         </div>
       )}
 
       {/* Step 1: Macros */}
       {step === 1 && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-6 animate-step-in">
           <div>
-            <h2 className="text-3xl font-extrabold mb-2">Let&apos;s build your diet</h2>
-            <p className="text-gray-400">First, enter your daily targets.</p>
+            <h2 className="font-display text-3xl font-bold text-foreground mb-2">Let&apos;s build your diet</h2>
+            <p className="text-muted-foreground">First, enter your daily targets.</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-gray-300 font-semibold">Daily Calories</label>
-              <input type="number" value={calories} onChange={e => setCalories(e.target.value)} className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-gray-300 font-semibold">Protein (g)</label>
-              <input type="number" value={protein} onChange={e => setProtein(e.target.value)} className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-gray-300 font-semibold">Carbohydrates (g)</label>
-              <input type="number" value={carbs} onChange={e => setCarbs(e.target.value)} className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-gray-300 font-semibold">Fat (g)</label>
-              <input type="number" value={fat} onChange={e => setFat(e.target.value)} className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Daily Calories"
+              type="number"
+              numeric
+              value={calories}
+              onChange={e => setCalories(e.target.value)}
+              trailing="kcal"
+            />
+            <Input
+              label="Protein (g)"
+              type="number"
+              numeric
+              value={protein}
+              onChange={e => setProtein(e.target.value)}
+              trailing="g"
+            />
+            <Input
+              label="Carbohydrates (g)"
+              type="number"
+              numeric
+              value={carbs}
+              onChange={e => setCarbs(e.target.value)}
+              trailing="g"
+            />
+            <Input
+              label="Fat (g)"
+              type="number"
+              numeric
+              value={fat}
+              onChange={e => setFat(e.target.value)}
+              trailing="g"
+            />
           </div>
+
+          {calorieMismatch && (
+            <div className="flex items-start gap-2 p-4 text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg">
+              <AlertIcon size={18} className="shrink-0 mt-0.5" />
+              <span>
+                Your protein, carbs, and fat add up to about{' '}
+                <span className="font-mono tabular-nums">{derivedCalories}</span> kcal, but your calorie
+                target is <span className="font-mono tabular-nums">{enteredCalories}</span> kcal. You can
+                continue anyway - just make sure this is intentional.
+              </span>
+            </div>
+          )}
+
           <div className="space-y-2 pt-2">
-            <label className="text-sm text-gray-300 font-semibold">Meals Per Day</label>
-            <select value={meals} onChange={e => setMeals(e.target.value)} className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none cursor-pointer">
-              <option value="3">3 Meals</option>
-              <option value="4">4 Meals</option>
-              <option value="5">5 Meals</option>
-              <option value="6">6 Meals</option>
-            </select>
+            <label htmlFor="meals-per-day" className="text-sm font-semibold text-foreground block">
+              Meals Per Day
+            </label>
+            <div className="relative">
+              <select
+                id="meals-per-day"
+                value={meals}
+                onChange={e => setMeals(e.target.value)}
+                className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-lg px-4 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
+              >
+                <option value="3">3 Meals</option>
+                <option value="4">4 Meals</option>
+                <option value="5">5 Meals</option>
+                <option value="6">6 Meals</option>
+              </select>
+              <ChevronDownIcon
+                size={18}
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
           </div>
         </div>
       )}
 
       {/* Step 2: Proteins */}
       {step === 2 && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div>
-            <h2 className="text-3xl font-extrabold mb-2">Select Your Proteins</h2>
-            <p className="text-gray-400">Choose the protein sources you prefer.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {PROTEINS.length > 0 ? (
-              PROTEINS.map(item => (
-                <button key={item.id} onClick={() => toggleSelection(item.id, selectedProteins, setSelectedProteins)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedProteins.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                  <span className="font-semibold">{item.name}</span>
-                  {selectedProteins.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-                </button>
-              ))
-            ) : (
-              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
-                No protein sources available. Please contact support.
-              </div>
-            )}
-          </div>
-        </div>
+        <FoodStep
+          title="Select Your Proteins"
+          description="Choose the protein sources you prefer."
+          items={PROTEINS}
+          selected={selectedProteins}
+          onToggle={id => toggleSelection(id, selectedProteins, setSelectedProteins)}
+        />
       )}
 
       {/* Step 3: Carbs */}
       {step === 3 && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div>
-            <h2 className="text-3xl font-extrabold mb-2">Select Your Carbs</h2>
-            <p className="text-gray-400">Choose the carbohydrate sources you prefer.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {CARBS.length > 0 ? (
-              CARBS.map(item => (
-                <button key={item.id} onClick={() => toggleSelection(item.id, selectedCarbs, setSelectedCarbs)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedCarbs.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                  <span className="font-semibold">{item.name}</span>
-                  {selectedCarbs.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-                </button>
-              ))
-            ) : (
-              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
-                No carbohydrate sources available. Please contact support.
-              </div>
-            )}
-          </div>
-        </div>
+        <FoodStep
+          title="Select Your Carbs"
+          description="Choose the carbohydrate sources you prefer."
+          items={CARBS}
+          selected={selectedCarbs}
+          onToggle={id => toggleSelection(id, selectedCarbs, setSelectedCarbs)}
+        />
       )}
 
       {/* Step 4: Fats */}
       {step === 4 && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div>
-            <h2 className="text-3xl font-extrabold mb-2">Select Your Fats</h2>
-            <p className="text-gray-400">Choose the fat sources you prefer.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {FATS.length > 0 ? (
-              FATS.map(item => (
-                <button key={item.id} onClick={() => toggleSelection(item.id, selectedFats, setSelectedFats)} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${selectedFats.includes(item.id) ? 'bg-indigo-500/10 border-indigo-500' : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'}`}>
-                  <span className="font-semibold">{item.name}</span>
-                  {selectedFats.includes(item.id) && <div className="w-4 h-4 rounded-full bg-indigo-500" />}
-                </button>
-              ))
-            ) : (
-              <div className="col-span-2 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-red-200 text-sm">
-                No fat sources available. Please contact support.
-              </div>
-            )}
-          </div>
-        </div>
+        <FoodStep
+          title="Select Your Fats"
+          description="Choose the fat sources you prefer."
+          items={FATS}
+          selected={selectedFats}
+          onToggle={id => toggleSelection(id, selectedFats, setSelectedFats)}
+        />
       )}
 
       {/* Actions */}
-      <div className="flex gap-4 mt-8 pt-6 border-t border-gray-800">
+      <div className="flex gap-4 pt-6 border-t border-border">
         {step > 1 && (
-          <button onClick={() => setStep(prev => prev - 1)} disabled={loading} className="px-6 py-3 bg-[#0B0E14] border border-gray-700 hover:bg-gray-800 rounded-xl font-semibold transition-all">
+          <Button variant="secondary" onClick={() => setStep(prev => prev - 1)}>
             Back
-          </button>
+          </Button>
         )}
-        
+
         {step < 4 ? (
-          <button onClick={handleNext} className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all">
+          <Button variant="primary" onClick={handleNext} className="flex-1">
             Continue
-          </button>
+          </Button>
         ) : (
-          <button onClick={handleSubmit} disabled={loading} className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-all">
-            {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : null}
-            {loading ? 'Generating Diet...' : 'Generate Meal Plan'}
-          </button>
+          <Button variant="primary" onClick={handleSubmit} className="flex-1">
+            Generate Meal Plan
+          </Button>
         )}
       </div>
-    </div>
+    </Card>
   )
 }
