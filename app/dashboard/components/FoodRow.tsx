@@ -2,6 +2,15 @@
 
 import { useState } from 'react'
 import type { DraftFood, DraftMeal, FoodBadge } from '@/lib/diet/diff'
+import type { FoodOption } from './DietEditor'
+import {
+  toCanonicalGrams,
+  toDisplayQuantity,
+  isWholeDisplayQuantity,
+  requiresGramsPerUnit,
+  unitLabel,
+  type UnitConfig
+} from '@/lib/nutrition/units'
 import Badge from '@/components/ui/Badge'
 import { PlusIcon, MinusIcon, CloseIcon, CheckIcon, CircleIcon, SpinnerIcon } from '@/components/ui/icons'
 
@@ -38,19 +47,36 @@ type Props = {
   // Undefined for a food belonging to a meal that hasn't been saved yet -
   // tracking only ever applies to persisted foods.
   completion?: FoodCompletionToggle
+  // The resolved food_database row, for display-unit info. Null/undefined
+  // for a "Locked" food with no live match (see the `locked` badge below) -
+  // it falls back to plain grams, identical to its existing behavior.
+  dbFood?: FoodOption | null
 }
 
-export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove, completion }: Props) {
-  const [inputValue, setInputValue] = useState(String(food.quantity))
+export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove, completion, dbFood }: Props) {
   const locked = food.foodDatabaseId === null
+  const unitConfig: UnitConfig = {
+    displayUnit: dbFood?.display_unit || 'g',
+    gramsPerDisplayUnit: dbFood?.grams_per_display_unit || 1
+  }
+  const displayQuantity = toDisplayQuantity(food.quantity, unitConfig)
+  const isExact = isWholeDisplayQuantity(food.quantity, unitConfig)
+  const isPieceLike = requiresGramsPerUnit(unitConfig.displayUnit)
 
-  const commitQuantity = (value: number) => {
-    if (!isFinite(value) || value <= 0) return
-    onQuantityChange(value)
+  const [inputValue, setInputValue] = useState(String(displayQuantity))
+
+  const commitQuantity = (displayValue: number) => {
+    if (!isFinite(displayValue) || displayValue <= 0) return
+    onQuantityChange(toCanonicalGrams(displayValue, unitConfig))
   }
 
+  // Steps by one whole display unit for piece-like foods (1 egg, 1 slice),
+  // by a finer 100g increment for kg (0.1kg), or the existing 10-unit step
+  // for plain g/ml.
+  const stepSize = unitConfig.displayUnit === 'kg' ? 0.1 : isPieceLike ? 1 : QUANTITY_STEP
+
   const step = (delta: number) => {
-    const next = Math.max(QUANTITY_STEP, food.quantity + delta)
+    const next = Math.max(stepSize, displayQuantity + delta)
     setInputValue(String(next))
     commitQuantity(next)
   }
@@ -98,6 +124,14 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
                 Locked
               </Badge>
             )}
+            {!isExact && (
+              <Badge
+                variant="warning"
+                title={`${displayQuantity} ${unitLabel(unitConfig.displayUnit, displayQuantity)} is an approximate display of ${Math.round(food.quantity)}g - the exact gram amount is what's actually used for nutrition.`}
+              >
+                Approx.
+              </Badge>
+            )}
           </div>
           <div className="flex gap-3 flex-wrap mt-1 font-mono tabular-nums text-xs">
             <span className="text-foreground/70">{Math.round(food.calories)} kcal</span>
@@ -120,7 +154,7 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
       <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
         <div className="flex items-center gap-1">
           <button
-            onClick={() => step(-QUANTITY_STEP)}
+            onClick={() => step(-stepSize)}
             disabled={locked}
             aria-label={`Decrease ${food.name} quantity`}
             className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -133,12 +167,14 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             disabled={locked}
             onChange={e => setInputValue(e.target.value)}
             onBlur={() => commitQuantity(parseFloat(inputValue))}
-            aria-label={`${food.name} quantity`}
+            aria-label={`${food.name} quantity in ${unitLabel(unitConfig.displayUnit, displayQuantity)}`}
             className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
-          <span className="text-xs text-muted-foreground">{food.unit}</span>
+          <span className="text-sm font-semibold text-foreground">
+            {unitLabel(unitConfig.displayUnit, displayQuantity)}
+          </span>
           <button
-            onClick={() => step(QUANTITY_STEP)}
+            onClick={() => step(stepSize)}
             disabled={locked}
             aria-label={`Increase ${food.name} quantity`}
             className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"

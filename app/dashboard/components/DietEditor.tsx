@@ -42,8 +42,16 @@ function cloneMeals(meals: DraftMeal[]): DraftMeal[] {
   return meals.map(m => ({ ...m, foods: m.foods.map(f => ({ ...f })) }))
 }
 
-export default function DietEditor({ initialMeals, targets, foodOptions }: Props) {
+export default function DietEditor({ initialMeals, targets, foodOptions: initialFoodOptions }: Props) {
   const router = useRouter()
+
+  // Stateful (not the raw prop) so a food created via "Add a new food" in
+  // AddFoodPopover becomes immediately searchable/usable in every meal card
+  // this session, without a full page refresh.
+  const [foodOptions, setFoodOptions] = useState<FoodOption[]>(initialFoodOptions)
+  const handleFoodCreated = (food: FoodOption) => {
+    setFoodOptions(prev => (prev.some(f => f.id === food.id) ? prev : [...prev, food]))
+  }
 
   const [draft, setDraft] = useState<DraftMeal[]>(() => cloneMeals(initialMeals))
   const [history, setHistory] = useState<DraftMeal[][]>([])
@@ -321,6 +329,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
               onMoveFood={(foodId, toMealId) => handleMoveFood(foodId, meal.id, toMealId)}
+              onFoodCreated={handleFoodCreated}
               completion={
                 isPersistedMealId(meal.id)
                   ? {

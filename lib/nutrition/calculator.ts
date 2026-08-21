@@ -31,6 +31,17 @@ export interface FoodMacro {
   protein: number
   carbs: number
   fat: number
+  // Display-unit metadata (added for the quantity/unit feature) - purely
+  // additive and optional so existing test fixtures/call sites that predate
+  // this feature remain valid untouched. calculateFoodMacros/calculateDiet
+  // below never read these fields; they continue operating on `quantity` in
+  // the same unit as serving_size/serving_unit exactly as before.
+  // Conversion between a user-facing display unit (piece, slice, kg, ...)
+  // and this canonical quantity happens entirely in lib/nutrition/units.ts,
+  // upstream of this file - callers there treat a missing value as the
+  // existing default (display_unit 'g', grams_per_display_unit 1).
+  display_unit?: string
+  grams_per_display_unit?: number
 }
 
 export interface CalculatedFood {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal } from '@/lib/diet/diff'
 import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
@@ -29,6 +29,7 @@ type Props = {
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
   onMoveFood: (foodId: string, toMealId: string) => void
+  onFoodCreated?: (food: FoodOption) => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
   // so the toggle is simply omitted rather than shown disabled.
@@ -50,6 +51,7 @@ export default function MealCard({
   onRemoveFood,
   onAddFood,
   onMoveFood,
+  onFoodCreated,
   completion
 }: Props) {
   const [showAddFood, setShowAddFood] = useState(false)
@@ -57,6 +59,12 @@ export default function MealCard({
   const otherMeals = allMeals.filter(m => m.id !== meal.id)
   const isNewMeal = changes.some(c => c.type === 'meal-added' && c.mealName === meal.name)
   const status = completion?.status ?? 'none'
+
+  const foodOptionsById = useMemo(() => {
+    const map = new Map<string, FoodOption>()
+    for (const f of foodOptions) map.set(f.id, f)
+    return map
+  }, [foodOptions])
 
   return (
     <Card className="p-6 flex flex-col">
@@ -127,6 +135,7 @@ export default function MealCard({
               onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
               onRemove={() => onRemoveFood(food.id)}
               onMove={(toMealId) => onMoveFood(food.id, toMealId)}
+              dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
               completion={
                 completion
                   ? {
@@ -149,6 +158,7 @@ export default function MealCard({
             setShowAddFood(false)
           }}
           onClose={() => setShowAddFood(false)}
+          onFoodCreated={onFoodCreated}
         />
       ) : (
         <button
