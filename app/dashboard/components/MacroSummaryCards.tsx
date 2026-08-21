@@ -26,11 +26,19 @@ function progressPct(value: number, target: number): number {
   return Math.min(100, Math.max(0, (value / target) * 100))
 }
 
+// Raw (uncapped) percentage for display text - "134% of daily target" is
+// meaningful information the capped progress-bar width deliberately hides.
+function rawPct(value: number, target: number): number {
+  if (target <= 0) return 0
+  return Math.max(0, (value / target) * 100)
+}
+
 type HeroProps = { current: number; target: number }
 
 function CalorieHero({ current, target }: HeroProps) {
   const { status } = classifyTarget(current, target)
   const diff = target - current
+  const pct = Math.round(rawPct(current, target))
   // Both "remaining" and "over" are plain subtraction from data already on
   // screen (current vs target) - nothing here is estimated or invented.
   const remainingLabel =
@@ -42,19 +50,29 @@ function CalorieHero({ current, target }: HeroProps) {
     <Card elevated className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Today&apos;s Calories
+          Today&apos;s Nutrition
         </span>
         <Badge variant={STATUS_BADGE_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
       </div>
 
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono tabular-nums text-4xl font-bold text-calories">
-          {Math.round(current)}
-        </span>
-        <span className="text-muted-foreground">kcal of {Math.round(target)}</span>
+      <div>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="font-mono tabular-nums text-4xl sm:text-5xl font-bold text-calories">
+            {Math.round(current)}
+          </span>
+          <span className="text-muted-foreground">/ {Math.round(target)} kcal</span>
+        </div>
+        <p className="text-sm font-semibold text-muted-foreground mt-1">{pct}% of daily target</p>
       </div>
 
-      <div className="h-2 rounded-full bg-surface-elevated border border-border overflow-hidden">
+      <div
+        role="progressbar"
+        aria-label="Calories consumed toward daily target"
+        aria-valuenow={Math.round(current)}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(target)}
+        className="h-2.5 rounded-full bg-surface-elevated border border-border overflow-hidden"
+      >
         <div
           className="h-full rounded-full bg-calories transition-[width] duration-300"
           style={{ width: `${progressPct(current, target)}%` }}
@@ -77,11 +95,19 @@ type TileProps = {
 
 function MacroTile({ label, value, target, unit, valueClass, barClass }: TileProps) {
   const { status } = classifyTarget(value, target)
+  const pct = Math.round(rawPct(value, target))
+  const remaining = target - value
+  const remainingLabel =
+    remaining >= 0 ? `${Math.round(remaining)}${unit} left` : `${Math.round(Math.abs(remaining))}${unit} over`
+
   return (
-    <Card className="p-4 space-y-2.5">
-      <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
+    <Card className="p-4 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        <span className="font-mono tabular-nums text-xs font-bold text-muted-foreground">{pct}%</span>
+      </div>
       <div className={`font-mono tabular-nums text-xl font-bold ${valueClass}`}>
         {Math.round(value)}
         <span className="text-muted-foreground text-sm font-normal">
@@ -89,7 +115,14 @@ function MacroTile({ label, value, target, unit, valueClass, barClass }: TilePro
           {unit}
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-surface-elevated border border-border overflow-hidden">
+      <div
+        role="progressbar"
+        aria-label={`${label} consumed toward daily target`}
+        aria-valuenow={Math.round(value)}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(target)}
+        className="h-1.5 rounded-full bg-surface-elevated border border-border overflow-hidden"
+      >
         <div
           className={`h-full rounded-full transition-[width] duration-300 ${barClass}`}
           style={{ width: `${progressPct(value, target)}%` }}
@@ -104,7 +137,7 @@ function MacroTile({ label, value, target, unit, valueClass, barClass }: TilePro
               : 'text-error'
         }`}
       >
-        {STATUS_LABELS[status]}
+        {remainingLabel}
       </div>
     </Card>
   )
@@ -115,20 +148,16 @@ type Props = {
   targets: Targets
 }
 
+// Calories already dominate CalorieHero above - repeating it as a fourth
+// identical tile here would flatten the hierarchy the hero exists to create.
+// Protein/carbs/fat stay secondary, in a 3-column row instead of a
+// calories-inclusive 4up grid.
 export default function MacroSummaryCards({ totals, targets }: Props) {
   return (
     <div className="space-y-4">
       <CalorieHero current={totals.calories} target={targets.calories} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MacroTile
-          label="Calories"
-          value={totals.calories}
-          target={targets.calories}
-          unit=""
-          valueClass="text-calories"
-          barClass="bg-calories"
-        />
+      <div className="grid grid-cols-3 gap-3">
         <MacroTile
           label="Protein"
           value={totals.protein}

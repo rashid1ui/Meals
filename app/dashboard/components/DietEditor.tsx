@@ -18,6 +18,8 @@ import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import MacroSummaryCards from './MacroSummaryCards'
+import DailyProgressSummary from './DailyProgressSummary'
+import NextMealSpotlight from './NextMealSpotlight'
 import Button from '@/components/ui/Button'
 import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
 
@@ -94,6 +96,22 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
   }, [dailyTracking])
 
   const isPersistedMealId = (id: string) => initialMeals.some(m => m.id === id)
+
+  // "Next meal" = the first persisted meal (in plan order) that isn't fully
+  // eaten yet. Deliberately order-based rather than clock-based: meal times
+  // are only ever a free-text suffix a user may type into the meal name
+  // (see AddMealModal), not structured data this can reliably parse.
+  const nextMeal = useMemo(() => {
+    return draft.find(m => (completionByMealId.get(m.id)?.status ?? 'none') !== 'complete') ?? null
+  }, [draft, completionByMealId])
+
+  const scrollToMeal = (mealId: string) => {
+    const el = document.getElementById(`meal-${mealId}`)
+    if (!el) return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' })
+    el.focus({ preventScroll: true })
+  }
 
   // Meal-level click: incomplete/partial -> mark every food in the meal
   // completed; already complete -> mark every food incomplete.
@@ -292,7 +310,12 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
           <span>{trackingError}</span>
         </div>
       ) : (
-        <MacroSummaryCards totals={dailyTracking!.consumed} targets={targets} />
+        <>
+          <MacroSummaryCards totals={dailyTracking!.consumed} targets={targets} />
+          {/* Section 2 - Today's Progress: meal/food completion counts +
+              macro percentages, condensed to a 2-3-second scan. */}
+          <DailyProgressSummary tracking={dailyTracking!} />
+        </>
       )}
 
       <div className="flex justify-end">
@@ -305,7 +328,14 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
         </Link>
       </div>
 
-      {/* Section 2 - Today's Meals: the primary actionable area, answers
+      {/* Section 6 - Next Meal: read-only spotlight on what to focus on
+          next, jumps to the matching card below rather than duplicating
+          its editable content. */}
+      {nextMeal && (
+        <NextMealSpotlight meal={nextMeal} onView={() => scrollToMeal(nextMeal.id)} />
+      )}
+
+      {/* Section 3 - Today's Meals: the primary actionable area, answers
           "what should I eat?". Each card's checkbox answers "did I eat
           this?" - a separate concern from planning/editing below it. */}
       <div className="space-y-6">
@@ -325,6 +355,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
               allMeals={draft}
               changes={changes}
               foodOptions={foodOptions}
+              isNext={nextMeal?.id === meal.id}
               onQuantityChange={(foodId, qty) => handleQuantityChange(meal.id, foodId, qty)}
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
@@ -351,7 +382,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
         </div>
       </div>
 
-      {/* Section 3 - Change Summary: visually secondary, answers "what did
+      {/* Section 9 - Change Summary: visually secondary, answers "what did
           I change?" only when relevant. */}
       <ChangeSummaryPanel
         changes={changes}
