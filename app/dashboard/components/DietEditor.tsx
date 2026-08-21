@@ -164,29 +164,6 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     return () => clearTimeout(timer)
   }, [justSaved])
 
-  const handleQuantityChange = (mealId: string, foodId: string, newQuantity: number) => {
-    commit(current => current.map(meal => {
-      if (meal.id !== mealId) return meal
-      return {
-        ...meal,
-        foods: meal.foods.map(food => {
-          if (food.id !== foodId || !food.foodDatabaseId) return food
-          const dbFood = foodOptionsById.get(food.foodDatabaseId)
-          if (!dbFood) return food
-          const calculated = calculateFoodMacros(newQuantity, dbFood)
-          return {
-            ...food,
-            quantity: calculated.quantity,
-            calories: calculated.calories,
-            protein: calculated.protein,
-            carbs: calculated.carbs,
-            fat: calculated.fat
-          }
-        })
-      }
-    }))
-  }
-
   const handleRemoveFood = (mealId: string, foodId: string) => {
     commit(current => current.map(meal => {
       if (meal.id !== mealId) return meal
@@ -212,23 +189,6 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     commit(current => current.map(meal => (
       meal.id === mealId ? { ...meal, foods: [...meal.foods, newFood] } : meal
     )))
-  }
-
-  const handleMoveFood = (foodId: string, fromMealId: string, toMealId: string) => {
-    if (fromMealId === toMealId) return
-    commit(current => {
-      let moved: DraftFood | null = null
-      const withoutFood = current.map(meal => {
-        if (meal.id !== fromMealId) return meal
-        const food = meal.foods.find(f => f.id === foodId)
-        if (food) moved = food
-        return { ...meal, foods: meal.foods.filter(f => f.id !== foodId) }
-      })
-      if (!moved) return current
-      return withoutFood.map(meal => (
-        meal.id === toMealId ? { ...meal, foods: [...meal.foods, moved as DraftFood] } : meal
-      ))
-    })
   }
 
   const handleAddMeal = (name: string) => {
@@ -348,14 +308,11 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
             <MealCard
               key={meal.id}
               meal={meal}
-              allMeals={draft}
               changes={changes}
               foodOptions={foodOptions}
               isNext={nextMeal?.id === meal.id}
-              onQuantityChange={(foodId, qty) => handleQuantityChange(meal.id, foodId, qty)}
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
-              onMoveFood={(foodId, toMealId) => handleMoveFood(foodId, meal.id, toMealId)}
               onFoodCreated={handleFoodCreated}
               completion={
                 isPersistedMealId(meal.id) && completionByMealId.get(meal.id)

@@ -12,16 +12,8 @@ import {
   type UnitConfig
 } from '@/lib/nutrition/units'
 import Badge from '@/components/ui/Badge'
-import {
-  PlusIcon,
-  MinusIcon,
-  CloseIcon,
-  CheckIcon,
-  CircleIcon,
-  HalfCircleIcon,
-  SpinnerIcon,
-  ChevronDownIcon
-} from '@/components/ui/icons'
+import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
+import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
 
 const QUANTITY_STEP = 10
 
@@ -41,12 +33,6 @@ const BADGE_LABELS: Record<FoodBadge, string> = {
 
 export type FoodTrackingStatus = 'none' | 'partial' | 'complete'
 
-const STATUS_ICON: Record<FoodTrackingStatus, typeof CheckIcon> = {
-  none: CircleIcon,
-  partial: HalfCircleIcon,
-  complete: CheckIcon
-}
-
 // This food's live tracking state, sourced from the server (never
 // recomputed from the plan) - `consumedQuantity`/`plannedQuantity` are both
 // canonical grams/ml, same basis as `food.quantity`.
@@ -62,11 +48,8 @@ export type FoodTrackingInfo = {
 type Props = {
   food: DraftFood
   meal: DraftMeal
-  otherMeals: DraftMeal[]
   badges: FoodBadge[]
-  onQuantityChange: (quantity: number) => void
   onRemove: () => void
-  onMove: (toMealId: string) => void
   // Undefined for a food belonging to a meal that hasn't been saved yet -
   // tracking only ever applies to persisted foods.
   completion?: FoodTrackingInfo
@@ -77,11 +60,10 @@ type Props = {
 }
 
 // A food row reads as a single scannable LINE ITEM (checkbox, name, unit,
-// macros, delete) - never a bordered card-inside-a-card. The bulkiest
-// controls (quantity stepper, Move-to, "log a partial amount") stay hidden
-// until the row itself is expanded, so the default view is "what did I
-// eat", not "here is a form".
-export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove, completion, dbFood }: Props) {
+// macros, delete) - never a bordered card-inside-a-card. Logging a partial
+// amount eaten stays hidden until the row itself is expanded, so the
+// default view is "what did I eat", not "here is a form".
+export default function FoodRow({ food, badges, onRemove, completion, dbFood }: Props) {
   const locked = food.foodDatabaseId === null
   const unitConfig: UnitConfig = {
     displayUnit: dbFood?.display_unit || 'g',
@@ -92,27 +74,16 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
   const isPieceLike = requiresGramsPerUnit(unitConfig.displayUnit)
   const unit = unitLabel(unitConfig.displayUnit, displayQuantity)
 
-  const [inputValue, setInputValue] = useState(String(displayQuantity))
   const [editing, setEditing] = useState(false)
-
-  const commitQuantity = (displayValue: number) => {
-    if (!isFinite(displayValue) || displayValue <= 0) return
-    onQuantityChange(toCanonicalGrams(displayValue, unitConfig))
-  }
 
   // Steps by one whole display unit for piece-like foods (1 egg, 1 slice),
   // by a finer 100g increment for kg (0.1kg), or the existing 10-unit step
   // for plain g/ml.
   const stepSize = unitConfig.displayUnit === 'kg' ? 0.1 : isPieceLike ? 1 : QUANTITY_STEP
 
-  const step = (delta: number) => {
-    const next = Math.max(stepSize, displayQuantity + delta)
-    setInputValue(String(next))
-    commitQuantity(next)
-  }
-
-  // Consumed-quantity display state, independent of the planned-quantity
-  // editor above - this edits how much was actually EATEN, never the plan.
+  // How much has actually been eaten so far today - entirely separate from
+  // this food's planned quantity in the diet (food.quantity), which is not
+  // editable from this row.
   const consumedDisplay = completion ? toDisplayQuantity(completion.consumedQuantity, unitConfig) : 0
   const plannedDisplayForLog = completion ? toDisplayQuantity(completion.plannedQuantity, unitConfig) : 0
   const [logInputValue, setLogInputValue] = useState(String(consumedDisplay))
@@ -149,7 +120,6 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
   }
 
   const status = completion?.status ?? 'none'
-  const StatusIcon = STATUS_ICON[status]
   const statusLabel = status === 'complete' ? 'Eaten' : status === 'partial' ? 'Partially eaten' : 'Not eaten'
   const nextActionLabel = status === 'complete' ? `Mark ${food.name} as not eaten` : `Mark ${food.name} as eaten`
 
@@ -165,18 +135,12 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             title={statusLabel}
             onClick={handleQuickToggle}
             disabled={completion.logging}
-            className={`shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
-              status === 'complete'
-                ? 'bg-success/15 text-success'
-                : status === 'partial'
-                  ? 'bg-warning/15 text-warning'
-                  : 'text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
-            }`}
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {completion.logging ? (
               <SpinnerIcon size={16} className="animate-spin" />
             ) : (
-              <StatusIcon size={16} />
+              <TrackingStatusIcon status={status} size={24} />
             )}
           </button>
         )}
@@ -293,62 +257,6 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
               </div>
             </div>
           )}
-
-          <div className="space-y-1.5">
-            {completion && (
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
-                Planned amount
-              </label>
-            )}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => step(-stepSize)}
-                  disabled={locked}
-                  aria-label={`Decrease ${food.name} quantity`}
-                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <MinusIcon size={16} />
-                </button>
-                <input
-                  type="number"
-                  value={inputValue}
-                  disabled={locked}
-                  onChange={e => setInputValue(e.target.value)}
-                  onBlur={() => commitQuantity(parseFloat(inputValue))}
-                  aria-label={`${food.name} quantity in ${unit}`}
-                  className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                />
-                <span className="text-sm font-semibold text-foreground">{unit}</span>
-                <button
-                  onClick={() => step(stepSize)}
-                  disabled={locked}
-                  aria-label={`Increase ${food.name} quantity`}
-                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <PlusIcon size={16} />
-                </button>
-              </div>
-
-              {otherMeals.length > 0 && (
-                <select
-                  value=""
-                  onChange={e => {
-                    if (e.target.value) onMove(e.target.value)
-                  }}
-                  aria-label={`Move ${food.name} to another meal`}
-                  className="min-h-[44px] text-xs bg-surface-elevated border border-border rounded-lg px-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <option value="">Move to...</option>
-                  {otherMeals.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -8,13 +8,8 @@ import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
-import { PlusIcon, CheckIcon, CircleIcon, HalfCircleIcon, SpinnerIcon } from '@/components/ui/icons'
-
-const STATUS_ICON: Record<MealTrackingStatus, typeof CheckIcon> = {
-  none: CircleIcon,
-  partial: HalfCircleIcon,
-  complete: CheckIcon
-}
+import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
+import { PlusIcon, CheckIcon, SpinnerIcon } from '@/components/ui/icons'
 
 const STATUS_TEXT_CLASS: Record<MealTrackingStatus, string> = {
   none: 'text-muted-foreground hover:text-foreground',
@@ -39,13 +34,10 @@ export type MealCompletionInfo = {
 
 type Props = {
   meal: DraftMeal
-  allMeals: DraftMeal[]
   changes: ChangeEntry[]
   foodOptions: FoodOption[]
-  onQuantityChange: (foodId: string, quantity: number) => void
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
-  onMoveFood: (foodId: string, toMealId: string) => void
   onFoodCreated?: (food: FoodOption) => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
@@ -64,20 +56,16 @@ const STATUS_LABEL: Record<MealTrackingStatus, string> = {
 
 export default function MealCard({
   meal,
-  allMeals,
   changes,
   foodOptions,
-  onQuantityChange,
   onRemoveFood,
   onAddFood,
-  onMoveFood,
   onFoodCreated,
   completion,
   isNext = false
 }: Props) {
   const [showAddFood, setShowAddFood] = useState(false)
   const target = computeMealTotals(meal)
-  const otherMeals = allMeals.filter(m => m.id !== meal.id)
   const isNewMeal = changes.some(c => c.type === 'meal-added' && c.mealName === meal.name)
   const status = completion?.status ?? 'none'
   // Visually quiet down an already-eaten meal that isn't the one to focus on
@@ -118,27 +106,24 @@ export default function MealCard({
             {isNewMeal && (
               <span className="text-[11px] font-bold uppercase tracking-wide text-success px-1">New</span>
             )}
-            {completion && (() => {
-              const StatusIcon = STATUS_ICON[status]
-              return (
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
-                  aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
-                  onClick={completion.onToggleMeal}
-                  disabled={completion.togglingMeal}
-                  className={`inline-flex items-center gap-1.5 min-h-[36px] px-1 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
-                >
-                  {completion.togglingMeal ? (
-                    <SpinnerIcon size={14} className="animate-spin" />
-                  ) : (
-                    <StatusIcon size={14} />
-                  )}
-                  {STATUS_LABEL[status]}
-                </button>
-              )
-            })()}
+            {completion && (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+                aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
+                onClick={completion.onToggleMeal}
+                disabled={completion.togglingMeal}
+                className={`inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
+              >
+                {completion.togglingMeal ? (
+                  <SpinnerIcon size={16} className="animate-spin" />
+                ) : (
+                  <TrackingStatusIcon status={status} size={20} />
+                )}
+                {STATUS_LABEL[status]}
+              </button>
+            )}
           </div>
         )}
 
@@ -216,11 +201,8 @@ export default function MealCard({
                 key={food.id}
                 food={food}
                 meal={meal}
-                otherMeals={otherMeals}
                 badges={getFoodBadges(changes, food.id)}
-                onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
                 onRemove={() => onRemoveFood(food.id)}
-                onMove={(toMealId) => onMoveFood(food.id, toMealId)}
                 dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
                 completion={
                   completion && foodTracking
