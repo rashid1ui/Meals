@@ -10,11 +10,26 @@ import {
   daysBetweenInclusive,
   lastDayOfMonthUTC
 } from '@/lib/tracking/date'
+import {
+  computeMealStatus,
+  sumMacros,
+  zeroMacros,
+  pctOf,
+  buildFoodTrackingRow,
+  type MealStatus,
+  type TrackableFood
+} from '@/lib/tracking/logic'
+
+export type FoodCompletionState = {
+  foodId: string
+  completed: boolean
+}
 
 export type MealCompletionState = {
   mealId: string
   name: string
-  completed: boolean
+  status: MealStatus
+  foods: FoodCompletionState[]
   calories: number
   protein: number
   carbs: number
@@ -40,34 +55,20 @@ export type PeriodTrackingSummary = {
 
 type Result<T> = { data: T } | { error: string }
 
-interface MealFoodRow {
-  id: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-}
-
 interface MealRow {
   id: string
   name: string
   sort_order: number
-  foods: MealFoodRow[]
+  foods: TrackableFood[]
 }
 
-function zeroMacros() {
-  return { calories: 0, protein: 0, carbs: 0, fat: 0 }
-}
-
-function pctOf(value: number, target: number): number {
-  return target > 0 ? (value / target) * 100 : 0
-}
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 // Read-only. Joins today's LIVE meals/foods (the actual current plan)
-// against today's food_tracking rows to determine per-meal completion, and
-// reads today's daily_tracking row (if any) for the consumed rollup. Never
-// writes - a day with no daily_tracking row yet simply shows zero consumed,
-// it is never inserted here.
+// against today's food_tracking rows to determine per-meal/per-food
+// completion, and reads today's daily_tracking row (if any) for the
+// consumed rollup. Never writes - a day with no daily_tracking row yet
+// simply shows zero consumed, it is never inserted here.
 export async function getTodayTracking(localDate: string): Promise<Result<DailyTrackingSummary>> {
   const user = await getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -87,7 +88,7 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
 
   const { data: meals } = await supabase
     .from('meals')
-    .select('id, name, sort_order, foods(id, calories, protein, carbs, fat)')
+    .select('id, name, sort_order, foods(id, name, quantity, calories, protein, carbs, fat)')
     .eq('diet_plan_id', activePlan.id)
     .order('sort_order')
 
@@ -104,17 +105,18 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   )
 
   const mealStates: MealCompletionState[] = mealRows.map(meal => {
-    const totals = meal.foods.reduce(
-      (acc, f) => ({
-        calories: acc.calories + Number(f.calories),
-        protein: acc.protein + Number(f.protein),
-        carbs: acc.carbs + Number(f.carbs),
-        fat: acc.fat + Number(f.fat)
-      }),
-      zeroMacros()
+    const totals = sumMacros(meal.foods)
+    const status = computeMealStatus(
+      meal.foods.map(f => f.id),
+      completedFoodIds
     )
-    const completed = meal.foods.length > 0 && meal.foods.every(f => completedFoodIds.has(f.id))
-    return { mealId: meal.id, name: meal.name, completed, ...totals }
+    return {
+      mealId: meal.id,
+      name: meal.name,
+      status,
+      foods: meal.foods.map(f => ({ foodId: f.id, completed: completedFoodIds.has(f.id) })),
+      ...totals
+    }
   })
 
   const { data: dailyRows } = await supabase
@@ -146,100 +148,33 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   }
 }
 
-// Marks a meal completed/uncompleted for a given date. Idempotent: upserts
-// on the existing (user_id, tracking_date, food_id) unique constraint, so
-// double-clicks or repeated requests never create duplicate rows - they
-// just overwrite the same row with the same completed value. Only ever
-// operates on "today" (within the tolerance window) - past dates are
-// rejected, so historical tracking can never be retroactively edited
-// through this action.
-export async function toggleMealCompletion(
-  mealId: string,
-  localDate: string,
-  completed: boolean
+// Recomputes today's daily_tracking rollup strictly from completed=true
+// food_tracking rows, upserts it, then returns the fresh full state. Shared
+// by both toggle actions below so the rollup logic exists in exactly one
+// place.
+async function recomputeDailyAndReturn(
+  supabase: SupabaseServerClient,
+  userId: string,
+  localDate: string
 ): Promise<Result<DailyTrackingSummary>> {
-  const user = await getUser()
-  if (!user) return { error: 'Not authenticated' }
-  if (!isPlausibleToday(localDate)) return { error: 'Tracking is only available for today.' }
-
-  const supabase = await createClient()
-
-  // Ownership check + fresh server-verified macros - the client's own
-  // computed totals are never trusted, matching the existing saveDietPlan
-  // pattern in app/dashboard/actions.ts.
-  const { data: meal } = await supabase
-    .from('meals')
-    .select('id, name, foods(id, name, quantity, unit, calories, protein, carbs, fat)')
-    .eq('id', mealId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!meal) return { error: 'Meal not found.' }
-
-  interface FoodRow {
-    id: string
-    name: string
-    quantity: number
-    unit: string
-    calories: number
-    protein: number
-    carbs: number
-    fat: number
-  }
-  const foods = (meal.foods as FoodRow[]) || []
-
-  if (foods.length > 0) {
-    const nowIso = new Date().toISOString()
-    const rows = foods.map(f => ({
-      user_id: user.id,
-      tracking_date: localDate,
-      food_id: f.id,
-      meal_id: mealId,
-      meal_name: meal.name,
-      completed,
-      quantity: f.quantity,
-      unit: f.unit,
-      food_name: f.name,
-      protein: f.protein,
-      fat: f.fat,
-      carbs: f.carbs,
-      calories: f.calories,
-      updated_at: nowIso
-    }))
-
-    const { error: upsertError } = await supabase
-      .from('food_tracking')
-      .upsert(rows, { onConflict: 'user_id,tracking_date,food_id' })
-
-    if (upsertError) return { error: 'Failed to save completion. Please try again.' }
-  }
-
-  // Recompute today's rollup strictly from completed=true rows - a meal
-  // that was just unchecked stops contributing the instant its rows flip
-  // to completed=false.
   const { data: completedRows, error: sumError } = await supabase
     .from('food_tracking')
     .select('calories, protein, carbs, fat')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('tracking_date', localDate)
     .eq('completed', true)
 
-  if (sumError) return { error: 'Failed to update daily progress. Please try again.' }
+  if (sumError) {
+    console.error('[tracking] failed to sum completed food_tracking rows:', sumError)
+    return { error: 'Failed to update daily progress. Please try again.' }
+  }
 
-  const totals = (completedRows || []).reduce(
-    (acc, r) => ({
-      calories: acc.calories + Number(r.calories),
-      protein: acc.protein + Number(r.protein),
-      carbs: acc.carbs + Number(r.carbs),
-      fat: acc.fat + Number(r.fat)
-    }),
-    zeroMacros()
-  )
+  const totals = sumMacros(completedRows || [])
 
   const { data: activePlans } = await supabase
     .from('diet_plans')
     .select('calories_target, protein_target, carbs_target, fat_target')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('is_active', true)
     .limit(1)
 
@@ -248,7 +183,7 @@ export async function toggleMealCompletion(
 
   const { error: dailyError } = await supabase.from('daily_tracking').upsert(
     {
-      user_id: user.id,
+      user_id: userId,
       tracking_date: localDate,
       calories: totals.calories,
       protein: totals.protein,
@@ -264,9 +199,124 @@ export async function toggleMealCompletion(
     { onConflict: 'user_id,tracking_date' }
   )
 
-  if (dailyError) return { error: 'Failed to update daily progress. Please try again.' }
+  if (dailyError) {
+    console.error('[tracking] failed to upsert daily_tracking:', dailyError)
+    return { error: 'Failed to update daily progress. Please try again.' }
+  }
 
   return getTodayTracking(localDate)
+}
+
+// Marks ONE food completed/uncompleted for a given date. Idempotent: upserts
+// on the (user_id, tracking_date, food_id) unique constraint, so double-
+// clicks or repeated requests never create duplicate rows.
+export async function toggleFoodCompletion(
+  foodId: string,
+  mealId: string,
+  localDate: string,
+  completed: boolean
+): Promise<Result<DailyTrackingSummary>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+  if (!isPlausibleToday(localDate)) return { error: 'Tracking is only available for today.' }
+
+  const supabase = await createClient()
+
+  // Ownership + membership check in one query: the food must belong to both
+  // this user AND the meal the client claims it's in. Macros are read fresh
+  // here, never trusted from the client.
+  const { data: food } = await supabase
+    .from('foods')
+    .select('id, name, quantity, calories, protein, carbs, fat, meals(name)')
+    .eq('id', foodId)
+    .eq('meal_id', mealId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!food) return { error: 'Food not found.' }
+
+  const mealsRelation = food.meals as { name: string } | { name: string }[] | null
+  const mealName = Array.isArray(mealsRelation) ? mealsRelation[0]?.name : mealsRelation?.name
+  if (!mealName) return { error: 'Meal not found.' }
+
+  const row = buildFoodTrackingRow({
+    userId: user.id,
+    trackingDate: localDate,
+    mealId,
+    mealName,
+    completed,
+    food: {
+      id: food.id,
+      name: food.name,
+      quantity: food.quantity,
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat
+    }
+  })
+
+  const { error: upsertError } = await supabase
+    .from('food_tracking')
+    .upsert(row, { onConflict: 'user_id,tracking_date,food_id' })
+
+  if (upsertError) {
+    console.error('[tracking] toggleFoodCompletion upsert failed:', upsertError)
+    return { error: 'Failed to save completion. Please try again.' }
+  }
+
+  return recomputeDailyAndReturn(supabase, user.id, localDate)
+}
+
+// Marks EVERY food in a meal completed/uncompleted for a given date -
+// reuses the exact same row-building and rollup logic as
+// toggleFoodCompletion above, just fanned out over the meal's foods in one
+// batched upsert instead of duplicating the persistence logic.
+export async function toggleMealCompletion(
+  mealId: string,
+  localDate: string,
+  completed: boolean
+): Promise<Result<DailyTrackingSummary>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+  if (!isPlausibleToday(localDate)) return { error: 'Tracking is only available for today.' }
+
+  const supabase = await createClient()
+
+  const { data: meal } = await supabase
+    .from('meals')
+    .select('id, name, foods(id, name, quantity, calories, protein, carbs, fat)')
+    .eq('id', mealId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!meal) return { error: 'Meal not found.' }
+
+  const foods = (meal.foods as TrackableFood[]) || []
+
+  if (foods.length > 0) {
+    const rows = foods.map(f =>
+      buildFoodTrackingRow({
+        userId: user.id,
+        trackingDate: localDate,
+        mealId,
+        mealName: meal.name,
+        completed,
+        food: f
+      })
+    )
+
+    const { error: upsertError } = await supabase
+      .from('food_tracking')
+      .upsert(rows, { onConflict: 'user_id,tracking_date,food_id' })
+
+    if (upsertError) {
+      console.error('[tracking] toggleMealCompletion upsert failed:', upsertError)
+      return { error: 'Failed to save completion. Please try again.' }
+    }
+  }
+
+  return recomputeDailyAndReturn(supabase, user.id, localDate)
 }
 
 async function getPeriodTracking(startDate: string, endDate: string): Promise<Result<PeriodTrackingSummary>> {

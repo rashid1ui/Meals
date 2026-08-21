@@ -133,3 +133,25 @@ export function ChevronRightIcon(props: IconProps) {
     </svg>
   )
 }
+
+// Tracking tri-state: empty circle (not eaten).
+export function CircleIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  )
+}
+
+// Tracking tri-state: half-filled circle (partially eaten) - a meal-level
+// aggregate state only; individual foods are always binary (CheckIcon or
+// CircleIcon).
+export function HalfCircleIcon(props: IconProps) {
+  const { fill, ...rest } = base(props)
+  return (
+    <svg {...rest} fill={fill}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}

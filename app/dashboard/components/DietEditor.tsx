@@ -6,7 +6,12 @@ import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
 import { diffMeals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
-import { getTodayTracking, toggleMealCompletion, type DailyTrackingSummary } from '../tracking-actions'
+import {
+  getTodayTracking,
+  toggleMealCompletion,
+  toggleFoodCompletion,
+  type DailyTrackingSummary
+} from '../tracking-actions'
 import { getLocalDateString } from '@/lib/tracking/date'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import MealCard from './MealCard'
@@ -59,6 +64,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
   const [trackingLoading, setTrackingLoading] = useState(true)
   const [trackingError, setTrackingError] = useState<string | null>(null)
   const [togglingMealId, setTogglingMealId] = useState<string | null>(null)
+  const [togglingFoodId, setTogglingFoodId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -81,14 +87,28 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
 
   const isPersistedMealId = (id: string) => initialMeals.some(m => m.id === id)
 
+  // Meal-level click: incomplete/partial -> mark every food in the meal
+  // completed; already complete -> mark every food incomplete.
   const handleToggleMealCompletion = async (mealId: string) => {
-    const nextCompleted = !(completionByMealId.get(mealId)?.completed ?? false)
+    const currentStatus = completionByMealId.get(mealId)?.status ?? 'none'
+    const nextCompleted = currentStatus !== 'complete'
     setTogglingMealId(mealId)
     setTrackingError(null)
     const result = await toggleMealCompletion(mealId, localDate, nextCompleted)
     if ('error' in result) setTrackingError(result.error)
     else setDailyTracking(result.data)
     setTogglingMealId(null)
+  }
+
+  const handleToggleFoodCompletion = async (foodId: string, mealId: string) => {
+    const meal = completionByMealId.get(mealId)
+    const currentlyCompleted = meal?.foods.find(f => f.foodId === foodId)?.completed ?? false
+    setTogglingFoodId(foodId)
+    setTrackingError(null)
+    const result = await toggleFoodCompletion(foodId, mealId, localDate, !currentlyCompleted)
+    if ('error' in result) setTrackingError(result.error)
+    else setDailyTracking(result.data)
+    setTogglingFoodId(null)
   }
 
   const foodOptionsById = useMemo(() => {
@@ -304,9 +324,16 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
               completion={
                 isPersistedMealId(meal.id)
                   ? {
-                      completed: completionByMealId.get(meal.id)?.completed ?? false,
-                      onToggle: () => handleToggleMealCompletion(meal.id),
-                      toggling: togglingMealId === meal.id
+                      status: completionByMealId.get(meal.id)?.status ?? 'none',
+                      completedFoodIds: new Set(
+                        (completionByMealId.get(meal.id)?.foods ?? [])
+                          .filter(f => f.completed)
+                          .map(f => f.foodId)
+                      ),
+                      onToggleMeal: () => handleToggleMealCompletion(meal.id),
+                      onToggleFood: (foodId) => handleToggleFoodCompletion(foodId, meal.id),
+                      togglingMeal: togglingMealId === meal.id,
+                      togglingFoodId
                     }
                   : undefined
               }

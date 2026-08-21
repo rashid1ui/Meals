@@ -7,12 +7,17 @@ import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
-import { PlusIcon, CheckIcon, SpinnerIcon } from '@/components/ui/icons'
+import { PlusIcon, CheckIcon, CircleIcon, HalfCircleIcon, SpinnerIcon } from '@/components/ui/icons'
 
-export type MealCompletionToggle = {
-  completed: boolean
-  onToggle: () => void
-  toggling: boolean
+export type MealTrackingStatus = 'none' | 'partial' | 'complete'
+
+export type MealCompletionInfo = {
+  status: MealTrackingStatus
+  completedFoodIds: ReadonlySet<string>
+  onToggleMeal: () => void
+  onToggleFood: (foodId: string) => void
+  togglingMeal: boolean
+  togglingFoodId: string | null
 }
 
 type Props = {
@@ -27,7 +32,13 @@ type Props = {
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
   // so the toggle is simply omitted rather than shown disabled.
-  completion?: MealCompletionToggle
+  completion?: MealCompletionInfo
+}
+
+const STATUS_LABEL: Record<MealTrackingStatus, string> = {
+  none: 'Not eaten',
+  partial: 'Partially eaten',
+  complete: 'Eaten'
 }
 
 export default function MealCard({
@@ -45,37 +56,54 @@ export default function MealCard({
   const totals = computeMealTotals(meal)
   const otherMeals = allMeals.filter(m => m.id !== meal.id)
   const isNewMeal = changes.some(c => c.type === 'meal-added' && c.mealName === meal.name)
+  const status = completion?.status ?? 'none'
 
   return (
     <Card className="p-6 flex flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border pb-4 mb-4">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="font-display text-xl font-bold text-foreground truncate">{meal.name}</h3>
-          {isNewMeal && <Badge variant="success">New</Badge>}
-          {completion?.completed && <Badge variant="success">Eaten</Badge>}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
+      <div className="border-b border-border pb-4 mb-4 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-display text-xl font-bold text-foreground truncate">{meal.name}</h3>
+            {isNewMeal && <Badge variant="success">New</Badge>}
+            {completion && status !== 'none' && (
+              <Badge variant={status === 'complete' ? 'success' : 'warning'}>{STATUS_LABEL[status]}</Badge>
+            )}
+          </div>
+          <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
             {Math.round(totals.calories)} kcal
           </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex gap-3 flex-wrap font-mono tabular-nums text-xs font-semibold">
+            <span className="text-protein">Protein {Math.round(totals.protein)}g</span>
+            <span className="text-carbs">Carbs {Math.round(totals.carbs)}g</span>
+            <span className="text-fat">Fat {Math.round(totals.fat)}g</span>
+          </div>
           {completion && (
             <button
               type="button"
               role="checkbox"
-              aria-checked={completion.completed}
-              aria-label={completion.completed ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
-              onClick={completion.onToggle}
-              disabled={completion.toggling}
-              className={`w-11 h-11 flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed ${
-                completion.completed
+              aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+              aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
+              onClick={completion.onToggleMeal}
+              disabled={completion.togglingMeal}
+              className={`shrink-0 w-11 h-11 flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed ${
+                status === 'complete'
                   ? 'bg-success/15 border-success/40 text-success'
-                  : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                  : status === 'partial'
+                    ? 'bg-warning/15 border-warning/40 text-warning'
+                    : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
               }`}
             >
-              {completion.toggling ? (
+              {completion.togglingMeal ? (
                 <SpinnerIcon size={18} className="animate-spin" />
-              ) : (
+              ) : status === 'complete' ? (
                 <CheckIcon size={18} />
+              ) : status === 'partial' ? (
+                <HalfCircleIcon size={18} />
+              ) : (
+                <CircleIcon size={18} />
               )}
             </button>
           )}
@@ -99,6 +127,15 @@ export default function MealCard({
               onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
               onRemove={() => onRemoveFood(food.id)}
               onMove={(toMealId) => onMoveFood(food.id, toMealId)}
+              completion={
+                completion
+                  ? {
+                      completed: completion.completedFoodIds.has(food.id),
+                      onToggle: () => completion.onToggleFood(food.id),
+                      toggling: completion.togglingFoodId === food.id
+                    }
+                  : undefined
+              }
             />
           ))
         )}
@@ -122,15 +159,6 @@ export default function MealCard({
           Add Food
         </button>
       )}
-
-      <div className="mt-6 pt-4 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
-        <span>Meal Totals:</span>
-        <div className="flex gap-4 font-mono tabular-nums">
-          <span className="text-protein">{Math.round(totals.protein)}g P</span>
-          <span className="text-carbs">{Math.round(totals.carbs)}g C</span>
-          <span className="text-fat">{Math.round(totals.fat)}g F</span>
-        </div>
-      </div>
     </Card>
   )
 }

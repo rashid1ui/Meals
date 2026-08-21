@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { DraftFood, DraftMeal, FoodBadge } from '@/lib/diet/diff'
 import Badge from '@/components/ui/Badge'
-import { PlusIcon, MinusIcon, CloseIcon } from '@/components/ui/icons'
+import { PlusIcon, MinusIcon, CloseIcon, CheckIcon, CircleIcon, SpinnerIcon } from '@/components/ui/icons'
 
 const QUANTITY_STEP = 10
 
@@ -21,6 +21,12 @@ const BADGE_LABELS: Record<FoodBadge, string> = {
   moved: 'Moved'
 }
 
+export type FoodCompletionToggle = {
+  completed: boolean
+  onToggle: () => void
+  toggling: boolean
+}
+
 type Props = {
   food: DraftFood
   meal: DraftMeal
@@ -29,9 +35,12 @@ type Props = {
   onQuantityChange: (quantity: number) => void
   onRemove: () => void
   onMove: (toMealId: string) => void
+  // Undefined for a food belonging to a meal that hasn't been saved yet -
+  // tracking only ever applies to persisted foods.
+  completion?: FoodCompletionToggle
 }
 
-export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove }: Props) {
+export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove, completion }: Props) {
   const [inputValue, setInputValue] = useState(String(food.quantity))
   const locked = food.foodDatabaseId === null
 
@@ -49,7 +58,31 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
   return (
     <div className="p-3 rounded-lg bg-background border border-border hover:border-primary/40 transition-colors">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 flex items-start gap-2">
+          {completion && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={completion.completed}
+              aria-label={completion.completed ? `Mark ${food.name} as not eaten` : `Mark ${food.name} as eaten`}
+              onClick={completion.onToggle}
+              disabled={completion.toggling}
+              className={`shrink-0 w-11 h-11 flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
+                completion.completed
+                  ? 'bg-success/15 border-success/40 text-success'
+                  : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+              }`}
+            >
+              {completion.toggling ? (
+                <SpinnerIcon size={16} className="animate-spin" />
+              ) : completion.completed ? (
+                <CheckIcon size={16} />
+              ) : (
+                <CircleIcon size={16} />
+              )}
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-semibold text-foreground truncate">{food.name}</span>
             {badges.map(badge => (
@@ -71,6 +104,7 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             <span className="text-protein">{Math.round(food.protein)}p</span>
             <span className="text-carbs">{Math.round(food.carbs)}c</span>
             <span className="text-fat">{Math.round(food.fat)}f</span>
+          </div>
           </div>
         </div>
 
