@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card'
 import Avatar from '@/components/Avatar'
 import { ChevronLeftIcon } from '@/components/ui/icons'
 import GenerateNewPlanButton from './GenerateNewPlanButton'
+import ResetAccountButton from './ResetAccountButton'
 
 export default async function SettingsPage() {
   const user = await getUser()
@@ -109,6 +110,24 @@ export default async function SettingsPage() {
                 Start over with new nutrition targets and food preferences.
               </p>
               <GenerateNewPlanButton />
+            </div>
+          </Card>
+        </section>
+
+        {/* Danger Zone */}
+        <section className="space-y-3 mt-12">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-error">Danger Zone</h2>
+          <Card className="p-6 border-error/20 bg-error/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-foreground mb-1">Start Fresh</div>
+                <p className="text-sm text-muted-foreground">
+                  Reset your Gym Meals data and start again from the beginning.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <ResetAccountButton />
+              </div>
             </div>
           </Card>
         </section>
