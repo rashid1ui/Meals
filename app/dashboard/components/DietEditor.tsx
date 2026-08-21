@@ -2,16 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
-import { diffMeals, computeDailyTotals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { diffMeals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
+import { getTodayTracking, toggleMealCompletion, type DailyTrackingSummary } from '../tracking-actions'
+import { getLocalDateString } from '@/lib/tracking/date'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import MacroSummaryCards from './MacroSummaryCards'
 import Button from '@/components/ui/Button'
-import { PlusIcon } from '@/components/ui/icons'
+import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
 
 export interface FoodOption extends FoodMacro {
   category: string
@@ -44,6 +47,50 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
   const [saveError, setSaveError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
 
+  // Today's nutrition tracking (consumed vs. target) - a separate concern
+  // from the planning draft above. Toggling a meal never touches
+  // draft/history/hasChanges; it's a "did I eat this" event persisted
+  // through its own server action, not a planned-content edit.
+  // Lazy initializer (not an effect) - runs once on the client during first
+  // render, so there's no synchronous setState-in-effect to trigger extra
+  // renders.
+  const [localDate] = useState<string>(() => getLocalDateString())
+  const [dailyTracking, setDailyTracking] = useState<DailyTrackingSummary | null>(null)
+  const [trackingLoading, setTrackingLoading] = useState(true)
+  const [trackingError, setTrackingError] = useState<string | null>(null)
+  const [togglingMealId, setTogglingMealId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getTodayTracking(localDate).then(result => {
+      if (cancelled) return
+      if ('error' in result) setTrackingError(result.error)
+      else setDailyTracking(result.data)
+      setTrackingLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [localDate])
+
+  const completionByMealId = useMemo(() => {
+    const map = new Map<string, DailyTrackingSummary['meals'][number]>()
+    dailyTracking?.meals.forEach(m => map.set(m.mealId, m))
+    return map
+  }, [dailyTracking])
+
+  const isPersistedMealId = (id: string) => initialMeals.some(m => m.id === id)
+
+  const handleToggleMealCompletion = async (mealId: string) => {
+    const nextCompleted = !(completionByMealId.get(mealId)?.completed ?? false)
+    setTogglingMealId(mealId)
+    setTrackingError(null)
+    const result = await toggleMealCompletion(mealId, localDate, nextCompleted)
+    if ('error' in result) setTrackingError(result.error)
+    else setDailyTracking(result.data)
+    setTogglingMealId(null)
+  }
+
   const foodOptionsById = useMemo(() => {
     const map = new Map<string, FoodOption>()
     for (const f of foodOptions) map.set(f.id, f)
@@ -51,7 +98,6 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
   }, [foodOptions])
 
   const changes = useMemo(() => diffMeals(initialMeals, draft), [initialMeals, draft])
-  const dailyTotals = useMemo(() => computeDailyTotals(draft), [draft])
   const hasChanges = changes.length > 0
 
   // A ref-based counter (not Date.now()/Math.random()) so id generation stays
@@ -201,12 +247,39 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
 
   return (
     <div className="space-y-8">
-      {/* Section 1 - Today's Nutrition: strongest visual weight, answers
-          "how am I doing today?" at a glance. */}
-      <MacroSummaryCards totals={dailyTotals} targets={targets} />
+      {/* Section 1 - Today's Nutrition: consumed vs. target, strongest
+          visual weight, answers "how am I doing today?" at a glance. */}
+      {trackingLoading ? (
+        <div className="space-y-4" aria-hidden="true">
+          <div className="h-40 rounded-xl bg-surface border border-border animate-pulse" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="h-28 rounded-xl bg-surface border border-border animate-pulse" />
+            ))}
+          </div>
+        </div>
+      ) : trackingError ? (
+        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+          <AlertIcon size={18} className="shrink-0 mt-0.5" />
+          <span>{trackingError}</span>
+        </div>
+      ) : (
+        <MacroSummaryCards totals={dailyTracking!.consumed} targets={targets} />
+      )}
+
+      <div className="flex justify-end">
+        <Link
+          href="/dashboard/insights"
+          className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
+        >
+          Weekly &amp; Monthly Insights
+          <ChevronRightIcon size={14} />
+        </Link>
+      </div>
 
       {/* Section 2 - Today's Meals: the primary actionable area, answers
-          "what should I eat?". */}
+          "what should I eat?". Each card's checkbox answers "did I eat
+          this?" - a separate concern from planning/editing below it. */}
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-border pb-4">
           <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">Today&apos;s Meals</h2>
@@ -228,6 +301,15 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
               onMoveFood={(foodId, toMealId) => handleMoveFood(foodId, meal.id, toMealId)}
+              completion={
+                isPersistedMealId(meal.id)
+                  ? {
+                      completed: completionByMealId.get(meal.id)?.completed ?? false,
+                      onToggle: () => handleToggleMealCompletion(meal.id),
+                      toggling: togglingMealId === meal.id
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>

@@ -7,7 +7,13 @@ import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
-import { PlusIcon } from '@/components/ui/icons'
+import { PlusIcon, CheckIcon, SpinnerIcon } from '@/components/ui/icons'
+
+export type MealCompletionToggle = {
+  completed: boolean
+  onToggle: () => void
+  toggling: boolean
+}
 
 type Props = {
   meal: DraftMeal
@@ -18,6 +24,10 @@ type Props = {
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
   onMoveFood: (foodId: string, toMealId: string) => void
+  // Undefined for a meal that hasn't been saved yet (e.g. added but not
+  // saved this session) - tracking only ever applies to persisted meals,
+  // so the toggle is simply omitted rather than shown disabled.
+  completion?: MealCompletionToggle
 }
 
 export default function MealCard({
@@ -28,7 +38,8 @@ export default function MealCard({
   onQuantityChange,
   onRemoveFood,
   onAddFood,
-  onMoveFood
+  onMoveFood,
+  completion
 }: Props) {
   const [showAddFood, setShowAddFood] = useState(false)
   const totals = computeMealTotals(meal)
@@ -41,10 +52,34 @@ export default function MealCard({
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="font-display text-xl font-bold text-foreground truncate">{meal.name}</h3>
           {isNewMeal && <Badge variant="success">New</Badge>}
+          {completion?.completed && <Badge variant="success">Eaten</Badge>}
         </div>
-        <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
-          {Math.round(totals.calories)} kcal
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
+            {Math.round(totals.calories)} kcal
+          </span>
+          {completion && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={completion.completed}
+              aria-label={completion.completed ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
+              onClick={completion.onToggle}
+              disabled={completion.toggling}
+              className={`w-11 h-11 flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed ${
+                completion.completed
+                  ? 'bg-success/15 border-success/40 text-success'
+                  : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+              }`}
+            >
+              {completion.toggling ? (
+                <SpinnerIcon size={18} className="animate-spin" />
+              ) : (
+                <CheckIcon size={18} />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 space-y-3">
