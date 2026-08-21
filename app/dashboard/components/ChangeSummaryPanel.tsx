@@ -1,21 +1,25 @@
 'use client'
 
+import { useState } from 'react'
 import type { ChangeEntry } from '@/lib/diet/diff'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { AlertIcon, ChevronDownIcon, CheckIcon } from '@/components/ui/icons'
 
-function describeChange(change: ChangeEntry): { symbol: string; color: string; text: string } {
+function describeChange(change: ChangeEntry): { dotClass: string; text: string } {
   switch (change.type) {
     case 'meal-added':
-      return { symbol: '+', color: 'text-green-400', text: `New meal — ${change.mealName}` }
+      return { dotClass: 'bg-success', text: `New meal — ${change.mealName}` }
     case 'added':
-      return { symbol: '+', color: 'text-green-400', text: `Added — ${change.foodName} (${change.quantity}${change.unit}) to ${change.mealName}` }
+      return { dotClass: 'bg-success', text: `Added — ${change.foodName} (${change.quantity}${change.unit}) to ${change.mealName}` }
     case 'removed':
-      return { symbol: '−', color: 'text-red-400', text: `Removed — ${change.foodName} (${change.quantity}${change.unit}) from ${change.mealName}` }
+      return { dotClass: 'bg-error', text: `Removed — ${change.foodName} (${change.quantity}${change.unit}) from ${change.mealName}` }
     case 'increased':
-      return { symbol: '↑', color: 'text-blue-400', text: `Increased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
+      return { dotClass: 'bg-warning', text: `Increased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
     case 'decreased':
-      return { symbol: '↓', color: 'text-orange-400', text: `Decreased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
+      return { dotClass: 'bg-warning', text: `Decreased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
     case 'moved':
-      return { symbol: '⇄', color: 'text-purple-400', text: `Moved — ${change.foodName}: ${change.fromMealName} → ${change.toMealName}` }
+      return { dotClass: 'bg-muted-foreground', text: `Moved — ${change.foodName}: ${change.fromMealName} → ${change.toMealName}` }
   }
 }
 
@@ -25,66 +29,106 @@ type Props = {
   hasChanges: boolean
   saving: boolean
   saveError: string | null
+  justSaved?: boolean
   onUndo: () => void
   onDiscard: () => void
   onSave: () => void
 }
 
-export default function ChangeSummaryPanel({ changes, canUndo, hasChanges, saving, saveError, onUndo, onDiscard, onSave }: Props) {
-  return (
-    <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight">Changes</h2>
-          <p className="text-sm text-gray-500">
-            {hasChanges ? `${changes.length} unsaved change${changes.length === 1 ? '' : 's'}` : 'No unsaved changes'}
-          </p>
-        </div>
+export default function ChangeSummaryPanel({
+  changes,
+  canUndo,
+  hasChanges,
+  saving,
+  saveError,
+  justSaved = false,
+  onUndo,
+  onDiscard,
+  onSave
+}: Props) {
+  const [expanded, setExpanded] = useState(false)
 
-        <div className="flex gap-2">
-          <button
-            onClick={onUndo}
-            disabled={!canUndo || saving}
-            className="px-4 py-2 text-sm bg-[#0B0E14] border border-gray-700 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold transition-all"
-          >
-            Undo
-          </button>
-          <button
-            onClick={onDiscard}
-            disabled={!hasChanges || saving}
-            className="px-4 py-2 text-sm bg-[#0B0E14] border border-gray-700 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold transition-all"
-          >
-            Discard Changes
-          </button>
-          <button
-            onClick={onSave}
-            disabled={!hasChanges || saving}
-            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
+  // Nothing unsaved: the dashboard shouldn't look like it's waiting on a
+  // save. Show a brief confirmation right after a successful save, otherwise
+  // stay out of the way entirely - except Undo must stay reachable in the
+  // rare case history still has entries even though the net diff is empty
+  // (e.g. an edit that was manually reverted back to the original value).
+  if (!hasChanges) {
+    if (justSaved) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-success" role="status">
+          <CheckIcon size={16} />
+          <span>Changes saved</span>
         </div>
+      )
+    }
+    if (!canUndo) return null
+    return (
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">No unsaved changes</span>
+        <Button variant="ghost" size="sm" onClick={onUndo}>
+          Undo
+        </Button>
       </div>
+    )
+  }
 
-      {saveError && (
-        <div className="mt-4 p-3 text-sm text-red-200 bg-red-900/40 border border-red-500/30 rounded-xl">
-          {saveError}
-        </div>
-      )}
+  return (
+    <Card className="p-4">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between gap-3 min-h-[44px] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <AlertIcon size={16} className="text-warning" />
+          {changes.length} unsaved change{changes.length === 1 ? '' : 's'}
+        </span>
+        <ChevronDownIcon
+          size={18}
+          className={`text-muted-foreground transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
 
-      {hasChanges && (
-        <ul className="mt-4 space-y-1.5">
+      {expanded && (
+        <ul className="mt-3 pt-3 border-t border-border space-y-1.5 max-h-48 overflow-y-auto">
           {changes.map((change, idx) => {
-            const { symbol, color, text } = describeChange(change)
+            const { dotClass, text } = describeChange(change)
             return (
               <li key={idx} className="text-sm flex items-start gap-2">
-                <span className={`font-bold ${color}`}>{symbol}</span>
-                <span className="text-gray-300">{text}</span>
+                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} aria-hidden="true" />
+                <span className="text-muted-foreground">{text}</span>
               </li>
             )
           })}
         </ul>
       )}
-    </div>
+
+      {saveError && (
+        <div className="mt-3 flex items-start gap-2 p-3 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+          <AlertIcon size={16} className="shrink-0 mt-0.5" />
+          <span>{saveError}</span>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border">
+        <Button variant="secondary" size="sm" onClick={onUndo} disabled={!canUndo || saving}>
+          Undo
+        </Button>
+        <Button variant="danger" size="sm" onClick={onDiscard} disabled={!hasChanges || saving}>
+          Discard Changes
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onSave}
+          loading={saving}
+          disabled={!hasChanges || saving}
+          className="sm:ml-auto"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+    </Card>
   )
 }

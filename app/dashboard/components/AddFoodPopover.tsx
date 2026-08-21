@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { calculateFoodMacros } from '@/lib/nutrition/calculator'
 import type { FoodOption } from './DietEditor'
+import Button from '@/components/ui/Button'
+import { SearchIcon } from '@/components/ui/icons'
 
 const MAX_RESULTS = 8
 
@@ -36,73 +38,78 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose }: Props) {
   }
 
   return (
-    <div className="mt-3 p-4 rounded-2xl bg-[#0B0E14] border border-indigo-500/30 space-y-3">
+    <div className="mt-3 p-4 rounded-lg bg-background border border-primary/30 space-y-3">
       {!selected ? (
         <>
-          <input
-            autoFocus
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search foods..."
-            className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div className="relative">
+            <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search foods..."
+              aria-label="Search foods"
+              className="w-full min-h-[44px] bg-surface border border-border rounded-lg pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            />
+          </div>
           {results.length > 0 && (
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {results.map(food => (
                 <button
                   key={food.id}
                   onClick={() => setSelected(food)}
-                  className="w-full text-left px-3 py-2 rounded-lg bg-[#161B22] hover:bg-gray-800 text-sm flex items-center justify-between"
+                  className="w-full min-h-[44px] text-left px-3 py-2 rounded-lg bg-surface hover:bg-surface-elevated text-sm flex items-center justify-between transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  <span>{food.name}</span>
-                  <span className="text-xs text-gray-500">{food.calories} kcal/100g</span>
+                  <span className="text-foreground">{food.name}</span>
+                  <span className="font-mono tabular-nums text-xs text-muted-foreground">{food.calories} kcal/100g</span>
                 </button>
               ))}
             </div>
           )}
           {query.trim() && results.length === 0 && (
-            <p className="text-xs text-gray-500">No foods match &quot;{query}&quot;.</p>
+            <p className="text-xs text-muted-foreground">No foods match &quot;{query}&quot;.</p>
           )}
-          <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
         </>
       ) : (
         <>
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-sm">{selected.name}</span>
-            <button onClick={() => setSelected(null)} className="text-xs text-gray-500 hover:text-gray-300">Change</button>
+            <span className="font-semibold text-sm text-foreground">{selected.name}</span>
+            <button
+              onClick={() => setSelected(null)}
+              className="text-xs text-muted-foreground hover:text-foreground min-h-[44px] px-2"
+            >
+              Change
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <input
               type="number"
               value={quantity}
               onChange={e => setQuantity(e.target.value)}
-              className="w-20 text-center bg-[#161B22] border border-gray-700 rounded-lg py-1 text-sm"
+              aria-label="Quantity"
+              className="w-20 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
-            <span className="text-xs text-gray-500">{selected.serving_unit}</span>
+            <span className="text-xs text-muted-foreground">{selected.serving_unit}</span>
           </div>
           {preview && (
-            <div className="flex gap-3 text-xs font-semibold">
-              <span className="text-white/70">{Math.round(preview.calories)} kcal</span>
-              <span className="text-blue-400">{Math.round(preview.protein)}p</span>
-              <span className="text-orange-400">{Math.round(preview.carbs)}c</span>
-              <span className="text-yellow-400">{Math.round(preview.fat)}f</span>
+            <div className="flex gap-3 font-mono tabular-nums text-xs font-semibold">
+              <span className="text-foreground/70">{Math.round(preview.calories)} kcal</span>
+              <span className="text-protein">{Math.round(preview.protein)}p</span>
+              <span className="text-carbs">{Math.round(preview.carbs)}c</span>
+              <span className="text-fat">{Math.round(preview.fat)}f</span>
             </div>
           )}
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 px-3 py-2 text-xs bg-[#161B22] border border-gray-700 hover:bg-gray-800 rounded-lg font-semibold"
-            >
+            <Button variant="secondary" size="sm" onClick={onClose} className="flex-1">
               Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={!preview}
-              className="flex-1 px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-semibold"
-            >
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleAdd} disabled={!preview} className="flex-1">
               Add
-            </button>
+            </Button>
           </div>
         </>
       )}

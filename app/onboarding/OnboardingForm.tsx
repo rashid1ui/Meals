@@ -173,7 +173,7 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
       {step === 1 && (
         <div className="space-y-6 animate-step-in">
           <div>
-            <h2 className="font-display text-3xl font-bold text-foreground mb-2">Let&apos;s build your diet</h2>
+            <h1 className="font-display text-3xl font-bold text-foreground mb-2">Let&apos;s build your diet</h1>
             <p className="text-muted-foreground">First, enter your daily targets.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -19,9 +19,11 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   ghost: 'bg-transparent text-muted-foreground hover:text-foreground'
 }
 
+// Both sizes meet the 44px minimum touch target - "sm" only trims padding
+// and font-size for visual density, never the tappable height.
 const SIZE_CLASSES: Record<ButtonSize, string> = {
   md: 'min-h-[44px] px-5 text-[15px]',
-  sm: 'min-h-[36px] px-3.5 text-sm'
+  sm: 'min-h-[44px] px-3.5 text-sm'
 }
 
 export default function Button({

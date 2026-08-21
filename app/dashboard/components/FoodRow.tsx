@@ -2,14 +2,16 @@
 
 import { useState } from 'react'
 import type { DraftFood, DraftMeal, FoodBadge } from '@/lib/diet/diff'
+import Badge from '@/components/ui/Badge'
+import { PlusIcon, MinusIcon, CloseIcon } from '@/components/ui/icons'
 
 const QUANTITY_STEP = 10
 
-const BADGE_STYLES: Record<FoodBadge, string> = {
-  added: 'bg-green-500/15 text-green-400 border-green-500/30',
-  increased: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  decreased: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
-  moved: 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+const BADGE_VARIANT: Record<FoodBadge, 'success' | 'warning' | 'error' | 'neutral'> = {
+  added: 'success',
+  increased: 'warning',
+  decreased: 'error',
+  moved: 'neutral'
 }
 
 const BADGE_LABELS: Record<FoodBadge, string> = {
@@ -45,53 +47,51 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
   }
 
   return (
-    <div className="p-3 rounded-2xl bg-[#0B0E14] border border-gray-800/60 hover:border-indigo-500/30 transition-colors">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-200 truncate">{food.name}</span>
+    <div className="p-3 rounded-lg bg-background border border-border hover:border-primary/40 transition-colors">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-foreground truncate">{food.name}</span>
             {badges.map(badge => (
-              <span
-                key={badge}
-                className={`text-[10px] uppercase tracking-wide font-bold px-2 py-0.5 rounded-full border ${BADGE_STYLES[badge]}`}
-              >
+              <Badge key={badge} variant={BADGE_VARIANT[badge]}>
                 {BADGE_LABELS[badge]}
-              </span>
+              </Badge>
             ))}
             {locked && (
-              <span
-                className="text-[10px] uppercase tracking-wide font-bold px-2 py-0.5 rounded-full border bg-gray-700/30 text-gray-400 border-gray-600/40"
+              <Badge
+                variant="neutral"
                 title="This food's original nutrition data couldn't be matched, so its quantity can't be safely recalculated. It can still be moved or removed."
               >
                 Locked
-              </span>
+              </Badge>
             )}
           </div>
-          <div className="flex gap-3 text-xs font-semibold mt-1">
-            <span className="text-white/70">{Math.round(food.calories)} kcal</span>
-            <span className="text-blue-400">{Math.round(food.protein)}p</span>
-            <span className="text-orange-400">{Math.round(food.carbs)}c</span>
-            <span className="text-yellow-400">{Math.round(food.fat)}f</span>
+          <div className="flex gap-3 flex-wrap mt-1 font-mono tabular-nums text-xs">
+            <span className="text-foreground/70">{Math.round(food.calories)} kcal</span>
+            <span className="text-protein">{Math.round(food.protein)}p</span>
+            <span className="text-carbs">{Math.round(food.carbs)}c</span>
+            <span className="text-fat">{Math.round(food.fat)}f</span>
           </div>
         </div>
 
         <button
           onClick={onRemove}
           aria-label={`Remove ${food.name}`}
-          className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-red-900/20 border border-red-500/30 text-red-300 hover:bg-red-900/40 transition-colors"
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg bg-error/10 border border-error/30 text-error hover:bg-error/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          &times;
+          <CloseIcon size={18} />
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-3 mt-3">
+      <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
         <div className="flex items-center gap-1">
           <button
             onClick={() => step(-QUANTITY_STEP)}
             disabled={locked}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold"
+            aria-label={`Decrease ${food.name} quantity`}
+            className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            &minus;
+            <MinusIcon size={16} />
           </button>
           <input
             type="number"
@@ -99,15 +99,17 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             disabled={locked}
             onChange={e => setInputValue(e.target.value)}
             onBlur={() => commitQuantity(parseFloat(inputValue))}
-            className="w-16 text-center bg-[#161B22] border border-gray-700 rounded-lg py-1 text-sm disabled:opacity-40"
+            aria-label={`${food.name} quantity`}
+            className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
-          <span className="text-xs text-gray-500">{food.unit}</span>
+          <span className="text-xs text-muted-foreground">{food.unit}</span>
           <button
             onClick={() => step(QUANTITY_STEP)}
             disabled={locked}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold"
+            aria-label={`Increase ${food.name} quantity`}
+            className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            +
+            <PlusIcon size={16} />
           </button>
         </div>
 
@@ -117,11 +119,14 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             onChange={e => {
               if (e.target.value) onMove(e.target.value)
             }}
-            className="text-xs bg-[#161B22] border border-gray-700 rounded-lg px-2 py-1 text-gray-400"
+            aria-label={`Move ${food.name} to another meal`}
+            className="min-h-[44px] text-xs bg-surface-elevated border border-border rounded-lg px-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <option value="">Move to...</option>
             {otherMeals.map(m => (
-              <option key={m.id} value={m.id}>{m.name}</option>
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
             ))}
           </select>
         )}

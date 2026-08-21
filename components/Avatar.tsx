@@ -21,7 +21,7 @@ export default function Avatar({ src, alt, fallbackText, size = 40 }: Props) {
     return (
       <div
         style={{ width: size, height: size }}
-        className="rounded-full bg-gray-800 border-2 border-gray-700 flex items-center justify-center"
+        className="rounded-full bg-surface-elevated border-2 border-border text-foreground flex items-center justify-center"
       >
         {fallbackText}
       </div>
@@ -35,7 +35,7 @@ export default function Avatar({ src, alt, fallbackText, size = 40 }: Props) {
       width={size}
       height={size}
       onError={() => setFailed(true)}
-      className="rounded-full border-2 border-indigo-500/30 object-cover"
+      className="rounded-full border-2 border-primary/30 object-cover"
     />
   )
 }

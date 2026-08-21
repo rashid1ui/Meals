@@ -43,7 +43,7 @@ export default function GeneratingPanel({ status, errorMessage, onRetry }: Props
           <AlertIcon size={22} />
         </div>
         <div>
-          <h2 className="font-display text-2xl font-bold text-foreground">Generation failed</h2>
+          <h1 className="font-display text-2xl font-bold text-foreground">Generation failed</h1>
           <p className="text-muted-foreground mt-2">
             {errorMessage || 'Something went wrong while building your meal plan.'}
           </p>
@@ -58,7 +58,7 @@ export default function GeneratingPanel({ status, errorMessage, onRetry }: Props
   return (
     <Card className="p-8 text-center space-y-6" role="status" aria-busy="true" aria-live="polite">
       <div>
-        <h2 className="font-display text-2xl font-bold text-foreground">Building your meal plan</h2>
+        <h1 className="font-display text-2xl font-bold text-foreground">Building your meal plan</h1>
         <p key={stageIndex} className="text-muted-foreground mt-2 animate-step-in">
           {STAGES[stageIndex]}&hellip;
         </p>

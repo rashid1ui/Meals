@@ -1,9 +1,11 @@
 import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { SignOutButton } from '@/components/SignOutButton'
-import Avatar from '@/components/Avatar'
 import Link from 'next/link'
+import Header from '@/components/ui/Header'
+import Card from '@/components/ui/Card'
+import Avatar from '@/components/Avatar'
+import { ChevronLeftIcon } from '@/components/ui/icons'
 import GenerateNewPlanButton from './GenerateNewPlanButton'
 
 export default async function SettingsPage() {
@@ -21,52 +23,95 @@ export default async function SettingsPage() {
     .eq('id', user.id)
     .single()
 
+  // Read-only: same active-plan lookup pattern already used on the
+  // Dashboard, just narrowed to the columns this page actually displays.
+  // No write path here - Generate New Plan still goes through onboarding's
+  // existing submitOnboarding action untouched.
+  const { data: activePlans } = await supabase
+    .from('diet_plans')
+    .select('name, calories_target, protein_target, carbs_target, fat_target')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .limit(1)
+
+  const activePlan = activePlans?.[0]
+
   return (
-    <main className="min-h-screen bg-[#0B0E14] text-white font-['Outfit',sans-serif]">
-      {/* Top Navigation */}
-      <nav className="w-full bg-[#161B22] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold">
-            GM
-          </div>
-          <span className="font-bold text-xl tracking-tight">Gym Meals</span>
-        </div>
+    <main className="min-h-screen bg-background text-foreground">
+      <Header
+        userName={profile?.full_name || 'Athlete'}
+        userEmail={user.email || ''}
+        avatarUrl={profile?.avatar_url}
+        avatarFallback={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
+      />
 
-        <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
-            <div className="text-sm font-semibold">{profile?.full_name || 'Athlete'}</div>
-            <div className="text-xs text-gray-400">{user.email}</div>
-          </div>
-          <Avatar
-            src={profile?.avatar_url}
-            alt="Avatar"
-            fallbackText={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
-          />
-          <div className="ml-2 pl-4 border-l border-gray-700">
-            <SignOutButton />
-          </div>
-        </div>
-      </nav>
-
-      <div className="max-w-6xl mx-auto p-6 mt-6 space-y-8 pb-20">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-extrabold tracking-tight">Settings</h1>
+      <div className="max-w-3xl mx-auto p-6 mt-6 space-y-8 pb-20">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Settings</h1>
           <Link
             href="/dashboard"
-            className="text-sm font-semibold text-gray-400 hover:text-white transition-colors"
+            className="min-h-[44px] flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
           >
-            &larr; Back to Dashboard
+            <ChevronLeftIcon size={16} />
+            Back to Dashboard
           </Link>
         </div>
 
-        {/* Meal Plan Section */}
-        <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl">
-          <h2 className="text-xl font-bold tracking-tight">Meal Plan</h2>
-          <p className="text-gray-400 mt-1 mb-6">
-            Start over with new nutrition targets and food preferences.
-          </p>
-          <GenerateNewPlanButton />
-        </div>
+        {/* Account */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Account</h2>
+          <Card className="p-6 flex items-center gap-4">
+            <Avatar
+              src={profile?.avatar_url}
+              alt="Avatar"
+              fallbackText={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
+              size={56}
+            />
+            <div className="min-w-0">
+              <div className="font-display text-lg font-bold text-foreground truncate">
+                {profile?.full_name || 'Athlete'}
+              </div>
+              <div className="text-sm text-muted-foreground truncate">{user.email}</div>
+            </div>
+          </Card>
+        </section>
+
+        {/* Meal Plan */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Meal Plan</h2>
+          <Card className="p-6 space-y-6">
+            {activePlan && (
+              <div>
+                <div className="text-sm font-semibold text-foreground mb-3">{activePlan.name}</div>
+                <div className="grid grid-cols-4 gap-3 font-mono tabular-nums text-center text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground font-sans mb-0.5">Calories</div>
+                    <div className="font-semibold text-calories">{activePlan.calories_target}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground font-sans mb-0.5">Protein</div>
+                    <div className="font-semibold text-protein">{activePlan.protein_target}g</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground font-sans mb-0.5">Carbs</div>
+                    <div className="font-semibold text-carbs">{activePlan.carbs_target}g</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground font-sans mb-0.5">Fat</div>
+                    <div className="font-semibold text-fat">{activePlan.fat_target}g</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className={activePlan ? 'pt-5 border-t border-border' : ''}>
+              <p className="text-sm text-muted-foreground mb-4">
+                Start over with new nutrition targets and food preferences.
+              </p>
+              <GenerateNewPlanButton />
+            </div>
+          </Card>
+        </section>
       </div>
     </main>
   )

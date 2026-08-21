@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
 import { diffMeals, computeDailyTotals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
@@ -10,6 +10,8 @@ import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import MacroSummaryCards from './MacroSummaryCards'
+import Button from '@/components/ui/Button'
+import { PlusIcon } from '@/components/ui/icons'
 
 export interface FoodOption extends FoodMacro {
   category: string
@@ -40,6 +42,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
   const [showAddMeal, setShowAddMeal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [justSaved, setJustSaved] = useState(false)
 
   const foodOptionsById = useMemo(() => {
     const map = new Map<string, FoodOption>()
@@ -61,7 +64,15 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
     setHistory(h => [...h, cloneMeals(draft)])
     setDraft(current => updater(current))
     setSaveError(null)
+    setJustSaved(false)
   }
+
+  // Auto-clears the brief "Changes saved" confirmation.
+  useEffect(() => {
+    if (!justSaved) return
+    const timer = setTimeout(() => setJustSaved(false), 2500)
+    return () => clearTimeout(timer)
+  }, [justSaved])
 
   const handleQuantityChange = (mealId: string, foodId: string, newQuantity: number) => {
     commit(current => current.map(meal => {
@@ -180,6 +191,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
         return
       }
       setHistory([])
+      setJustSaved(true)
       router.refresh()
     } catch {
       setSaveError('An unexpected error occurred. Please try again.')
@@ -189,28 +201,19 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
 
   return (
     <div className="space-y-8">
-      <ChangeSummaryPanel
-        changes={changes}
-        canUndo={history.length > 0}
-        hasChanges={hasChanges}
-        saving={saving}
-        saveError={saveError}
-        onUndo={handleUndo}
-        onDiscard={handleDiscard}
-        onSave={handleSave}
-      />
-
+      {/* Section 1 - Today's Nutrition: strongest visual weight, answers
+          "how am I doing today?" at a glance. */}
       <MacroSummaryCards totals={dailyTotals} targets={targets} />
 
+      {/* Section 2 - Today's Meals: the primary actionable area, answers
+          "what should I eat?". */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-          <h2 className="text-2xl font-bold tracking-tight">Daily Meals</h2>
-          <button
-            onClick={() => setShowAddMeal(true)}
-            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all"
-          >
-            + Add Meal
-          </button>
+        <div className="flex items-center justify-between border-b border-border pb-4">
+          <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">Today&apos;s Meals</h2>
+          <Button variant="secondary" size="sm" onClick={() => setShowAddMeal(true)}>
+            <PlusIcon size={16} />
+            Add Meal
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -229,6 +232,20 @@ export default function DietEditor({ initialMeals, targets, foodOptions }: Props
           ))}
         </div>
       </div>
+
+      {/* Section 3 - Change Summary: visually secondary, answers "what did
+          I change?" only when relevant. */}
+      <ChangeSummaryPanel
+        changes={changes}
+        canUndo={history.length > 0}
+        hasChanges={hasChanges}
+        saving={saving}
+        saveError={saveError}
+        justSaved={justSaved}
+        onUndo={handleUndo}
+        onDiscard={handleDiscard}
+        onSave={handleSave}
+      />
 
       {showAddMeal && (
         <AddMealModal onAdd={handleAddMeal} onCancel={() => setShowAddMeal(false)} />

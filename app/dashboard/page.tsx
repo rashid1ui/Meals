@@ -1,9 +1,11 @@
 import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { SignOutButton } from '@/components/SignOutButton'
-import Avatar from '@/components/Avatar'
 import Link from 'next/link'
+import Header from '@/components/ui/Header'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import { ChevronRightIcon } from '@/components/ui/icons'
 import DietEditor, { type FoodOption } from './components/DietEditor'
 import type { DraftMeal } from '@/lib/diet/diff'
 
@@ -125,42 +127,18 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <main className="min-h-screen bg-[#0B0E14] text-white font-['Outfit',sans-serif]">
-      {/* Top Navigation */}
-      <nav className="w-full bg-[#161B22] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold">
-            GM
-          </div>
-          <span className="font-bold text-xl tracking-tight">Gym Meals</span>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
-            <div className="text-sm font-semibold">{profile?.full_name || 'Athlete'}</div>
-            <div className="text-xs text-gray-400">{user.email}</div>
-          </div>
-          <Avatar
-            src={profile?.avatar_url}
-            alt="Avatar"
-            fallbackText={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
-          />
-          <Link
-            href="/settings"
-            className="text-sm font-semibold text-gray-400 hover:text-white transition-colors"
-          >
-            Settings
-          </Link>
-          <div className="ml-2 pl-4 border-l border-gray-700">
-            <SignOutButton />
-          </div>
-        </div>
-      </nav>
+    <main className="min-h-screen bg-background text-foreground">
+      <Header
+        userName={profile?.full_name || 'Athlete'}
+        userEmail={user.email || ''}
+        avatarUrl={profile?.avatar_url}
+        avatarFallback={profile?.full_name?.charAt(0) || user.email?.charAt(0) || 'U'}
+      />
 
       <div className="max-w-6xl mx-auto p-6 mt-6 space-y-8 pb-20">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-extrabold tracking-tight">Your Active Diet</h1>
-          <span className="bg-indigo-500/20 text-indigo-400 px-4 py-2 rounded-full text-sm font-bold border border-indigo-500/30">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Your Active Diet</h1>
+          <span className="bg-primary/15 text-primary px-4 py-2 rounded-full text-sm font-bold border border-primary/30">
             {dietPlan.name}
           </span>
         </div>
@@ -172,45 +150,65 @@ export default async function DashboardPage() {
           foodOptions={foodOptions}
         />
 
-        {previousPlans && previousPlans.length > 0 && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold tracking-tight border-b border-gray-800 pb-4">Previous Plans</h2>
+        <div className="space-y-6">
+          <h2 className="font-display text-2xl font-bold text-foreground tracking-tight border-b border-border pb-4">
+            Previous Plans
+          </h2>
+
+          {previousPlans && previousPlans.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {previousPlans.map((plan) => (
-                <Link
-                  key={plan.id}
-                  href={`/dashboard/plans/${plan.id}`}
-                  className="bg-[#161B22] border border-gray-800 rounded-3xl p-5 shadow-xl hover:border-indigo-500/40 transition-colors block"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-bold truncate">{plan.name}</h3>
-                    <span className="text-xs text-gray-500 shrink-0 ml-2">
-                      {plan.created_at ? new Date(plan.created_at).toLocaleDateString() : ''}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs text-center">
-                    <div>
-                      <div className="text-gray-500">Cal</div>
-                      <div className="font-semibold text-white">{plan.calories_target}</div>
+                <Link key={plan.id} href={`/dashboard/plans/${plan.id}`} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <Card className="p-5 space-y-3 hover:border-primary/40 transition-colors">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-display font-bold text-foreground truncate">{plan.name}</h3>
+                      <Badge variant="neutral">Historical</Badge>
                     </div>
-                    <div>
-                      <div className="text-gray-500">Protein</div>
-                      <div className="font-semibold text-blue-400">{plan.protein_target}g</div>
+                    <div className="text-xs text-muted-foreground">
+                      Created{' '}
+                      {plan.created_at
+                        ? new Date(plan.created_at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })
+                        : 'date unknown'}
                     </div>
-                    <div>
-                      <div className="text-gray-500">Carbs</div>
-                      <div className="font-semibold text-orange-400">{plan.carbs_target}g</div>
+                    <div className="grid grid-cols-4 gap-2 text-center font-mono tabular-nums text-xs pt-2 border-t border-border">
+                      <div>
+                        <div className="text-muted-foreground font-sans mb-0.5">Cal</div>
+                        <div className="font-semibold text-foreground">{plan.calories_target}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground font-sans mb-0.5">Protein</div>
+                        <div className="font-semibold text-protein">{plan.protein_target}g</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground font-sans mb-0.5">Carbs</div>
+                        <div className="font-semibold text-carbs">{plan.carbs_target}g</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground font-sans mb-0.5">Fat</div>
+                        <div className="font-semibold text-fat">{plan.fat_target}g</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-gray-500">Fat</div>
-                      <div className="font-semibold text-yellow-400">{plan.fat_target}g</div>
+                    <div className="flex items-center gap-1 text-sm font-semibold text-primary pt-1">
+                      View Plan
+                      <ChevronRightIcon size={14} />
                     </div>
-                  </div>
+                  </Card>
                 </Link>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-sm font-semibold text-foreground">No previous plans yet</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Your previous meal plans will appear here after you generate a new plan.
+              </p>
+            </Card>
+          )}
+        </div>
       </div>
     </main>
   )

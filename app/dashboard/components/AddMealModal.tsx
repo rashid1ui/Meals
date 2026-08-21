@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Modal from '@/components/ui/Modal'
+import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Snack', 'Dinner', 'Pre-Workout', 'Post-Workout', 'Custom Meal'] as const
 type MealType = typeof MEAL_TYPES[number]
@@ -33,70 +36,63 @@ export default function AddMealModal({ onAdd, onCancel }: Props) {
   const canAdd = baseName.length > 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
-      <div className="w-full max-w-md bg-[#161B22] border border-gray-800 rounded-3xl p-8 shadow-2xl relative z-10 text-white">
-        <h3 className="text-2xl font-extrabold mb-6">Add a Meal</h3>
+    <Modal onClose={onCancel} labelledBy="add-meal-title">
+      <h3 id="add-meal-title" className="font-display text-2xl font-bold text-foreground mb-6">
+        Add a Meal
+      </h3>
 
-        <div className="space-y-2 mb-4">
-          <label className="text-sm text-gray-300 font-semibold">Meal Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            {MEAL_TYPES.map(type => (
-              <button
-                key={type}
-                onClick={() => setMealType(type)}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                  mealType === type
-                    ? 'bg-indigo-500/10 border-indigo-500 text-indigo-300'
-                    : 'bg-[#0B0E14] border-gray-700 hover:border-gray-500'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {mealType === 'Custom Meal' && (
-          <div className="space-y-2 mb-4">
-            <label className="text-sm text-gray-300 font-semibold">Meal Name</label>
-            <input
-              autoFocus
-              type="text"
-              value={customName}
-              onChange={e => setCustomName(e.target.value)}
-              placeholder="e.g. Midnight Snack"
-              className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-        )}
-
-        <div className="space-y-2 mb-6">
-          <label className="text-sm text-gray-300 font-semibold">Time (optional)</label>
-          <input
-            type="time"
-            value={time}
-            onChange={e => setTime(e.target.value)}
-            className="w-full bg-[#0B0E14] border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-
-        <div className="flex gap-4">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-6 py-3 bg-[#0B0E14] border border-gray-700 hover:bg-gray-800 rounded-xl font-semibold transition-all"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => canAdd && onAdd(finalName)}
-            disabled={!canAdd}
-            className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-all"
-          >
-            Add Meal
-          </button>
+      <div className="space-y-2 mb-4">
+        <label className="text-sm text-foreground font-semibold block">Meal Type</label>
+        <div className="grid grid-cols-2 gap-2">
+          {MEAL_TYPES.map(type => (
+            <button
+              key={type}
+              type="button"
+              aria-pressed={mealType === type}
+              onClick={() => setMealType(type)}
+              className={`min-h-[44px] px-3 rounded-lg text-sm font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated ${
+                mealType === type
+                  ? 'bg-primary/10 border-primary text-primary'
+                  : 'bg-background border-border text-foreground hover:border-muted-foreground'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+
+      {mealType === 'Custom Meal' && (
+        <div className="mb-4">
+          <Input
+            label="Meal Name"
+            autoFocus
+            type="text"
+            value={customName}
+            onChange={e => setCustomName(e.target.value)}
+            placeholder="e.g. Midnight Snack"
+          />
+        </div>
+      )}
+
+      <div className="mb-6">
+        <label className="text-sm text-foreground font-semibold block mb-2">Time (optional)</label>
+        <input
+          type="time"
+          value={time}
+          onChange={e => setTime(e.target.value)}
+          className="w-full min-h-[44px] bg-background border border-border rounded-lg px-4 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
+        />
+      </div>
+
+      <div className="flex gap-4">
+        <Button variant="secondary" onClick={onCancel} className="flex-1">
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={() => canAdd && onAdd(finalName)} disabled={!canAdd} className="flex-1">
+          Add Meal
+        </Button>
+      </div>
+    </Modal>
   )
 }

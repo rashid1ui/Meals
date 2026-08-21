@@ -5,6 +5,9 @@ import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal } fr
 import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import { PlusIcon } from '@/components/ui/icons'
 
 type Props = {
   meal: DraftMeal
@@ -33,37 +36,37 @@ export default function MealCard({
   const isNewMeal = changes.some(c => c.type === 'meal-added' && c.mealName === meal.name)
 
   return (
-    <div className="bg-[#161B22] border border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col">
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xl font-bold">{meal.name}</h3>
-          {isNewMeal && (
-            <span className="text-[10px] uppercase tracking-wide font-bold px-2 py-0.5 rounded-full border bg-green-500/15 text-green-400 border-green-500/30">
-              New
-            </span>
-          )}
+    <Card className="p-6 flex flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-4 mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-display text-xl font-bold text-foreground truncate">{meal.name}</h3>
+          {isNewMeal && <Badge variant="success">New</Badge>}
         </div>
-        <div className="text-sm text-gray-400 font-semibold bg-gray-800/50 px-3 py-1 rounded-full">
+        <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
           {Math.round(totals.calories)} kcal
-        </div>
+        </span>
       </div>
 
-      <div className="flex-1 space-y-4">
-        {meal.foods.length === 0 && !showAddFood && (
-          <p className="text-sm text-gray-500">No foods yet.</p>
+      <div className="flex-1 space-y-3">
+        {meal.foods.length === 0 && !showAddFood ? (
+          <div className="text-center py-6 px-4 rounded-lg border border-dashed border-border">
+            <p className="text-sm font-semibold text-foreground">No foods in this meal yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">Add a food to start building this meal.</p>
+          </div>
+        ) : (
+          meal.foods.map(food => (
+            <FoodRow
+              key={food.id}
+              food={food}
+              meal={meal}
+              otherMeals={otherMeals}
+              badges={getFoodBadges(changes, food.id)}
+              onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
+              onRemove={() => onRemoveFood(food.id)}
+              onMove={(toMealId) => onMoveFood(food.id, toMealId)}
+            />
+          ))
         )}
-        {meal.foods.map(food => (
-          <FoodRow
-            key={food.id}
-            food={food}
-            meal={meal}
-            otherMeals={otherMeals}
-            badges={getFoodBadges(changes, food.id)}
-            onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
-            onRemove={() => onRemoveFood(food.id)}
-            onMove={(toMealId) => onMoveFood(food.id, toMealId)}
-          />
-        ))}
       </div>
 
       {showAddFood ? (
@@ -78,20 +81,21 @@ export default function MealCard({
       ) : (
         <button
           onClick={() => setShowAddFood(true)}
-          className="mt-4 w-full px-4 py-2 text-sm bg-[#0B0E14] border border-dashed border-gray-700 hover:border-indigo-500 rounded-xl font-semibold text-gray-400 hover:text-indigo-400 transition-all"
+          className="mt-4 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 text-sm font-semibold text-muted-foreground bg-transparent border border-dashed border-border hover:border-primary hover:text-primary rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
-          + Add Food
+          <PlusIcon size={16} />
+          Add Food
         </button>
       )}
 
-      <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between text-xs text-gray-500">
+      <div className="mt-6 pt-4 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
         <span>Meal Totals:</span>
-        <div className="flex gap-4">
-          <span>{Math.round(totals.protein)}g P</span>
-          <span>{Math.round(totals.carbs)}g C</span>
-          <span>{Math.round(totals.fat)}g F</span>
+        <div className="flex gap-4 font-mono tabular-nums">
+          <span className="text-protein">{Math.round(totals.protein)}g P</span>
+          <span className="text-carbs">{Math.round(totals.carbs)}g C</span>
+          <span className="text-fat">{Math.round(totals.fat)}g F</span>
         </div>
       </div>
-    </div>
+    </Card>
   )
 }

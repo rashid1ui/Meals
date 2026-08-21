@@ -35,7 +35,7 @@ export default function FoodStep({ title, description, items, selected, onToggle
   return (
     <div className="space-y-6 animate-step-in">
       <div>
-        <h2 className="font-display text-3xl font-bold text-foreground mb-2">{title}</h2>
+        <h1 className="font-display text-3xl font-bold text-foreground mb-2">{title}</h1>
         <p className="text-muted-foreground">{description}</p>
       </div>
 
@@ -55,7 +55,7 @@ export default function FoodStep({ title, description, items, selected, onToggle
               onChange={e => setQuery(e.target.value)}
               placeholder="Search"
               aria-label={`Search ${title.toLowerCase()}`}
-              className="w-full min-h-[36px] bg-background border border-border rounded-lg pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
+              className="w-full min-h-[44px] bg-background border border-border rounded-lg pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
             />
           </div>
         )}
