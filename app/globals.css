@@ -3,10 +3,13 @@
 /*
  * Gym Meals design tokens - Phase 1.
  * Light is the default brand surface (matches the Omnifood reference
- * palette exactly: cream background, white cards, #E67E22 orange).
- * Dark is supported as a secondary theme via prefers-color-scheme only -
- * there is no manual toggle yet, so it activates from the OS setting.
- * Component classNames are unchanged in this pass; only token values.
+ * palette exactly: cream background, white cards, #E67E22 orange) and
+ * always renders unless something opts into dark. Dark values are kept
+ * defined and gated behind :root[data-theme="dark"] rather than
+ * prefers-color-scheme, so the app never auto-switches off the OS
+ * setting - there is no toggle UI yet, so nothing sets that attribute
+ * and light always shows. Component classNames are unchanged in this
+ * pass; only token values.
  */
 :root {
   /* ---- Light (default) ---- */
@@ -76,41 +79,39 @@
   --shadow-modal: 0 20px 60px rgba(51, 38, 20, 0.16);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* ---- Dark (secondary) ---- */
-    --background: #14110f;
-    --surface: #1c1815;
-    --surface-elevated: #241f1a;
-    --border: #33291f;
-    --foreground: #f5efe9;
-    --muted-foreground: #a69c90;
+:root[data-theme="dark"] {
+  /* ---- Dark (secondary, opt-in only - no toggle wires this up yet) ---- */
+  --background: #14110f;
+  --surface: #1c1815;
+  --surface-elevated: #241f1a;
+  --border: #33291f;
+  --foreground: #f5efe9;
+  --muted-foreground: #a69c90;
 
-    --primary: #e67e22;
-    --primary-strong: #eb9950;
-    --primary-foreground: #1a0f06;
+  --primary: #e67e22;
+  --primary-strong: #eb9950;
+  --primary-foreground: #1a0f06;
 
-    --success: #22c08a;
-    --warning: #e0a233;
-    --error: #f0685a;
+  --success: #22c08a;
+  --warning: #e0a233;
+  --error: #f0685a;
 
-    --protein: #6e9cf9;
-    --carbs: #f2a05c;
-    --fat: #e7c25b;
-    --calories: #22c08a;
+  --protein: #6e9cf9;
+  --carbs: #f2a05c;
+  --fat: #e7c25b;
+  --calories: #22c08a;
 
-    --tier-excellent: #22c08a;
-    --tier-good: #34b3ae;
-    --tier-partial: #e0a233;
-    --tier-low: #e08145;
-    --tier-verylow: #f0685a;
-    --tier-none: #3a342c;
+  --tier-excellent: #22c08a;
+  --tier-good: #34b3ae;
+  --tier-partial: #e0a233;
+  --tier-low: #e08145;
+  --tier-verylow: #f0685a;
+  --tier-none: #3a342c;
 
-    --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
-    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
-    --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.45);
-    --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.55);
-  }
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
