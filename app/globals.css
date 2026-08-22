@@ -1,44 +1,116 @@
 @import "tailwindcss";
 
 /*
- * Gym Meals design tokens.
- * Dark-first by design (this app has no light-mode toggle) - values are
- * defined once on :root rather than gated behind prefers-color-scheme.
+ * Gym Meals design tokens - Phase 1.
+ * Light is the default brand surface (matches the Omnifood reference
+ * palette exactly: cream background, white cards, #E67E22 orange).
+ * Dark is supported as a secondary theme via prefers-color-scheme only -
+ * there is no manual toggle yet, so it activates from the OS setting.
+ * Component classNames are unchanged in this pass; only token values.
  */
 :root {
-  --background: #0b0e12;
-  --surface: #12161c;
-  --surface-elevated: #171c24;
-  --border: #232b34;
-  --foreground: #e7ecf1;
-  --muted-foreground: #93a0ac;
+  /* ---- Light (default) ---- */
+  --background: #fdf2e9;
+  --surface: #ffffff;
+  --surface-elevated: #fffbf6;
+  --border: #d9c0a0;
+  --foreground: #333333;
+  --muted-foreground: #555555;
 
-  --primary: #22c08a;
-  --primary-strong: #3edd9f;
-  --primary-foreground: #04140e;
+  --primary: #e67e22;
+  --primary-strong: #c96a17;
+  --primary-foreground: #1a0f06;
 
-  --success: #22c08a;
-  --warning: #e0a233;
-  --error: #f0685a;
+  /* Success/warning/error double as direct text colors (Badge, danger
+     Button) as well as translucent fills, so light-theme values are the
+     deepened, AA-safe (4.5:1+) variant of each hue rather than the more
+     vivid one dark theme can afford against a near-black background. */
+  --success: #0a6e4b;
+  --warning: #8c5a0f;
+  --error: #b23a29;
 
-  --protein: #6e9cf9;
-  --carbs: #f2a05c;
-  --fat: #e7c25b;
-  --calories: #22c08a;
+  --protein: #1b63f6;
+  --carbs: #ac560e;
+  --fat: #8b6b14;
+  --calories: #0a6e4b;
 
   /* Insights calendar adherence tiers - a deliberate 5-step scale (plus
      "none") rather than reused badge colors, so a day's status reads at a
-     glance without leaning on hue alone: excellent/partial/verylow reuse the
-     existing success/warning/error hues for consistency with the rest of the
+     glance without leaning on hue alone: excellent/partial/verylow reuse
+     the success/warning/error hues for consistency with the rest of the
      app, good/low are new hues that keep the scale perceptually even
-     between them. All pass 6.8:1+ contrast against both --background and
-     --surface. --tier-none is fill/border only, never text. */
-  --tier-excellent: #22c08a;
-  --tier-good: #34b3ae;
-  --tier-partial: #e0a233;
-  --tier-low: #e08145;
-  --tier-verylow: #f0685a;
-  --tier-none: #3a4451;
+     between them. All pass 4.5:1+ text contrast against --surface and
+     --background. --tier-none is fill/border only, never text, so it
+     isn't held to the same ratio. */
+  --tier-excellent: #0a6e4b;
+  --tier-good: #247c78;
+  --tier-partial: #8c5a0f;
+  --tier-low: #b1571d;
+  --tier-verylow: #b23a29;
+  --tier-none: #c7b79c;
+
+  /* Radius scale - not yet wired into component classNames (Phase 2).
+     Deliberately named outside Tailwind's built-in radius scale (xs/sm/
+     md/lg/xl/full) - declaring them through @theme would otherwise
+     silently redefine rounded-lg, rounded-md, etc. everywhere those
+     utilities already appear in the app today. --radius-control and
+     --radius-card match the 8px/12px that rounded-lg/rounded-xl already
+     render, so Phase 2 can swap classNames with no visual change.
+     Defined as plain custom properties (not routed through @theme
+     inline) because Tailwind v4 drops unused @theme entries from the
+     build - a plain :root property is always emitted regardless of
+     whether a component references it yet. */
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 9999px;
+
+  /* Shadow scale - soft and low-alpha by design ("minimal shadows"); not
+     yet wired into components. Light theme leans on real shadow since
+     surface/surface-elevated are both near-white and can't be told apart
+     by fill alone. Same plain-:root reasoning as the radius scale above. */
+  --shadow-subtle: 0 1px 2px rgba(51, 38, 20, 0.06);
+  --shadow-card: 0 2px 8px rgba(51, 38, 20, 0.08);
+  --shadow-panel: 0 8px 24px rgba(51, 38, 20, 0.1);
+  --shadow-modal: 0 20px 60px rgba(51, 38, 20, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ---- Dark (secondary) ---- */
+    --background: #14110f;
+    --surface: #1c1815;
+    --surface-elevated: #241f1a;
+    --border: #33291f;
+    --foreground: #f5efe9;
+    --muted-foreground: #a69c90;
+
+    --primary: #e67e22;
+    --primary-strong: #eb9950;
+    --primary-foreground: #1a0f06;
+
+    --success: #22c08a;
+    --warning: #e0a233;
+    --error: #f0685a;
+
+    --protein: #6e9cf9;
+    --carbs: #f2a05c;
+    --fat: #e7c25b;
+    --calories: #22c08a;
+
+    --tier-excellent: #22c08a;
+    --tier-good: #34b3ae;
+    --tier-partial: #e0a233;
+    --tier-low: #e08145;
+    --tier-verylow: #f0685a;
+    --tier-none: #3a342c;
+
+    --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.55);
+  }
 }
 
 @theme inline {
