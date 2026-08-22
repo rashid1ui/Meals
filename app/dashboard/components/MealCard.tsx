@@ -2,18 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal } from '@/lib/diet/diff'
-import { sumCompletedMacros, pctOf } from '@/lib/tracking/logic'
+import { pctOf, type MacroTotals } from '@/lib/tracking/logic'
+import type { FoodTrackingState } from '../tracking-actions'
 import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
-import { PlusIcon, CheckIcon, CircleIcon, HalfCircleIcon, SpinnerIcon } from '@/components/ui/icons'
-
-const STATUS_ICON: Record<MealTrackingStatus, typeof CheckIcon> = {
-  none: CircleIcon,
-  partial: HalfCircleIcon,
-  complete: CheckIcon
-}
+import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
+import { PlusIcon, CheckIcon, SpinnerIcon } from '@/components/ui/icons'
 
 const STATUS_TEXT_CLASS: Record<MealTrackingStatus, string> = {
   none: 'text-muted-foreground hover:text-foreground',
@@ -25,22 +21,23 @@ export type MealTrackingStatus = 'none' | 'partial' | 'complete'
 
 export type MealCompletionInfo = {
   status: MealTrackingStatus
-  completedFoodIds: ReadonlySet<string>
+  // What this meal is supposed to deliver in total vs. what's actually been
+  // logged as eaten from it today - two distinct numbers, never merged.
+  planned: MacroTotals
+  actual: MacroTotals
+  foods: ReadonlyMap<string, FoodTrackingState>
   onToggleMeal: () => void
-  onToggleFood: (foodId: string) => void
+  onLogFood: (foodId: string, consumedQuantity: number) => void
   togglingMeal: boolean
-  togglingFoodId: string | null
+  loggingFoodId: string | null
 }
 
 type Props = {
   meal: DraftMeal
-  allMeals: DraftMeal[]
   changes: ChangeEntry[]
   foodOptions: FoodOption[]
-  onQuantityChange: (foodId: string, quantity: number) => void
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
-  onMoveFood: (foodId: string, toMealId: string) => void
   onFoodCreated?: (food: FoodOption) => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
@@ -59,20 +56,16 @@ const STATUS_LABEL: Record<MealTrackingStatus, string> = {
 
 export default function MealCard({
   meal,
-  allMeals,
   changes,
   foodOptions,
-  onQuantityChange,
   onRemoveFood,
   onAddFood,
-  onMoveFood,
   onFoodCreated,
   completion,
   isNext = false
 }: Props) {
   const [showAddFood, setShowAddFood] = useState(false)
-  const totals = computeMealTotals(meal)
-  const otherMeals = allMeals.filter(m => m.id !== meal.id)
+  const target = computeMealTotals(meal)
   const isNewMeal = changes.some(c => c.type === 'meal-added' && c.mealName === meal.name)
   const status = completion?.status ?? 'none'
   // Visually quiet down an already-eaten meal that isn't the one to focus on
@@ -80,12 +73,8 @@ export default function MealCard({
   // opacity (would erode the 4.5:1 contrast the rest of the app guarantees).
   const recede = status === 'complete' && !isNext
 
-  // "Actual" = sum of only the foods marked eaten today, using the same
-  // pure sumCompletedMacros already relied on by tracking-actions.ts - this
-  // is a display-only filter/sum of data already on the page, not a second
-  // nutrition calculation.
-  const actual = completion ? sumCompletedMacros(meal.foods, completion.completedFoodIds) : null
-  const actualPct = actual && totals.calories > 0 ? Math.round(pctOf(actual.calories, totals.calories)) : null
+  const actual = completion?.actual ?? null
+  const actualPct = actual && target.calories > 0 ? Math.round(pctOf(actual.calories, target.calories)) : null
 
   const foodOptionsById = useMemo(() => {
     const map = new Map<string, FoodOption>()
@@ -102,11 +91,13 @@ export default function MealCard({
         isNext ? 'border-primary/50' : ''
       } ${recede ? 'opacity-[0.92]' : ''}`}
     >
-      <div className="border-b border-border pb-3 mb-3 space-y-2">
+      <div className="border-b border-border pb-3 mb-3 space-y-2.5">
         {/* Eyebrow: Next (static label) + the meal-completion state, which
             IS the toggle button - reads as plain status text ("○ Not
             eaten") rather than a heavy standalone control, while staying
-            fully clickable with a 44px-tall hit area via padding. */}
+            fully clickable with a 44px-tall hit area via padding. This is a
+            bulk-apply shortcut over the same per-food logging below, never
+            an independently-stored flag - see deriveMealStatus. */}
         {(isNext || isNewMeal || completion) && (
           <div className="flex items-center gap-2 flex-wrap -mt-1 -ml-1">
             {isNext && (
@@ -115,67 +106,71 @@ export default function MealCard({
             {isNewMeal && (
               <span className="text-[11px] font-bold uppercase tracking-wide text-success px-1">New</span>
             )}
-            {completion && (() => {
-              const StatusIcon = STATUS_ICON[status]
-              return (
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
-                  aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark ${meal.name} as eaten`}
-                  onClick={completion.onToggleMeal}
-                  disabled={completion.togglingMeal}
-                  className={`inline-flex items-center gap-1.5 min-h-[36px] px-1 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
-                >
-                  {completion.togglingMeal ? (
-                    <SpinnerIcon size={14} className="animate-spin" />
-                  ) : (
-                    <StatusIcon size={14} />
-                  )}
-                  {STATUS_LABEL[status]}
-                </button>
-              )
-            })()}
+            {completion && (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+                aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
+                onClick={completion.onToggleMeal}
+                disabled={completion.togglingMeal}
+                className={`inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
+              >
+                {completion.togglingMeal ? (
+                  <SpinnerIcon size={16} className="animate-spin" />
+                ) : (
+                  <TrackingStatusIcon status={status} size={20} />
+                )}
+                {STATUS_LABEL[status]}
+              </button>
+            )}
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-display text-xl font-bold text-foreground truncate flex items-center gap-2">
-            {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
-            {meal.name}
-          </h3>
-          <span className="shrink-0 font-mono tabular-nums text-sm font-semibold text-muted-foreground">
-            {Math.round(totals.calories)} kcal
-          </span>
+        <h3 className="font-display text-xl font-bold text-foreground truncate flex items-center gap-2">
+          {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
+          {meal.name}
+        </h3>
+
+        {/* Target vs Actual - two explicitly labeled rows so the numbers are
+            never ambiguous about which one they are. Actual only renders
+            once this meal is trackable (persisted + has foods); an
+            unsaved/empty meal shows Target alone. */}
+        <div className="grid grid-cols-[3.25rem_1fr] gap-x-2 gap-y-1 items-baseline">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Target</span>
+          <div className="flex flex-wrap items-baseline gap-x-2 font-mono tabular-nums text-sm">
+            <span className="font-bold text-calories">{Math.round(target.calories)} kcal</span>
+            <span className="text-protein">{Math.round(target.protein)}P</span>
+            <span className="text-carbs">{Math.round(target.carbs)}C</span>
+            <span className="text-fat">{Math.round(target.fat)}F</span>
+          </div>
+
+          {actual && meal.foods.length > 0 && (
+            <>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Actual</span>
+              <div className="flex flex-wrap items-baseline gap-x-2 font-mono tabular-nums text-sm">
+                <span className="font-bold text-foreground">{Math.round(actual.calories)} kcal</span>
+                <span className="text-protein">{Math.round(actual.protein)}P</span>
+                <span className="text-carbs">{Math.round(actual.carbs)}C</span>
+                <span className="text-fat">{Math.round(actual.fat)}F</span>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Macro summary - highest-priority scan line after name/kcal, so
-            each value+label pair stays a single colored unit rather than a
-            neutral label next to a colored number. */}
-        <div className="flex gap-x-3 gap-y-1 flex-wrap font-mono tabular-nums text-sm font-semibold">
-          <span className="text-protein">{Math.round(totals.protein)}g Protein</span>
-          <span className="text-carbs">{Math.round(totals.carbs)}g Carbs</span>
-          <span className="text-fat">{Math.round(totals.fat)}g Fat</span>
-        </div>
-
-        {/* Target vs actual - compact fraction + bar, not a second stat
-            block. Only meaningful once there's something to eat. */}
         {actual && meal.foods.length > 0 && (
-          <div className="pt-1 space-y-1">
-            <div className="flex items-baseline justify-between gap-2 text-xs font-mono tabular-nums text-muted-foreground">
-              <span>
-                <span className="font-bold text-foreground">{Math.round(actual.calories)}</span>
-                {' / '}
-                {Math.round(totals.calories)} kcal
+          <div className="pt-0.5 space-y-1">
+            <div className="flex items-center justify-end">
+              <span className="text-xs font-mono tabular-nums font-semibold text-primary">
+                {actualPct}% complete
               </span>
-              <span className="font-semibold text-primary">{actualPct}% complete</span>
             </div>
             <div
               role="progressbar"
               aria-label={`${meal.name} actual calories eaten toward its target`}
               aria-valuenow={Math.round(actual.calories)}
               aria-valuemin={0}
-              aria-valuemax={Math.round(totals.calories)}
+              aria-valuemax={Math.round(target.calories)}
               className="h-1.5 rounded-full bg-surface-elevated overflow-hidden"
             >
               <div
@@ -199,28 +194,31 @@ export default function MealCard({
             <p className="text-xs text-muted-foreground mt-1">Add a food to start building this meal.</p>
           </div>
         ) : (
-          meal.foods.map(food => (
-            <FoodRow
-              key={food.id}
-              food={food}
-              meal={meal}
-              otherMeals={otherMeals}
-              badges={getFoodBadges(changes, food.id)}
-              onQuantityChange={(qty) => onQuantityChange(food.id, qty)}
-              onRemove={() => onRemoveFood(food.id)}
-              onMove={(toMealId) => onMoveFood(food.id, toMealId)}
-              dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
-              completion={
-                completion
-                  ? {
-                      completed: completion.completedFoodIds.has(food.id),
-                      onToggle: () => completion.onToggleFood(food.id),
-                      toggling: completion.togglingFoodId === food.id
-                    }
-                  : undefined
-              }
-            />
-          ))
+          meal.foods.map(food => {
+            const foodTracking = completion?.foods.get(food.id)
+            return (
+              <FoodRow
+                key={food.id}
+                food={food}
+                meal={meal}
+                badges={getFoodBadges(changes, food.id)}
+                onRemove={() => onRemoveFood(food.id)}
+                dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
+                completion={
+                  completion && foodTracking
+                    ? {
+                        status: foodTracking.status,
+                        consumedQuantity: foodTracking.consumedQuantity,
+                        plannedQuantity: foodTracking.plannedQuantity,
+                        actual: foodTracking.actual,
+                        onLog: (consumedQuantity) => completion.onLogFood(food.id, consumedQuantity),
+                        logging: completion.loggingFoodId === food.id
+                      }
+                    : undefined
+                }
+              />
+            )
+          })
         )}
       </div>
 

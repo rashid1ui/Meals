@@ -15,6 +15,16 @@ export async function resetAccount() {
 
     // Delete all user application data explicitly from the bottom up to ensure safety
     // against foreign key constraints, since ON DELETE CASCADE cannot be guaranteed.
+    // food_tracking/daily_tracking are deleted first (and explicitly, rather than
+    // relying on the foods/meals FKs' ON DELETE SET NULL below) - otherwise a "Start
+    // Fresh" leaves the user's full nutrition history behind, which then pollutes
+    // Weekly/Monthly Insights for the brand-new plan they're about to onboard into.
+    const { error: foodTrackingError } = await supabase.from('food_tracking').delete().eq('user_id', user.id)
+    if (foodTrackingError) throw new Error(`Failed to delete food tracking: ${foodTrackingError.message}`)
+
+    const { error: dailyTrackingError } = await supabase.from('daily_tracking').delete().eq('user_id', user.id)
+    if (dailyTrackingError) throw new Error(`Failed to delete daily tracking: ${dailyTrackingError.message}`)
+
     const { error: foodsError } = await supabase.from('foods').delete().eq('user_id', user.id)
     if (foodsError) throw new Error(`Failed to delete foods: ${foodsError.message}`)
 

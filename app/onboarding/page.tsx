@@ -29,18 +29,6 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
 
   if (dbError) {
     console.error('Failed to load food_database:', dbError)
-    // In production, this will surface the silent error in logs
-  } else if (dbFoods) {
-    // TEMPORARY DEVELOPMENT-SAFE DIAGNOSTICS
-    const uniqueCategories = Array.from(new Set(dbFoods.map(f => f.category)))
-    console.log(`[Diagnostic] DB Query Success. Rows returned: ${dbFoods.length}`)
-    console.log(`[Diagnostic] Unique Categories returned:`, uniqueCategories)
-
-    // Check how many match protein/dairy loosely
-    const looseProteinCount = dbFoods.filter(f =>
-      ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim())
-    ).length
-    console.log(`[Diagnostic] Rows matching 'protein' or 'dairy' loosely: ${looseProteinCount}`)
   }
 
   return (

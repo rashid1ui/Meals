@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DraftFood, DraftMeal, FoodBadge } from '@/lib/diet/diff'
 import type { FoodOption } from './DietEditor'
 import {
@@ -12,7 +12,8 @@ import {
   type UnitConfig
 } from '@/lib/nutrition/units'
 import Badge from '@/components/ui/Badge'
-import { PlusIcon, MinusIcon, CloseIcon, CheckIcon, CircleIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
+import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
+import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
 
 const QUANTITY_STEP = 10
 
@@ -30,23 +31,28 @@ const BADGE_LABELS: Record<FoodBadge, string> = {
   moved: 'Moved'
 }
 
-export type FoodCompletionToggle = {
-  completed: boolean
-  onToggle: () => void
-  toggling: boolean
+export type FoodTrackingStatus = 'none' | 'partial' | 'complete'
+
+// This food's live tracking state, sourced from the server (never
+// recomputed from the plan) - `consumedQuantity`/`plannedQuantity` are both
+// canonical grams/ml, same basis as `food.quantity`.
+export type FoodTrackingInfo = {
+  status: FoodTrackingStatus
+  consumedQuantity: number
+  plannedQuantity: number
+  actual: { calories: number; protein: number; carbs: number; fat: number }
+  onLog: (consumedQuantity: number) => void
+  logging: boolean
 }
 
 type Props = {
   food: DraftFood
   meal: DraftMeal
-  otherMeals: DraftMeal[]
   badges: FoodBadge[]
-  onQuantityChange: (quantity: number) => void
   onRemove: () => void
-  onMove: (toMealId: string) => void
   // Undefined for a food belonging to a meal that hasn't been saved yet -
   // tracking only ever applies to persisted foods.
-  completion?: FoodCompletionToggle
+  completion?: FoodTrackingInfo
   // The resolved food_database row, for display-unit info. Null/undefined
   // for a "Locked" food with no live match (see the `locked` badge below) -
   // it falls back to plain grams, identical to its existing behavior.
@@ -54,10 +60,10 @@ type Props = {
 }
 
 // A food row reads as a single scannable LINE ITEM (checkbox, name, unit,
-// macros, delete) - never a bordered card-inside-a-card. The bulkiest
-// controls (quantity stepper, Move-to) stay hidden until the row itself is
-// expanded, so the default view is "what did I eat", not "here is a form".
-export default function FoodRow({ food, otherMeals, badges, onQuantityChange, onRemove, onMove, completion, dbFood }: Props) {
+// macros, delete) - never a bordered card-inside-a-card. Logging a partial
+// amount eaten stays hidden until the row itself is expanded, so the
+// default view is "what did I eat", not "here is a form".
+export default function FoodRow({ food, badges, onRemove, completion, dbFood }: Props) {
   const locked = food.foodDatabaseId === null
   const unitConfig: UnitConfig = {
     displayUnit: dbFood?.display_unit || 'g',
@@ -66,25 +72,56 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
   const displayQuantity = toDisplayQuantity(food.quantity, unitConfig)
   const isExact = isWholeDisplayQuantity(food.quantity, unitConfig)
   const isPieceLike = requiresGramsPerUnit(unitConfig.displayUnit)
+  const unit = unitLabel(unitConfig.displayUnit, displayQuantity)
 
-  const [inputValue, setInputValue] = useState(String(displayQuantity))
   const [editing, setEditing] = useState(false)
-
-  const commitQuantity = (displayValue: number) => {
-    if (!isFinite(displayValue) || displayValue <= 0) return
-    onQuantityChange(toCanonicalGrams(displayValue, unitConfig))
-  }
 
   // Steps by one whole display unit for piece-like foods (1 egg, 1 slice),
   // by a finer 100g increment for kg (0.1kg), or the existing 10-unit step
   // for plain g/ml.
   const stepSize = unitConfig.displayUnit === 'kg' ? 0.1 : isPieceLike ? 1 : QUANTITY_STEP
 
-  const step = (delta: number) => {
-    const next = Math.max(stepSize, displayQuantity + delta)
-    setInputValue(String(next))
-    commitQuantity(next)
+  // How much has actually been eaten so far today - entirely separate from
+  // this food's planned quantity in the diet (food.quantity), which is not
+  // editable from this row.
+  const consumedDisplay = completion ? toDisplayQuantity(completion.consumedQuantity, unitConfig) : 0
+  const plannedDisplayForLog = completion ? toDisplayQuantity(completion.plannedQuantity, unitConfig) : 0
+  const [logInputValue, setLogInputValue] = useState(String(consumedDisplay))
+
+  // Keeps the "how much did you eat" input in sync with the server-confirmed
+  // amount whenever it changes from outside this input (e.g. the quick
+  // checkbox toggle, or another tab) - never fires from the user's own
+  // keystrokes here, since those don't change completion.consumedQuantity
+  // until commitLoggedQuantity's own upstream round-trip completes.
+  useEffect(() => {
+    if (completion) setLogInputValue(String(consumedDisplay))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completion?.consumedQuantity])
+
+  const commitLoggedQuantity = (displayValue: number) => {
+    if (!completion || !isFinite(displayValue)) return
+    const clamped = Math.max(0, Math.min(displayValue, plannedDisplayForLog))
+    setLogInputValue(String(clamped))
+    completion.onLog(toCanonicalGrams(clamped, unitConfig))
   }
+
+  const logStep = (delta: number) => {
+    if (!completion) return
+    const next = Math.max(0, Math.min(consumedDisplay + delta, plannedDisplayForLog))
+    commitLoggedQuantity(next)
+  }
+
+  // Primary interaction: tap the checkbox to log the FULL planned amount as
+  // eaten, or clear it back to not-eaten. Partial amounts are logged via the
+  // "How much did you eat?" stepper below (reachable by expanding the row).
+  const handleQuickToggle = () => {
+    if (!completion) return
+    completion.onLog(completion.status === 'complete' ? 0 : completion.plannedQuantity)
+  }
+
+  const status = completion?.status ?? 'none'
+  const statusLabel = status === 'complete' ? 'Eaten' : status === 'partial' ? 'Partially eaten' : 'Not eaten'
+  const nextActionLabel = status === 'complete' ? `Mark ${food.name} as not eaten` : `Mark ${food.name} as eaten`
 
   return (
     <div className="py-2 border-b border-border/60 last:border-b-0">
@@ -93,22 +130,17 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
           <button
             type="button"
             role="checkbox"
-            aria-checked={completion.completed}
-            aria-label={completion.completed ? `Mark ${food.name} as not eaten` : `Mark ${food.name} as eaten`}
-            onClick={completion.onToggle}
-            disabled={completion.toggling}
-            className={`shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
-              completion.completed
-                ? 'bg-success/15 text-success'
-                : 'text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
-            }`}
+            aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+            aria-label={nextActionLabel}
+            title={statusLabel}
+            onClick={handleQuickToggle}
+            disabled={completion.logging}
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {completion.toggling ? (
+            {completion.logging ? (
               <SpinnerIcon size={16} className="animate-spin" />
-            ) : completion.completed ? (
-              <CheckIcon size={16} />
             ) : (
-              <CircleIcon size={16} />
+              <TrackingStatusIcon status={status} size={24} />
             )}
           </button>
         )}
@@ -139,7 +171,7 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
               {!isExact && (
                 <Badge
                   variant="warning"
-                  title={`${displayQuantity} ${unitLabel(unitConfig.displayUnit, displayQuantity)} is an approximate display of ${Math.round(food.quantity)}g - the exact gram amount is what's actually used for nutrition.`}
+                  title={`${displayQuantity} ${unit} is an approximate display of ${Math.round(food.quantity)}g - the exact gram amount is what's actually used for nutrition.`}
                 >
                   Approx.
                 </Badge>
@@ -147,7 +179,7 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
             </div>
             <div className="flex items-center gap-1.5 flex-wrap font-mono tabular-nums text-xs mt-0.5">
               <span className="font-semibold text-foreground">
-                {displayQuantity} {unitLabel(unitConfig.displayUnit, displayQuantity)}
+                {displayQuantity} {unit}
               </span>
               <span className="text-border">·</span>
               <span className="text-foreground/70">{Math.round(food.calories)} kcal</span>
@@ -155,6 +187,21 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
               <span className="text-carbs">{Math.round(food.carbs)}C</span>
               <span className="text-fat">{Math.round(food.fat)}F</span>
             </div>
+            {/* Actual-eaten feedback, visible without expanding - only shown
+                once something has actually been logged, so a fully-planned
+                but untouched food doesn't show a redundant "0 eaten" line. */}
+            {completion && status !== 'none' && (
+              <div className="flex items-center gap-1.5 flex-wrap font-mono tabular-nums text-xs mt-1">
+                <span className={`font-semibold ${status === 'complete' ? 'text-success' : 'text-warning'}`}>
+                  Eaten: {consumedDisplay}/{plannedDisplayForLog} {unit}
+                </span>
+                <span className="text-border">·</span>
+                <span className="text-foreground/70">{Math.round(completion.actual.calories)} kcal</span>
+                <span className="text-protein">{Math.round(completion.actual.protein)}P</span>
+                <span className="text-carbs">{Math.round(completion.actual.carbs)}C</span>
+                <span className="text-fat">{Math.round(completion.actual.fat)}F</span>
+              </div>
+            )}
           </div>
           <ChevronDownIcon
             size={14}
@@ -172,54 +219,43 @@ export default function FoodRow({ food, otherMeals, badges, onQuantityChange, on
       </div>
 
       {editing && (
-        <div className="flex items-center gap-2 flex-wrap mt-2 pl-[52px]">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => step(-stepSize)}
-              disabled={locked}
-              aria-label={`Decrease ${food.name} quantity`}
-              className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <MinusIcon size={16} />
-            </button>
-            <input
-              type="number"
-              value={inputValue}
-              disabled={locked}
-              onChange={e => setInputValue(e.target.value)}
-              onBlur={() => commitQuantity(parseFloat(inputValue))}
-              aria-label={`${food.name} quantity in ${unitLabel(unitConfig.displayUnit, displayQuantity)}`}
-              className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            />
-            <span className="text-sm font-semibold text-foreground">
-              {unitLabel(unitConfig.displayUnit, displayQuantity)}
-            </span>
-            <button
-              onClick={() => step(stepSize)}
-              disabled={locked}
-              aria-label={`Increase ${food.name} quantity`}
-              className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <PlusIcon size={16} />
-            </button>
-          </div>
-
-          {otherMeals.length > 0 && (
-            <select
-              value=""
-              onChange={e => {
-                if (e.target.value) onMove(e.target.value)
-              }}
-              aria-label={`Move ${food.name} to another meal`}
-              className="min-h-[44px] text-xs bg-surface-elevated border border-border rounded-lg px-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <option value="">Move to...</option>
-              {otherMeals.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+        <div className="mt-2 pl-[52px] space-y-3">
+          {completion && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
+                How much did you eat?
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => logStep(-stepSize)}
+                  disabled={completion.logging}
+                  aria-label={`Decrease amount of ${food.name} eaten`}
+                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <MinusIcon size={16} />
+                </button>
+                <input
+                  type="number"
+                  value={logInputValue}
+                  disabled={completion.logging}
+                  onChange={e => setLogInputValue(e.target.value)}
+                  onBlur={() => commitLoggedQuantity(parseFloat(logInputValue))}
+                  aria-label={`Amount of ${food.name} eaten, in ${unit}`}
+                  className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+                <span className="text-sm font-semibold text-foreground">
+                  / {plannedDisplayForLog} {unit}
+                </span>
+                <button
+                  onClick={() => logStep(stepSize)}
+                  disabled={completion.logging}
+                  aria-label={`Increase amount of ${food.name} eaten`}
+                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <PlusIcon size={16} />
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

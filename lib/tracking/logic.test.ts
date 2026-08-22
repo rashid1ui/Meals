@@ -1,12 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert'
 import {
-  computeMealStatus,
+  computeFoodStatus,
+  deriveMealStatus,
   sumMacros,
-  sumCompletedMacros,
+  zeroMacros,
+  computeActualFoodMacros,
+  computeDayAdherencePct,
   buildFoodTrackingRow,
   adherenceTier,
-  dailyAdherencePct,
   type TrackableFood
 } from './logic'
 
@@ -14,95 +16,101 @@ function food(id: string, name: string, quantity: number, calories: number, prot
   return { id, name, quantity, calories, protein, carbs, fat }
 }
 
-// 1/2. Complete one food / uncomplete one food -> reflected in the
-// completed-id set the caller passes in (tracking-actions.ts owns
-// persisting that set; this tests the pure classification on top of it).
-test('computeMealStatus - a single completed food out of many is partial, not complete', () => {
-  const foods = [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5), food('f2', 'Bread', 60, 160, 6, 30, 1.5)]
-  const status = computeMealStatus(foods.map(f => f.id), new Set(['f1']))
-  assert.strictEqual(status, 'partial')
+// computeFoodStatus - the tri-state per-food classification a quantity is
+// compared against its current planned quantity to derive.
+
+test('computeFoodStatus - zero consumed is none', () => {
+  assert.strictEqual(computeFoodStatus(0, 100), 'none')
 })
 
-test('computeMealStatus - uncompleting the only completed food returns to none', () => {
-  const foods = [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)]
-  const status = computeMealStatus(foods.map(f => f.id), new Set())
-  assert.strictEqual(status, 'none')
+test('computeFoodStatus - consuming the full planned quantity is complete', () => {
+  assert.strictEqual(computeFoodStatus(100, 100), 'complete')
 })
 
-// 3/4/6. Complete entire meal / uncomplete entire meal / auto-detect fully
-// completed meal.
-test('computeMealStatus - every food completed is complete', () => {
-  const foods = [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5), food('f2', 'Oats', 50, 129, 4, 23, 2)]
-  const status = computeMealStatus(foods.map(f => f.id), new Set(['f1', 'f2']))
-  assert.strictEqual(status, 'complete')
+test('computeFoodStatus - consuming less than planned is partial', () => {
+  assert.strictEqual(computeFoodStatus(60, 100), 'partial')
 })
 
-test('computeMealStatus - unchecking one food out of a fully completed meal drops it to partial', () => {
-  const foods = [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5), food('f2', 'Oats', 50, 129, 4, 23, 2)]
-  // Started complete (both ids), then Oats (f2) is unchecked.
-  const status = computeMealStatus(foods.map(f => f.id), new Set(['f1']))
-  assert.strictEqual(status, 'partial')
+test('computeFoodStatus - 2 of 3 eggs (66.67g of 100g at 33.33g/egg) reads as partial, not complete', () => {
+  assert.strictEqual(computeFoodStatus(66.67, 100), 'partial')
 })
 
-test('computeMealStatus - unchecking every food returns none', () => {
-  const foods = [food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5), food('f2', 'Oats', 50, 129, 4, 23, 2)]
-  const status = computeMealStatus(foods.map(f => f.id), new Set())
-  assert.strictEqual(status, 'none')
+test('computeFoodStatus - a value within floating-point rounding of the full planned quantity still reads as complete', () => {
+  // 3 eggs at 33.33g/egg = 99.99, not exactly 100 - must not get stuck at "partial".
+  assert.strictEqual(computeFoodStatus(99.99, 100), 'complete')
 })
 
-test('computeMealStatus - a meal with no foods is none, never vacuously complete', () => {
-  assert.strictEqual(computeMealStatus([], new Set()), 'none')
+test('computeFoodStatus - logging more than planned is still complete, never an invalid fourth state', () => {
+  assert.strictEqual(computeFoodStatus(120, 100), 'complete')
 })
 
-// 5. Partial meal state (explicit two-of-three case matching the audit's
-// Breakfast example: eggs + bread completed, oats not).
-test('computeMealStatus - two of three foods completed is partial', () => {
-  const foods = [
-    food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5),
-    food('f2', 'Bread', 60, 160, 6, 30, 1.5),
-    food('f3', 'Oats', 50, 129, 4, 23, 2)
-  ]
-  const status = computeMealStatus(foods.map(f => f.id), new Set(['f1', 'f2']))
-  assert.strictEqual(status, 'partial')
+// deriveMealStatus - meal completion is ALWAYS derived from its foods'
+// statuses, never set independently.
+
+test('deriveMealStatus - a meal with no foods is none, never vacuously complete', () => {
+  assert.strictEqual(deriveMealStatus([]), 'none')
 })
 
-// 7/8. Correct consumed macros for a partial meal vs. a complete meal -
-// matches the audit's worked example exactly (eggs completed, oats not).
-test('sumCompletedMacros - partial meal only counts the completed foods', () => {
-  const eggs = food('f1', 'Eggs', 100, 228, 48, 3, 1)
-  const oats = food('f2', 'Oats', 50, 129, 4, 23, 2)
-  const totals = sumCompletedMacros([eggs, oats], new Set(['f1']))
-  assert.deepStrictEqual(totals, { calories: 228, protein: 48, carbs: 3, fat: 1 })
+test('deriveMealStatus - every food none is none', () => {
+  assert.strictEqual(deriveMealStatus(['none', 'none']), 'none')
 })
 
-test('sumCompletedMacros - complete meal counts every food, equalling the full meal total', () => {
-  const eggs = food('f1', 'Eggs', 100, 228, 48, 3, 1)
-  const oats = food('f2', 'Oats', 50, 129, 4, 23, 2)
-  const totals = sumCompletedMacros([eggs, oats], new Set(['f1', 'f2']))
-  const fullMeal = sumMacros([eggs, oats])
-  assert.deepStrictEqual(totals, fullMeal)
-  assert.deepStrictEqual(totals, { calories: 357, protein: 52, carbs: 26, fat: 3 })
+test('deriveMealStatus - every food complete is complete', () => {
+  assert.strictEqual(deriveMealStatus(['complete', 'complete']), 'complete')
 })
 
-test('sumCompletedMacros - no foods completed contributes nothing', () => {
-  const eggs = food('f1', 'Eggs', 100, 228, 48, 3, 1)
-  const totals = sumCompletedMacros([eggs], new Set())
-  assert.deepStrictEqual(totals, { calories: 0, protein: 0, carbs: 0, fat: 0 })
+test('deriveMealStatus - a mix of none/partial/complete is partial', () => {
+  assert.strictEqual(deriveMealStatus(['complete', 'none']), 'partial')
+  assert.strictEqual(deriveMealStatus(['complete', 'partial']), 'partial')
+  assert.strictEqual(deriveMealStatus(['partial', 'none']), 'partial')
 })
 
-// 11. Same food name appearing in more than one meal - identity must be by
-// food_id (a distinct row per meal), never by name, so completing "Eggs" in
-// Breakfast must not affect a separate "Eggs" row in a Snack.
+test('deriveMealStatus - two of three foods completed is partial (Breakfast: eggs + bread eaten, oats not)', () => {
+  assert.strictEqual(deriveMealStatus(['complete', 'complete', 'none']), 'partial')
+})
+
+// computeActualFoodMacros - reuses calculateFoodMacros to scale a food's own
+// planned macros down to whatever quantity was actually consumed.
+
+test('computeActualFoodMacros - eating the full planned quantity returns the full planned macros', () => {
+  const chicken = food('f1', 'Chicken Breast', 200, 240, 45, 0, 5.2)
+  assert.deepStrictEqual(computeActualFoodMacros(200, chicken), { calories: 240, protein: 45, carbs: 0, fat: 5.2 })
+})
+
+test('computeActualFoodMacros - 120g of a 200g planned chicken portion scales macros proportionally, not to the full amount', () => {
+  const chicken = food('f1', 'Chicken Breast', 200, 240, 45, 0, 5.2)
+  const actual = computeActualFoodMacros(120, chicken)
+  assert.strictEqual(actual.calories, 144)
+  assert.strictEqual(actual.protein, 27)
+  assert.strictEqual(actual.fat, 3.12)
+})
+
+test('computeActualFoodMacros - 2 of 3 eggs (planned 100g for 3 eggs) scales down, not the full 3-egg macros', () => {
+  const eggs = food('f1', 'Whole Egg', 100, 143, 12.6, 0.7, 9.5)
+  const actual = computeActualFoodMacros(66.67, eggs) // ~2 of 3 eggs at 33.33g each
+  assert.ok(actual.calories < 143 && actual.calories > 90)
+  assert.ok(Math.abs(actual.calories - 95.36) < 0.1)
+})
+
+test('computeActualFoodMacros - zero consumed is zero macros, not the full planned amount', () => {
+  const rice = food('f1', 'White Rice', 150, 200, 4, 44, 0.4)
+  assert.deepStrictEqual(computeActualFoodMacros(0, rice), { calories: 0, protein: 0, carbs: 0, fat: 0 })
+})
+
+// buildFoodTrackingRow - now shapes rows from the ACTUAL consumed
+// quantity/macros the caller already resolved, and derives `completed` from
+// quantity rather than trusting a separately-passed flag.
+
 test('buildFoodTrackingRow - two foods with the same name in different meals build independent rows keyed by food_id', () => {
   const breakfastEggs = food('breakfast-eggs-id', 'Eggs', 100, 143, 12.6, 0.7, 9.5)
-  const snackEggs = food('snack-eggs-id', 'Eggs', 50, 71.5, 6.3, 0.35, 4.75)
+  const snackEggs = food('snack-eggs-id', 'Eggs', 0, 0, 0, 0, 0)
 
   const rowA = buildFoodTrackingRow(
-    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'breakfast-id', mealName: 'Breakfast', completed: true, food: breakfastEggs },
+    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'breakfast-id', mealName: 'Breakfast', food: breakfastEggs },
     () => '2026-08-21T00:00:00.000Z'
   )
   const rowB = buildFoodTrackingRow(
-    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'snack-id', mealName: 'Snack', completed: false, food: snackEggs },
+    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'snack-id', mealName: 'Snack', food: snackEggs },
     () => '2026-08-21T00:00:00.000Z'
   )
 
@@ -117,15 +125,79 @@ test('buildFoodTrackingRow - two foods with the same name in different meals bui
   assert.strictEqual('unit' in rowA, false)
 })
 
-test('buildFoodTrackingRow - snapshots the food nutrition onto the row, independent of a later edit', () => {
+test('buildFoodTrackingRow - a fully-eaten food is stored with completed=true', () => {
   const eggs = food('f1', 'Eggs', 100, 143, 12.6, 0.7, 9.5)
   const row = buildFoodTrackingRow(
-    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'm1', mealName: 'Breakfast', completed: true, food: eggs },
+    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'm1', mealName: 'Breakfast', food: eggs },
     () => '2026-08-21T00:00:00.000Z'
   )
   assert.strictEqual(row.calories, 143)
   assert.strictEqual(row.food_name, 'Eggs')
   assert.strictEqual(row.quantity, 100)
+  assert.strictEqual(row.completed, true)
+})
+
+test('buildFoodTrackingRow - a partially-eaten food (already-scaled actual macros) is still completed=true', () => {
+  const chicken = food('f1', 'Chicken', 120, 144, 27, 0, 3.12) // caller already scaled this to the consumed amount
+  const row = buildFoodTrackingRow(
+    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'm1', mealName: 'Lunch', food: chicken },
+    () => '2026-08-21T00:00:00.000Z'
+  )
+  assert.strictEqual(row.quantity, 120)
+  assert.strictEqual(row.calories, 144)
+  assert.strictEqual(row.completed, true)
+})
+
+test('buildFoodTrackingRow - logging zero quantity (un-marking) is stored with completed=false', () => {
+  const eggs = food('f1', 'Eggs', 0, 0, 0, 0, 0)
+  const row = buildFoodTrackingRow(
+    { userId: 'u1', trackingDate: '2026-08-21', mealId: 'm1', mealName: 'Breakfast', food: eggs },
+    () => '2026-08-21T00:00:00.000Z'
+  )
+  assert.strictEqual(row.completed, false)
+})
+
+test('sumMacros - sums a list of already-actual per-food macros into a meal/day total', () => {
+  const totals = sumMacros([
+    { calories: 144, protein: 27, carbs: 0, fat: 3.12 },
+    { calories: 95.36, protein: 8.4, carbs: 0.47, fat: 6.34 }
+  ])
+  assert.strictEqual(Math.round(totals.calories), 239)
+  assert.strictEqual(Math.round(totals.protein * 10) / 10, 35.4)
+})
+
+// computeDayAdherencePct - the Insights calendar's per-day cell percentage:
+// average of each macro's own percent-of-target, capped per-macro at 100.
+
+test('computeDayAdherencePct - hitting every macro target exactly is 100%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(target, target), 100)
+})
+
+test('computeDayAdherencePct - eating nothing is 0%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(zeroMacros(), target), 0)
+})
+
+test('computeDayAdherencePct - averages across macros, not just calories', () => {
+  // calories 100%, protein 50%, carbs 0%, fat 100% -> average 62.5 -> rounds to 63
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  const consumed = { calories: 2000, protein: 75, carbs: 0, fat: 60 }
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 63)
+})
+
+test('computeDayAdherencePct - overeating one macro cannot push the day above 100%', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+  // Double every macro - each would be 200% uncapped, but capped at 100% each.
+  const consumed = { calories: 4000, protein: 300, carbs: 400, fat: 120 }
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 100)
+})
+
+test('computeDayAdherencePct - a zero target macro contributes 0%, never divides by zero', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 0 }
+  const consumed = { calories: 2000, protein: 150, carbs: 200, fat: 50 }
+  // fat has no target, so pctOf(50, 0) is defined as 0 - average is (100+100+100+0)/4 = 75.
+  assert.strictEqual(computeDayAdherencePct(consumed, target), 75)
 })
 
 // Insights calendar tier boundaries - each threshold is inclusive at its
@@ -143,27 +215,4 @@ test('adherenceTier - buckets percentages at the documented boundaries', () => {
   assert.strictEqual(adherenceTier(24), 'verylow')
   assert.strictEqual(adherenceTier(0), 'verylow')
   assert.strictEqual(adherenceTier(null), 'none')
-})
-
-test('dailyAdherencePct - averages all four macros hitting target exactly to 100', () => {
-  const target = { calories: 2000, protein: 150, carbs: 200, fat: 70 }
-  const pct = dailyAdherencePct(target, target)
-  assert.strictEqual(pct, 100)
-})
-
-test('dailyAdherencePct - caps an over-target macro at 100 instead of inflating the average', () => {
-  const target = { calories: 2000, protein: 150, carbs: 200, fat: 70 }
-  // Calories at 200% of target, everything else untouched - an uncapped
-  // average would read 137.5%, which would wrongly outrank a clean 100% day.
-  const consumed = { calories: 4000, protein: 0, carbs: 0, fat: 0 }
-  const pct = dailyAdherencePct(consumed, target)
-  assert.strictEqual(pct, 25)
-})
-
-test('dailyAdherencePct - a target of 0 contributes 0, never divides by zero', () => {
-  const consumed = { calories: 1000, protein: 50, carbs: 0, fat: 0 }
-  const target = { calories: 2000, protein: 100, carbs: 0, fat: 0 }
-  // calories 50% + protein 50% + carbs 0% (no target) + fat 0% (no target), / 4
-  const pct = dailyAdherencePct(consumed, target)
-  assert.strictEqual(pct, 25)
 })

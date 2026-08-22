@@ -9,16 +9,16 @@ import { saveDietPlan } from '../actions'
 import {
   getTodayTracking,
   toggleMealCompletion,
-  toggleFoodCompletion,
-  type DailyTrackingSummary
+  logFoodConsumption,
+  type DailyTrackingSummary,
+  type FoodTrackingState
 } from '../tracking-actions'
 import { getLocalDateString } from '@/lib/tracking/date'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
-import MacroSummaryCards from './MacroSummaryCards'
-import DailyProgressSummary from './DailyProgressSummary'
+import DailyProgress from './DailyProgress'
 import NextMealSpotlight from './NextMealSpotlight'
 import Button from '@/components/ui/Button'
 import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
@@ -74,7 +74,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
   const [trackingLoading, setTrackingLoading] = useState(true)
   const [trackingError, setTrackingError] = useState<string | null>(null)
   const [togglingMealId, setTogglingMealId] = useState<string | null>(null)
-  const [togglingFoodId, setTogglingFoodId] = useState<string | null>(null)
+  const [loggingFoodId, setLoggingFoodId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -126,15 +126,13 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     setTogglingMealId(null)
   }
 
-  const handleToggleFoodCompletion = async (foodId: string, mealId: string) => {
-    const meal = completionByMealId.get(mealId)
-    const currentlyCompleted = meal?.foods.find(f => f.foodId === foodId)?.completed ?? false
-    setTogglingFoodId(foodId)
+  const handleLogFoodConsumption = async (foodId: string, mealId: string, consumedQuantity: number) => {
+    setLoggingFoodId(foodId)
     setTrackingError(null)
-    const result = await toggleFoodCompletion(foodId, mealId, localDate, !currentlyCompleted)
+    const result = await logFoodConsumption(foodId, mealId, localDate, consumedQuantity)
     if ('error' in result) setTrackingError(result.error)
     else setDailyTracking(result.data)
-    setTogglingFoodId(null)
+    setLoggingFoodId(null)
   }
 
   const foodOptionsById = useMemo(() => {
@@ -166,29 +164,6 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     return () => clearTimeout(timer)
   }, [justSaved])
 
-  const handleQuantityChange = (mealId: string, foodId: string, newQuantity: number) => {
-    commit(current => current.map(meal => {
-      if (meal.id !== mealId) return meal
-      return {
-        ...meal,
-        foods: meal.foods.map(food => {
-          if (food.id !== foodId || !food.foodDatabaseId) return food
-          const dbFood = foodOptionsById.get(food.foodDatabaseId)
-          if (!dbFood) return food
-          const calculated = calculateFoodMacros(newQuantity, dbFood)
-          return {
-            ...food,
-            quantity: calculated.quantity,
-            calories: calculated.calories,
-            protein: calculated.protein,
-            carbs: calculated.carbs,
-            fat: calculated.fat
-          }
-        })
-      }
-    }))
-  }
-
   const handleRemoveFood = (mealId: string, foodId: string) => {
     commit(current => current.map(meal => {
       if (meal.id !== mealId) return meal
@@ -214,23 +189,6 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     commit(current => current.map(meal => (
       meal.id === mealId ? { ...meal, foods: [...meal.foods, newFood] } : meal
     )))
-  }
-
-  const handleMoveFood = (foodId: string, fromMealId: string, toMealId: string) => {
-    if (fromMealId === toMealId) return
-    commit(current => {
-      let moved: DraftFood | null = null
-      const withoutFood = current.map(meal => {
-        if (meal.id !== fromMealId) return meal
-        const food = meal.foods.find(f => f.id === foodId)
-        if (food) moved = food
-        return { ...meal, foods: meal.foods.filter(f => f.id !== foodId) }
-      })
-      if (!moved) return current
-      return withoutFood.map(meal => (
-        meal.id === toMealId ? { ...meal, foods: [...meal.foods, moved as DraftFood] } : meal
-      ))
-    })
   }
 
   const handleAddMeal = (name: string) => {
@@ -276,7 +234,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
     }
 
     try {
-      const result = await saveDietPlan(payload)
+      const result = await saveDietPlan(payload, localDate)
       if ('error' in result) {
         setSaveError(result.error)
         setSaving(false)
@@ -293,8 +251,11 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
 
   return (
     <div className="space-y-8">
-      {/* Section 1 - Today's Nutrition: consumed vs. target, strongest
-          visual weight, answers "how am I doing today?" at a glance. */}
+      {/* Section 1 - Today's Actual Progress: the ONE daily section, sourced
+          strictly from actually-logged consumption (dailyTracking.consumed),
+          never from the planned diet total. Answers "how much of my daily
+          target have I actually consumed today?" without repeating the same
+          percentages in a second card set below it. */}
       {trackingLoading ? (
         <div className="space-y-4" aria-hidden="true">
           <div className="h-40 rounded-xl bg-surface border border-border animate-pulse" />
@@ -310,12 +271,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
           <span>{trackingError}</span>
         </div>
       ) : (
-        <>
-          <MacroSummaryCards totals={dailyTracking!.consumed} targets={targets} />
-          {/* Section 2 - Today's Progress: meal/food completion counts +
-              macro percentages, condensed to a 2-3-second scan. */}
-          <DailyProgressSummary tracking={dailyTracking!} />
-        </>
+        <DailyProgress tracking={dailyTracking!} targets={targets} />
       )}
 
       <div className="flex justify-end">
@@ -352,28 +308,25 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
             <MealCard
               key={meal.id}
               meal={meal}
-              allMeals={draft}
               changes={changes}
               foodOptions={foodOptions}
               isNext={nextMeal?.id === meal.id}
-              onQuantityChange={(foodId, qty) => handleQuantityChange(meal.id, foodId, qty)}
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
-              onMoveFood={(foodId, toMealId) => handleMoveFood(foodId, meal.id, toMealId)}
               onFoodCreated={handleFoodCreated}
               completion={
-                isPersistedMealId(meal.id)
+                isPersistedMealId(meal.id) && completionByMealId.get(meal.id)
                   ? {
-                      status: completionByMealId.get(meal.id)?.status ?? 'none',
-                      completedFoodIds: new Set(
-                        (completionByMealId.get(meal.id)?.foods ?? [])
-                          .filter(f => f.completed)
-                          .map(f => f.foodId)
+                      status: completionByMealId.get(meal.id)!.status,
+                      planned: completionByMealId.get(meal.id)!.planned,
+                      actual: completionByMealId.get(meal.id)!.actual,
+                      foods: new Map<string, FoodTrackingState>(
+                        completionByMealId.get(meal.id)!.foods.map(f => [f.foodId, f])
                       ),
                       onToggleMeal: () => handleToggleMealCompletion(meal.id),
-                      onToggleFood: (foodId) => handleToggleFoodCompletion(foodId, meal.id),
+                      onLogFood: (foodId, consumedQuantity) => handleLogFoodConsumption(foodId, meal.id, consumedQuantity),
                       togglingMeal: togglingMealId === meal.id,
-                      togglingFoodId
+                      loggingFoodId
                     }
                   : undefined
               }

@@ -3,12 +3,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
 import type { FoodMacro } from '@/lib/nutrition/calculator'
+import { isPlausibleToday } from '@/lib/tracking/date'
 import {
   validateMealsShape,
   resolveMeal,
+  computeFoodRelinkPairs,
   type SaveDietPlanPayload,
   type ResolvedMeal,
-  type OriginalFoodRecord
+  type OriginalFoodRecord,
+  type NamedMeal,
+  type NamedMealWithId
 } from '@/lib/diet/save-plan'
 
 export type SaveDietPlanResult = { success: true } | { error: string }
@@ -18,7 +22,12 @@ export type SaveDietPlanResult = { success: true } | { error: string }
 // safe persistence ordering as onboarding's new-plan flow: insert the fully
 // resolved new plan first, confirm it saved completely, and only then retire
 // the old one - so a failure at any point leaves the active plan untouched.
-export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDietPlanResult> {
+//
+// `localDate` (the browser's today, same value used by tracking-actions.ts)
+// is optional only for caller-compatibility - when present and plausible, it
+// scopes the food_tracking id migration below to today's rows, which is the
+// only date with a live UI depending on food_id.
+export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: string): Promise<SaveDietPlanResult> {
   try {
     const user = await getUser()
     if (!user) return { error: 'Not authenticated' }
@@ -51,7 +60,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     // reading another user's food rows via a crafted originalFoodId.
     const { data: currentMeals, error: currentMealsError } = await supabase
       .from('meals')
-      .select('id')
+      .select('id, name, foods(id, name)')
       .eq('diet_plan_id', currentPlan.id)
 
     if (currentMealsError) {
@@ -59,6 +68,10 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     }
 
     const currentMealIds = (currentMeals || []).map(m => m.id)
+    const oldMealsForRelink: NamedMeal[] = (currentMeals || []).map(m => ({
+      name: m.name,
+      foods: (m.foods || []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name }))
+    }))
 
     const originalFoodIds = Array.from(new Set(
       payload.meals.flatMap(m => m.foods.map(f => f.originalFoodId).filter((id): id is string => !!id))
@@ -133,6 +146,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     }
 
     const insertedMealIds: string[] = []
+    const newMealsForRelink: NamedMealWithId[] = []
     try {
       for (let i = 0; i < resolvedMeals.length; i++) {
         const meal = resolvedMeals[i]
@@ -164,8 +178,14 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
             sort_order: idx
           }))
 
-          const { error: insertFoodsError } = await supabase.from('foods').insert(foodsToInsert)
+          const { data: newFoods, error: insertFoodsError } = await supabase
+            .from('foods')
+            .insert(foodsToInsert)
+            .select('id, name')
           if (insertFoodsError) throw new Error('Food insert failed')
+          newMealsForRelink.push({ id: newMeal.id, name: meal.name, foods: newFoods || [] })
+        } else {
+          newMealsForRelink.push({ id: newMeal.id, name: meal.name, foods: [] })
         }
       }
     } catch {
@@ -186,6 +206,23 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     // the old (now-inactive) row is deleted afterward, same as before.
     await supabase.from('diet_plans').update({ is_active: false }).eq('id', currentPlan.id)
     await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
+
+    // 7b. Re-point today's already-recorded food_tracking rows at their
+    // replacement food/meal ids before the old rows are deleted below - once
+    // deleted, food_tracking.food_id/meal_id go NULL via ON DELETE SET NULL
+    // and can no longer be matched. Must run before the deletes: matching
+    // requires the old food ids to still be the live value on these rows.
+    if (localDate && isPlausibleToday(localDate)) {
+      const relinkPairs = computeFoodRelinkPairs(oldMealsForRelink, newMealsForRelink)
+      for (const pair of relinkPairs) {
+        await supabase
+          .from('food_tracking')
+          .update({ food_id: pair.newFoodId, meal_id: pair.newMealId })
+          .eq('user_id', user.id)
+          .eq('tracking_date', localDate)
+          .eq('food_id', pair.oldFoodId)
+      }
+    }
 
     if (currentMealIds.length > 0) {
       await supabase.from('foods').delete().in('meal_id', currentMealIds)
