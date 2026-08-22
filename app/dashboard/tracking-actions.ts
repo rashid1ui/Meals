@@ -16,8 +16,10 @@ import {
   zeroMacros,
   pctOf,
   buildFoodTrackingRow,
+  dailyAdherencePct,
   type MealStatus,
-  type TrackableFood
+  type TrackableFood,
+  type MacroTotals
 } from '@/lib/tracking/logic'
 
 export type FoodCompletionState = {
@@ -409,4 +411,117 @@ export async function getMonthlyTracking(year: number, month: number): Promise<R
   const start = `${year}-${String(month).padStart(2, '0')}-01`
   const end = lastDayOfMonthUTC(year, month)
   return getPeriodTracking(start, end)
+}
+
+export type CalendarDay = {
+  date: string
+  hasData: boolean
+  adherencePct: number | null
+  consumed: MacroTotals
+  target: MacroTotals
+  mealsCompleted: number
+  mealsTotal: number
+}
+
+export type MonthlyCalendar = {
+  year: number
+  month: number
+  days: CalendarDay[]
+}
+
+// One row per calendar date in the month (1..lastDay, always in order) - the
+// Insights calendar renders directly off this array with no client-side date
+// math of its own beyond placing each day in its weekday column. Two queries
+// total (daily_tracking for the macro rollup, food_tracking for per-meal
+// completion), same shape as getPeriodTracking above.
+export async function getMonthlyCalendar(year: number, month: number): Promise<Result<MonthlyCalendar>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return { error: 'Invalid month.' }
+  }
+
+  const supabase = await createClient()
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const end = lastDayOfMonthUTC(year, month)
+  const lastDay = Number(end.slice(8, 10))
+
+  const { data: dailyRows } = await supabase
+    .from('daily_tracking')
+    .select('tracking_date, calories, protein, carbs, fat, calories_target, protein_target, carbs_target, fat_target')
+    .eq('user_id', user.id)
+    .gte('tracking_date', start)
+    .lte('tracking_date', end)
+
+  const dailyByDate = new Map((dailyRows || []).map(r => [r.tracking_date as string, r]))
+
+  const { data: mealRows } = await supabase
+    .from('food_tracking')
+    .select('tracking_date, meal_id, food_id, completed')
+    .eq('user_id', user.id)
+    .gte('tracking_date', start)
+    .lte('tracking_date', end)
+    .not('meal_id', 'is', null)
+
+  // date -> meal_id -> the set of tracked food ids for that meal that day,
+  // and which of those are completed. Reuses computeMealStatus's exact
+  // complete/partial/none rule (imported from lib/tracking/logic.ts, the
+  // same logic the live Dashboard uses for today) rather than a second
+  // definition of "meal complete" - "complete" means every food tracked for
+  // that meal that day is checked.
+  const mealGroups = new Map<string, Map<string, { foodIds: Set<string>; completed: Set<string> }>>()
+  for (const r of mealRows || []) {
+    if (!r.meal_id || !r.food_id) continue
+    let byMeal = mealGroups.get(r.tracking_date as string)
+    if (!byMeal) {
+      byMeal = new Map()
+      mealGroups.set(r.tracking_date as string, byMeal)
+    }
+    let group = byMeal.get(r.meal_id as string)
+    if (!group) {
+      group = { foodIds: new Set(), completed: new Set() }
+      byMeal.set(r.meal_id as string, group)
+    }
+    group.foodIds.add(r.food_id as string)
+    if (r.completed) group.completed.add(r.food_id as string)
+  }
+
+  const days: CalendarDay[] = []
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const row = dailyByDate.get(date)
+    const consumed: MacroTotals = {
+      calories: Number(row?.calories ?? 0),
+      protein: Number(row?.protein ?? 0),
+      carbs: Number(row?.carbs ?? 0),
+      fat: Number(row?.fat ?? 0)
+    }
+    const target: MacroTotals = {
+      calories: Number(row?.calories_target ?? 0),
+      protein: Number(row?.protein_target ?? 0),
+      carbs: Number(row?.carbs_target ?? 0),
+      fat: Number(row?.fat_target ?? 0)
+    }
+
+    const byMeal = mealGroups.get(date)
+    let mealsCompleted = 0
+    const mealsTotal = byMeal?.size ?? 0
+    if (byMeal) {
+      for (const group of byMeal.values()) {
+        if (computeMealStatus(Array.from(group.foodIds), group.completed) === 'complete') mealsCompleted++
+      }
+    }
+
+    days.push({
+      date,
+      hasData: Boolean(row),
+      adherencePct: row ? dailyAdherencePct(consumed, target) : null,
+      consumed,
+      target,
+      mealsCompleted,
+      mealsTotal
+    })
+  }
+
+  return { data: { year, month, days } }
 }

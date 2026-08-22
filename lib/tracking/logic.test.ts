@@ -5,6 +5,8 @@ import {
   sumMacros,
   sumCompletedMacros,
   buildFoodTrackingRow,
+  adherenceTier,
+  dailyAdherencePct,
   type TrackableFood
 } from './logic'
 
@@ -124,4 +126,44 @@ test('buildFoodTrackingRow - snapshots the food nutrition onto the row, independ
   assert.strictEqual(row.calories, 143)
   assert.strictEqual(row.food_name, 'Eggs')
   assert.strictEqual(row.quantity, 100)
+})
+
+// Insights calendar tier boundaries - each threshold is inclusive at its
+// lower bound (90 is 'excellent', 89 is 'good'), and null (no daily_tracking
+// row) is always 'none' regardless of any number.
+test('adherenceTier - buckets percentages at the documented boundaries', () => {
+  assert.strictEqual(adherenceTier(100), 'excellent')
+  assert.strictEqual(adherenceTier(90), 'excellent')
+  assert.strictEqual(adherenceTier(89), 'good')
+  assert.strictEqual(adherenceTier(75), 'good')
+  assert.strictEqual(adherenceTier(74), 'partial')
+  assert.strictEqual(adherenceTier(50), 'partial')
+  assert.strictEqual(adherenceTier(49), 'low')
+  assert.strictEqual(adherenceTier(25), 'low')
+  assert.strictEqual(adherenceTier(24), 'verylow')
+  assert.strictEqual(adherenceTier(0), 'verylow')
+  assert.strictEqual(adherenceTier(null), 'none')
+})
+
+test('dailyAdherencePct - averages all four macros hitting target exactly to 100', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 70 }
+  const pct = dailyAdherencePct(target, target)
+  assert.strictEqual(pct, 100)
+})
+
+test('dailyAdherencePct - caps an over-target macro at 100 instead of inflating the average', () => {
+  const target = { calories: 2000, protein: 150, carbs: 200, fat: 70 }
+  // Calories at 200% of target, everything else untouched - an uncapped
+  // average would read 137.5%, which would wrongly outrank a clean 100% day.
+  const consumed = { calories: 4000, protein: 0, carbs: 0, fat: 0 }
+  const pct = dailyAdherencePct(consumed, target)
+  assert.strictEqual(pct, 25)
+})
+
+test('dailyAdherencePct - a target of 0 contributes 0, never divides by zero', () => {
+  const consumed = { calories: 1000, protein: 50, carbs: 0, fat: 0 }
+  const target = { calories: 2000, protein: 100, carbs: 0, fat: 0 }
+  // calories 50% + protein 50% + carbs 0% (no target) + fat 0% (no target), / 4
+  const pct = dailyAdherencePct(consumed, target)
+  assert.strictEqual(pct, 25)
 })

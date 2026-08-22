@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary } from '../tracking-actions'
 import Card from '@/components/ui/Card'
 import { AlertIcon } from '@/components/ui/icons'
+import DailyProgressCalendar from './DailyProgressCalendar'
 
 type Tab = 'week' | 'month'
 
@@ -82,7 +83,7 @@ function PeriodPanel({ tab }: { tab: Tab }) {
     <>
       <Card className="p-6 space-y-4">
         <h2 className="font-display text-lg font-bold text-foreground">
-          {tab === 'week' ? 'Weekly Nutrition' : 'Monthly Nutrition'}
+          {tab === 'week' ? 'Weekly Nutrition' : 'Monthly Nutrition'} <span aria-hidden="true">🥗</span>
         </h2>
         <MetricRow label="Calories" value={data.averages.calories} colorClass="bg-calories" />
         <MetricRow label="Protein" value={data.averages.protein} colorClass="bg-protein" />
@@ -141,6 +142,8 @@ export default function InsightsView() {
       </div>
 
       <PeriodPanel key={tab} tab={tab} />
+
+      <DailyProgressCalendar />
     </div>
   )
 }

@@ -59,6 +59,39 @@ export function pctOf(value: number, target: number): number {
   return target > 0 ? (value / target) * 100 : 0
 }
 
+// The five buckets the Insights calendar colors a day by, plus 'none' for a
+// date with no daily_tracking row at all (never tracked - distinct from a
+// tracked day that happened to score 0%). Thresholds mirror the language
+// already used elsewhere in the app (on-target/slightly-over/over in
+// classifyTarget) rather than inventing a new vocabulary.
+export type AdherenceTier = 'excellent' | 'good' | 'partial' | 'low' | 'verylow' | 'none'
+
+export function adherenceTier(pct: number | null): AdherenceTier {
+  if (pct === null) return 'none'
+  if (pct >= 90) return 'excellent'
+  if (pct >= 75) return 'good'
+  if (pct >= 50) return 'partial'
+  if (pct >= 25) return 'low'
+  return 'verylow'
+}
+
+// A single blended "how was this day" score: each macro's progress toward
+// its target, capped at 100 so overeating past a target can't inflate the
+// score above what hitting it exactly would give, then averaged across all
+// four. The cap mirrors the one already applied to progress-bar widths in
+// MacroSummaryCards/DailyProgressSummary - this just applies it to the
+// number itself, since it feeds one blended score rather than four bars.
+export function dailyAdherencePct(consumed: MacroTotals, target: MacroTotals): number {
+  const capped = (value: number, t: number) => Math.min(100, Math.max(0, pctOf(value, t)))
+  const avg =
+    (capped(consumed.calories, target.calories) +
+      capped(consumed.protein, target.protein) +
+      capped(consumed.carbs, target.carbs) +
+      capped(consumed.fat, target.fat)) /
+    4
+  return Math.round(avg)
+}
+
 export interface FoodTrackingRowInput {
   userId: string
   trackingDate: string

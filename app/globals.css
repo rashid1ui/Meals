@@ -25,6 +25,20 @@
   --carbs: #f2a05c;
   --fat: #e7c25b;
   --calories: #22c08a;
+
+  /* Insights calendar adherence tiers - a deliberate 5-step scale (plus
+     "none") rather than reused badge colors, so a day's status reads at a
+     glance without leaning on hue alone: excellent/partial/verylow reuse the
+     existing success/warning/error hues for consistency with the rest of the
+     app, good/low are new hues that keep the scale perceptually even
+     between them. All pass 6.8:1+ contrast against both --background and
+     --surface. --tier-none is fill/border only, never text. */
+  --tier-excellent: #22c08a;
+  --tier-good: #34b3ae;
+  --tier-partial: #e0a233;
+  --tier-low: #e08145;
+  --tier-verylow: #f0685a;
+  --tier-none: #3a4451;
 }
 
 @theme inline {
@@ -47,6 +61,13 @@
   --color-carbs: var(--carbs);
   --color-fat: var(--fat);
   --color-calories: var(--calories);
+
+  --color-tier-excellent: var(--tier-excellent);
+  --color-tier-good: var(--tier-good);
+  --color-tier-partial: var(--tier-partial);
+  --color-tier-low: var(--tier-low);
+  --color-tier-verylow: var(--tier-verylow);
+  --color-tier-none: var(--tier-none);
 
   --font-sans: var(--font-barlow);
   --font-display: var(--font-barlow-condensed);
