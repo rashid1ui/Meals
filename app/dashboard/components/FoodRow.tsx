@@ -14,6 +14,7 @@ import {
 import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
+import { getFoodEmoji } from '@/lib/food/foodEmojiMap'
 
 const QUANTITY_STEP = 10
 
@@ -154,7 +155,12 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
         >
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-foreground truncate">{food.name}</span>
+              <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+                <span aria-hidden="true" className="text-base leading-none shrink-0">
+                  {getFoodEmoji(food.name)}
+                </span>
+                <span className="font-semibold text-foreground truncate">{food.name}</span>
+              </span>
               {badges.map(badge => (
                 <Badge key={badge} variant={BADGE_VARIANT[badge]}>
                   {BADGE_LABELS[badge]}
