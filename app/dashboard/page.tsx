@@ -158,7 +158,7 @@ export default async function DashboardPage() {
           {previousPlans && previousPlans.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {previousPlans.map((plan) => (
-                <Link key={plan.id} href={`/dashboard/plans/${plan.id}`} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <Link key={plan.id} href={`/dashboard/plans/${plan.id}`} className="block rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   <Card className="p-5 space-y-3 hover:border-primary/40 transition-colors">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-display font-bold text-foreground truncate">{plan.name}</h3>

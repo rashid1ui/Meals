@@ -294,15 +294,15 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
           percentages in a second card set below it. */}
       {trackingLoading ? (
         <div className="space-y-4" aria-hidden="true">
-          <div className="h-40 rounded-xl bg-surface border border-border animate-pulse" />
+          <div className="h-40 rounded-card bg-surface border border-border animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-28 rounded-xl bg-surface border border-border animate-pulse" />
+              <div key={i} className="h-28 rounded-card bg-surface border border-border animate-pulse" />
             ))}
           </div>
         </div>
       ) : trackingError ? (
-        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-control">
           <AlertIcon size={18} className="shrink-0 mt-0.5" />
           <span>{trackingError}</span>
         </div>
@@ -313,7 +313,7 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
       <div className="flex justify-end">
         <Link
           href="/dashboard/insights"
-          className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
+          className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
         >
           Weekly &amp; Monthly Insights
           <ChevronRightIcon size={14} />

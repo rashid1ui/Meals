@@ -62,7 +62,7 @@ export default function FoodStep({ title, description, items, selected, onToggle
               onChange={e => setQuery(e.target.value)}
               placeholder="Search"
               aria-label={`Search ${title.toLowerCase()}`}
-              className="w-full min-h-[44px] bg-background border border-border rounded-lg pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
+              className="w-full min-h-[44px] bg-background border border-border rounded-control pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
             />
           </div>
         )}
@@ -78,7 +78,7 @@ export default function FoodStep({ title, description, items, selected, onToggle
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onToggle(item.id)}
-                className={`min-h-[44px] px-4 py-3 rounded-lg border flex items-center justify-between gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                className={`min-h-[44px] px-4 py-3 rounded-control border flex items-center justify-between gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                   isSelected
                     ? 'bg-primary/10 border-primary text-foreground'
                     : 'bg-background border-border text-foreground hover:border-muted-foreground'
@@ -120,7 +120,7 @@ export default function FoodStep({ title, description, items, selected, onToggle
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="w-full min-h-[44px] px-4 py-3 rounded-lg border border-dashed border-primary/50 flex items-center justify-center gap-2 text-primary font-semibold text-sm hover:bg-primary/10 hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="w-full min-h-[44px] px-4 py-3 rounded-control border border-dashed border-primary/50 flex items-center justify-center gap-2 text-primary font-semibold text-sm hover:bg-primary/10 hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <PlusIcon size={16} />
           Add Custom Food

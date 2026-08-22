@@ -7,7 +7,7 @@ type Props = HTMLAttributes<HTMLDivElement> & {
 export default function Card({ elevated = false, className = '', children, ...rest }: Props) {
   return (
     <div
-      className={`${elevated ? 'bg-surface-elevated' : 'bg-surface'} border border-border rounded-xl ${className}`}
+      className={`${elevated ? 'bg-surface-elevated' : 'bg-surface'} border border-border rounded-card ${className}`}
       {...rest}
     >
       {children}

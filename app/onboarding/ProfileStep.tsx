@@ -118,7 +118,7 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
               key={s}
               type="button"
               onClick={() => set('sex', s)}
-              className={`min-h-[44px] rounded-lg border px-4 py-2.5 text-sm font-semibold capitalize transition-colors cursor-pointer ${
+              className={`min-h-[44px] rounded-control border px-4 py-2.5 text-sm font-semibold capitalize transition-colors cursor-pointer ${
                 value.sex === s
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border text-foreground hover:bg-surface-elevated'
@@ -198,7 +198,7 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
             id="activity-level"
             value={value.activityLevel}
             onChange={e => set('activityLevel', e.target.value as ActivityLevel)}
-            className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-lg pl-4 pr-10 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
+            className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-control pl-4 pr-10 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
           >
             <option value="" disabled>
               Select your daily activity outside training

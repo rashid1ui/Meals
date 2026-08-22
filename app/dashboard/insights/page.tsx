@@ -32,7 +32,7 @@ export default async function InsightsPage() {
           </div>
           <Link
             href="/dashboard"
-            className="min-h-[44px] flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
+            className="min-h-[44px] flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
           >
             <ChevronLeftIcon size={16} />
             Back to Dashboard

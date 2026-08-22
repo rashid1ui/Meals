@@ -78,7 +78,7 @@ export default function ChangeSummaryPanel({
       <button
         onClick={() => setExpanded(e => !e)}
         aria-expanded={expanded}
-        className="w-full flex items-center justify-between gap-3 min-h-[44px] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="w-full flex items-center justify-between gap-3 min-h-[44px] rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <AlertIcon size={16} className="text-warning" />
@@ -105,7 +105,7 @@ export default function ChangeSummaryPanel({
       )}
 
       {saveError && (
-        <div className="mt-3 flex items-start gap-2 p-3 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+        <div className="mt-3 flex items-start gap-2 p-3 text-sm text-error bg-error/10 border border-error/30 rounded-control">
           <AlertIcon size={16} className="shrink-0 mt-0.5" />
           <span>{saveError}</span>
         </div>

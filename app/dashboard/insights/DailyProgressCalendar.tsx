@@ -118,7 +118,7 @@ function CalendarSkeleton() {
     <div className="space-y-1.5 sm:space-y-2" aria-hidden="true">
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
         {Array.from({ length: 35 }).map((_, i) => (
-          <div key={i} className="aspect-square rounded-lg bg-surface-elevated border border-border animate-pulse" />
+          <div key={i} className="aspect-square rounded-control bg-surface-elevated border border-border animate-pulse" />
         ))}
       </div>
     </div>
@@ -264,7 +264,7 @@ export default function DailyProgressCalendar() {
           type="button"
           onClick={goPrev}
           aria-label="Previous month"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ChevronLeftIcon size={18} />
         </button>
@@ -276,7 +276,7 @@ export default function DailyProgressCalendar() {
           onClick={goNext}
           disabled={isCurrentMonth}
           aria-label="Next month"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ChevronRightIcon size={18} />
         </button>
@@ -295,7 +295,7 @@ export default function DailyProgressCalendar() {
       {loading ? (
         <CalendarSkeleton />
       ) : error ? (
-        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-control">
           <AlertIcon size={18} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -343,7 +343,7 @@ export default function DailyProgressCalendar() {
                     onKeyDown={e => handleGridKeyDown(e, index)}
                     aria-pressed={isSelected}
                     aria-label={cellAriaLabel(day, isToday)}
-                    className={`relative aspect-square rounded-lg border flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface hover:brightness-110 ${style.bg} ${style.border} ${isFuture ? 'opacity-40' : ''} ${ringClass}`}
+                    className={`relative aspect-square rounded-control border flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface hover:brightness-110 ${style.bg} ${style.border} ${isFuture ? 'opacity-40' : ''} ${ringClass}`}
                   >
                     <span
                       className={`text-[9px] sm:text-[10px] font-semibold tabular-nums leading-none ${isToday ? 'text-primary' : 'text-muted-foreground'}`}

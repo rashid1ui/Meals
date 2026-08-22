@@ -75,7 +75,7 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose, onFoodCrea
   }
 
   return (
-    <div className="mt-3 p-4 rounded-lg bg-background border border-primary/30 space-y-3">
+    <div className="mt-3 p-4 rounded-control bg-background border border-primary/30 space-y-3">
       {!selected ? (
         <>
           <div className="relative">
@@ -87,7 +87,7 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose, onFoodCrea
               onChange={e => setQuery(e.target.value)}
               placeholder="Search foods..."
               aria-label="Search foods"
-              className="w-full min-h-[44px] bg-surface border border-border rounded-lg pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="w-full min-h-[44px] bg-surface border border-border rounded-control pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
           </div>
           {results.length > 0 && (
@@ -96,7 +96,7 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose, onFoodCrea
                 <button
                   key={food.id}
                   onClick={() => selectFood(food)}
-                  className="w-full min-h-[44px] text-left px-3 py-2 rounded-lg bg-surface hover:bg-surface-elevated text-sm flex items-center justify-between transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="w-full min-h-[44px] text-left px-3 py-2 rounded-control bg-surface hover:bg-surface-elevated text-sm flex items-center justify-between transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <span className="text-foreground">{food.name}</span>
                   <span className="font-mono tabular-nums text-xs text-muted-foreground">
@@ -116,7 +116,7 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose, onFoodCrea
             <button
               type="button"
               onClick={() => setMode('create')}
-              className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-strong transition-colors rounded-lg px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-strong transition-colors rounded-control px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <PlusIcon size={14} />
               Can&apos;t find it? Add a new food
@@ -140,7 +140,7 @@ export default function AddFoodPopover({ foodOptions, onAdd, onClose, onFoodCrea
               value={quantity}
               onChange={e => setQuantity(e.target.value)}
               aria-label={`Quantity in ${unitLabel(selected.display_unit || 'g', parsedQuantity || 0)}`}
-              className="w-20 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="w-20 min-h-[44px] text-center bg-surface border border-border rounded-control text-sm font-mono tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <span className="text-sm font-semibold text-foreground">
               {unitLabel(selected.display_unit || 'g', parsedQuantity || 0)}

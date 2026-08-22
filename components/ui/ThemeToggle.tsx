@@ -61,7 +61,7 @@ export default function ThemeToggle({ variant = 'icon' }: Props) {
         type="button"
         role="menuitem"
         onClick={toggle}
-        className="flex items-center gap-2 min-h-[44px] px-3 rounded-lg text-sm font-semibold text-foreground hover:bg-surface transition-colors w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="flex items-center gap-2 min-h-[44px] px-3 rounded-control text-sm font-semibold text-foreground hover:bg-surface transition-colors w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         {isDark ? <SunIcon size={16} /> : <MoonIcon size={16} />}
         {label}
@@ -75,7 +75,7 @@ export default function ThemeToggle({ variant = 'icon' }: Props) {
       onClick={toggle}
       aria-label={label}
       title={label}
-      className="w-11 h-11 flex items-center justify-center rounded-lg border border-border text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="w-11 h-11 flex items-center justify-center rounded-full border border-border text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       {isDark ? <SunIcon size={18} /> : <MoonIcon size={18} />}
     </button>

@@ -189,7 +189,7 @@ export default function MealCard({
           </span>
         )}
         {meal.foods.length === 0 && !showAddFood ? (
-          <div className="text-center py-6 px-4 rounded-lg border border-dashed border-border">
+          <div className="text-center py-6 px-4 rounded-control border border-dashed border-border">
             <p className="text-sm font-semibold text-foreground">No foods in this meal yet.</p>
             <p className="text-xs text-muted-foreground mt-1">Add a food to start building this meal.</p>
           </div>
@@ -235,7 +235,7 @@ export default function MealCard({
       ) : (
         <button
           onClick={() => setShowAddFood(true)}
-          className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
+          className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control"
         >
           <PlusIcon size={14} />
           Add food

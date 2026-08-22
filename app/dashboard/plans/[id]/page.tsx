@@ -102,14 +102,14 @@ export default async function PreviousPlanPage({ params }: PageProps) {
       <div className="max-w-6xl mx-auto p-6 mt-6 space-y-8 pb-20">
         <Link
           href="/dashboard"
-          className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
+          className="min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary px-1"
         >
           <ChevronLeftIcon size={16} />
           Back to Dashboard
         </Link>
 
         {/* Persistent historical banner - impossible to miss */}
-        <div className="rounded-xl border border-border bg-surface-elevated px-5 py-4 flex items-start gap-3">
+        <div className="rounded-card border border-border bg-surface-elevated px-5 py-4 flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center text-muted-foreground shrink-0">
             <ClockIcon size={18} />
           </div>
@@ -174,7 +174,7 @@ export default async function PreviousPlanPage({ params }: PageProps) {
 
                   <div className="flex-1 space-y-3">
                     {meal.foods.map((food) => (
-                      <div key={food.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-background border border-border">
+                      <div key={food.id} className="flex items-center justify-between gap-3 p-3 rounded-control bg-background border border-border">
                         <div className="min-w-0">
                           <div className="font-semibold text-foreground truncate">{food.name}</div>
                           <div className="text-xs text-muted-foreground font-mono tabular-nums">

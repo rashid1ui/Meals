@@ -51,7 +51,7 @@ function PeriodPanel({ tab }: { tab: Tab }) {
     return (
       <div className="space-y-3" aria-hidden="true">
         {[0, 1, 2, 3].map(i => (
-          <div key={i} className="h-12 rounded-lg bg-surface border border-border animate-pulse" />
+          <div key={i} className="h-12 rounded-control bg-surface border border-border animate-pulse" />
         ))}
       </div>
     )
@@ -59,7 +59,7 @@ function PeriodPanel({ tab }: { tab: Tab }) {
 
   if (error) {
     return (
-      <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+      <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-control">
         <AlertIcon size={18} className="shrink-0 mt-0.5" />
         <span>{error}</span>
       </div>

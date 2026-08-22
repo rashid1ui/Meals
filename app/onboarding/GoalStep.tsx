@@ -32,7 +32,7 @@ export default function GoalStep({ value, onChange }: Props) {
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`text-left rounded-lg border p-4 transition-colors cursor-pointer ${
+            className={`text-left rounded-control border p-4 transition-colors cursor-pointer ${
               value === opt.value
                 ? 'border-primary bg-primary/10'
                 : 'border-border hover:bg-surface-elevated'

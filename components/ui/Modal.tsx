@@ -62,7 +62,7 @@ export default function Modal({ onClose, labelledBy, children }: Props) {
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className="w-full max-w-md bg-surface-elevated border border-border rounded-xl p-8 shadow-2xl relative z-10 focus:outline-none"
+        className="w-full max-w-md bg-surface-elevated border border-border rounded-panel p-8 shadow-[var(--shadow-modal)] relative z-10 focus:outline-none"
       >
         {children}
       </div>

@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, Barlow, JetBrains_Mono } from "next/font/google";
+import { Rubik, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const barlowCondensed = Barlow_Condensed({
-  variable: "--font-barlow-condensed",
-  weight: ["500", "600", "700"],
-  subsets: ["latin"],
-});
-
-const barlow = Barlow({
-  variable: "--font-barlow",
-  weight: ["400", "500", "600", "700"],
+const rubik = Rubik({
+  variable: "--font-rubik",
+  weight: ["300", "400", "500", "600", "700"],
   subsets: ["latin"],
 });
 
@@ -33,7 +27,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${barlowCondensed.variable} ${barlow.variable} ${jetBrainsMono.variable} h-full antialiased`}
+      className={`${rubik.variable} ${jetBrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

@@ -50,7 +50,7 @@ export default function AddMealModal({ onAdd, onCancel }: Props) {
               type="button"
               aria-pressed={mealType === type}
               onClick={() => setMealType(type)}
-              className={`min-h-[44px] px-3 rounded-lg text-sm font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated ${
+              className={`min-h-[44px] px-3 rounded-control text-sm font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated ${
                 mealType === type
                   ? 'bg-primary/10 border-primary text-primary'
                   : 'bg-background border-border text-foreground hover:border-muted-foreground'
@@ -81,7 +81,7 @@ export default function AddMealModal({ onAdd, onCancel }: Props) {
           type="time"
           value={time}
           onChange={e => setTime(e.target.value)}
-          className="w-full min-h-[44px] bg-background border border-border rounded-lg px-4 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
+          className="w-full min-h-[44px] bg-background border border-border rounded-control px-4 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors"
         />
       </div>
 

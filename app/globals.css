@@ -1,41 +1,53 @@
 @import "tailwindcss";
 
 /*
- * Gym Meals design tokens - Phase 1.
- * Light is the default brand surface (matches the Omnifood reference
- * palette exactly: cream background, white cards, #E67E22 orange) and
- * always renders unless something opts into dark. Dark values are kept
- * defined and gated behind :root[data-theme="dark"] rather than
- * prefers-color-scheme, so the app never auto-switches off the OS
- * setting - there is no toggle UI yet, so nothing sets that attribute
- * and light always shows. Component classNames are unchanged in this
- * pass; only token values.
+ * Gym Meals design tokens - Phase 2 (MealTrack-inspired reskin).
+ * Palette and shape are derived from mealtrack.com's live computed
+ * styles: deep forest green + lime brand pair, one rounded geometric
+ * sans (Rubik) instead of the old three-family system, much larger
+ * corner radii, pill buttons, and near-zero shadow. Light is still the
+ * default brand surface and always renders unless something opts into
+ * dark via :root[data-theme="dark"] (ThemeToggle is the only thing that
+ * sets it) - the reskin changed values, not that architecture.
  */
 :root {
   /* ---- Light (default) ---- */
-  --background: #fdf2e9;
+  --background: #f6f5f0;
   --surface: #ffffff;
-  --surface-elevated: #fffbf6;
-  --border: #d9c0a0;
-  --foreground: #333333;
-  --muted-foreground: #555555;
+  --surface-elevated: #fbfaf6;
+  --border: #dce2d6;
+  --foreground: #16241c;
+  --muted-foreground: #57685c;
 
-  --primary: #e67e22;
-  --primary-strong: #c96a17;
-  --primary-foreground: #1a0f06;
+  /* --primary is the structural brand hue (headings, links, focus ring).
+     --accent is the separate, brighter fill MealTrack actually uses on
+     its buttons - keeping them apart means a solid green panel (frame-cta
+     style) and a lime CTA button don't collide when both appear together. */
+  --primary: #00865d;
+  --primary-strong: #066b49;
+  --primary-foreground: #ffffff;
+
+  --accent: #45e069;
+  --accent-strong: #33c957;
+  --accent-foreground: #04331f;
 
   /* Success/warning/error double as direct text colors (Badge, danger
      Button) as well as translucent fills, so light-theme values are the
      deepened, AA-safe (4.5:1+) variant of each hue rather than the more
-     vivid one dark theme can afford against a near-black background. */
-  --success: #0a6e4b;
-  --warning: #8c5a0f;
-  --error: #b23a29;
+     vivid one dark theme can afford against a near-black background.
+     Success intentionally avoids the brand green (a teal instead) so a
+     status badge can never be mistaken for brand chrome. */
+  --success: #0d9488;
+  --warning: #b45309;
+  --error: #c0392b;
 
+  /* Calories moved off green in this pass - it used to reuse --success,
+     which collided once green became the brand hue. Carbs picked up the
+     amber-orange the old orange brand color vacated. */
   --protein: #1b63f6;
-  --carbs: #ac560e;
+  --carbs: #b5590e;
   --fat: #8b6b14;
-  --calories: #0a6e4b;
+  --calories: #e8583d;
 
   /* Insights calendar adherence tiers - a deliberate 5-step scale (plus
      "none") rather than reused badge colors, so a day's status reads at a
@@ -45,73 +57,73 @@
      between them. All pass 4.5:1+ text contrast against --surface and
      --background. --tier-none is fill/border only, never text, so it
      isn't held to the same ratio. */
-  --tier-excellent: #0a6e4b;
-  --tier-good: #247c78;
-  --tier-partial: #8c5a0f;
-  --tier-low: #b1571d;
-  --tier-verylow: #b23a29;
-  --tier-none: #c7b79c;
+  --tier-excellent: #0d9488;
+  --tier-good: #3fa796;
+  --tier-partial: #b45309;
+  --tier-low: #c2660f;
+  --tier-verylow: #c0392b;
+  --tier-none: #d8ddd2;
 
-  /* Radius scale - not yet wired into component classNames (Phase 2).
-     Deliberately named outside Tailwind's built-in radius scale (xs/sm/
-     md/lg/xl/full) - declaring them through @theme would otherwise
-     silently redefine rounded-lg, rounded-md, etc. everywhere those
-     utilities already appear in the app today. --radius-control and
-     --radius-card match the 8px/12px that rounded-lg/rounded-xl already
-     render, so Phase 2 can swap classNames with no visual change.
-     Defined as plain custom properties (not routed through @theme
-     inline) because Tailwind v4 drops unused @theme entries from the
-     build - a plain :root property is always emitted regardless of
-     whether a component references it yet. */
-  --radius-chip: 6px;
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-panel: 16px;
+  /* Radius scale - wired into component classNames as of this pass
+     (rounded-chip/control/card/panel/pill below). Deliberately named
+     outside Tailwind's built-in radius scale (xs/sm/md/lg/xl/full) so
+     these coexist with any stray rounded-lg/rounded-xl usage without
+     silently redefining it. Roughly doubled from Phase 1 to match
+     MealTrack's much rounder shape language. */
+  --radius-chip: 10px;
+  --radius-control: 14px;
+  --radius-card: 20px;
+  --radius-panel: 28px;
   --radius-pill: 9999px;
 
-  /* Shadow scale - soft and low-alpha by design ("minimal shadows"); not
-     yet wired into components. Light theme leans on real shadow since
-     surface/surface-elevated are both near-white and can't be told apart
-     by fill alone. Same plain-:root reasoning as the radius scale above. */
-  --shadow-subtle: 0 1px 2px rgba(51, 38, 20, 0.06);
-  --shadow-card: 0 2px 8px rgba(51, 38, 20, 0.08);
-  --shadow-panel: 0 8px 24px rgba(51, 38, 20, 0.1);
-  --shadow-modal: 0 20px 60px rgba(51, 38, 20, 0.16);
+  /* Shadow scale - mostly retired in this pass. MealTrack conveys depth
+     through a 1px border and surface/background contrast rather than
+     shadow (its cards render zero box-shadow); --shadow-modal is kept
+     as the one real shadow, since a modal has no surrounding surface
+     contrast to lean on instead. */
+  --shadow-subtle: none;
+  --shadow-card: none;
+  --shadow-panel: 0 1px 2px rgba(22, 36, 28, 0.04);
+  --shadow-modal: 0 20px 60px rgba(22, 36, 28, 0.16);
 }
 
 :root[data-theme="dark"] {
-  /* ---- Dark (secondary, opt-in only - no toggle wires this up yet) ---- */
-  --background: #14110f;
-  --surface: #1c1815;
-  --surface-elevated: #241f1a;
-  --border: #33291f;
-  --foreground: #f5efe9;
-  --muted-foreground: #a69c90;
+  /* ---- Dark (secondary, opt-in only - toggled via ThemeToggle) ---- */
+  --background: #0e130f;
+  --surface: #171d18;
+  --surface-elevated: #1e2620;
+  --border: #2c3830;
+  --foreground: #edf2ea;
+  --muted-foreground: #9fae9a;
 
-  --primary: #e67e22;
-  --primary-strong: #eb9950;
-  --primary-foreground: #1a0f06;
+  --primary: #2fae7d;
+  --primary-strong: #45e069;
+  --primary-foreground: #04160e;
 
-  --success: #22c08a;
-  --warning: #e0a233;
+  --accent: #61f085;
+  --accent-strong: #45e069;
+  --accent-foreground: #04160e;
+
+  --success: #2dd4c0;
+  --warning: #e3a23a;
   --error: #f0685a;
 
   --protein: #6e9cf9;
   --carbs: #f2a05c;
   --fat: #e7c25b;
-  --calories: #22c08a;
+  --calories: #ff8a6b;
 
-  --tier-excellent: #22c08a;
-  --tier-good: #34b3ae;
-  --tier-partial: #e0a233;
+  --tier-excellent: #2dd4c0;
+  --tier-good: #59c2b4;
+  --tier-partial: #e3a23a;
   --tier-low: #e08145;
   --tier-verylow: #f0685a;
-  --tier-none: #3a342c;
+  --tier-none: #3a453c;
 
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --shadow-subtle: none;
+  --shadow-card: none;
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {
@@ -125,6 +137,10 @@
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
   --color-primary-foreground: var(--primary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-foreground: var(--accent-foreground);
 
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -142,8 +158,14 @@
   --color-tier-verylow: var(--tier-verylow);
   --color-tier-none: var(--tier-none);
 
-  --font-sans: var(--font-barlow);
-  --font-display: var(--font-barlow-condensed);
+  --radius-chip: var(--radius-chip);
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-panel: var(--radius-panel);
+  --radius-pill: var(--radius-pill);
+
+  --font-sans: var(--font-rubik);
+  --font-display: var(--font-rubik);
   --font-mono: var(--font-jetbrains-mono);
 }
 

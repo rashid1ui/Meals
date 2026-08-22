@@ -37,10 +37,19 @@ export default function NotificationSettings({ initialMeals, initialPreferences 
       if (result === 'granted') {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
         const saved = await upsertNotificationPreferences({ remindersEnabled: true, timezone })
-        if ('data' in saved) setPreferences(saved.data)
-        else setError(saved.error)
-        // Best-effort - see ReminderStatusBar's identical comment.
-        await subscribeToPush()
+        if ('data' in saved) {
+          setPreferences(saved.data)
+          // Reuses the existing error banner above (no new UI) - only shown
+          // when the preference save itself succeeded, so a push failure
+          // never masks a more fundamental preference-save error.
+          const pushResult = await subscribeToPush()
+          if (!pushResult.ok) {
+            console.error('[NotificationSettings] push subscription failed:', pushResult.error)
+            setError(pushResult.error)
+          }
+        } else {
+          setError(saved.error)
+        }
       }
     } finally {
       setRequesting(false)
@@ -107,7 +116,7 @@ export default function NotificationSettings({ initialMeals, initialPreferences 
             type="button"
             onClick={handleEnableNotifications}
             disabled={requesting}
-            className="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            className="min-h-[44px] px-4 rounded-control text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             {requesting ? 'Requesting…' : 'Enable notifications'}
           </button>
@@ -139,7 +148,7 @@ export default function NotificationSettings({ initialMeals, initialPreferences 
           ) : (
             <div className={`space-y-2 pt-2 ${remindersOn ? '' : 'opacity-50'}`}>
               {meals.map(meal => (
-                <div key={meal.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                <div key={meal.id} className="flex items-center justify-between gap-3 p-3 rounded-control border border-border">
                   <label className="flex items-center gap-3 flex-1 cursor-pointer" htmlFor={`settings-reminder-${meal.id}`}>
                     <input
                       id={`settings-reminder-${meal.id}`}
@@ -157,7 +166,7 @@ export default function NotificationSettings({ initialMeals, initialPreferences 
                     value={meal.reminderTime ?? ''}
                     disabled={!remindersOn || !meal.reminderEnabled || savingMealId === meal.id}
                     onChange={e => handleMealChange(meal.id, { reminderTime: e.target.value || null })}
-                    className="min-h-[44px] bg-background border border-border rounded-lg px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors disabled:cursor-not-allowed"
+                    className="min-h-[44px] bg-background border border-border rounded-control px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors disabled:cursor-not-allowed"
                   />
                 </div>
               ))}

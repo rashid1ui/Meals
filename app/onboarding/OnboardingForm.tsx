@@ -461,7 +461,7 @@ export default function OnboardingForm({
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+        <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-control">
           <AlertIcon size={18} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -488,7 +488,7 @@ export default function OnboardingForm({
           </div>
 
           {calculatorUsed && nutritionTarget && (
-            <div className="space-y-3 p-4 rounded-lg border border-border bg-surface-elevated">
+            <div className="space-y-3 p-4 rounded-control border border-border bg-surface-elevated">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-sm text-muted-foreground">
                   Estimated maintenance:{' '}
@@ -563,7 +563,7 @@ export default function OnboardingForm({
           </div>
 
           {calorieMismatch && (
-            <div className="flex items-start gap-2 p-4 text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg">
+            <div className="flex items-start gap-2 p-4 text-sm text-warning bg-warning/10 border border-warning/30 rounded-control">
               <AlertIcon size={18} className="shrink-0 mt-0.5" />
               <span>
                 Your protein, carbs, and fat add up to about{' '}
@@ -583,7 +583,7 @@ export default function OnboardingForm({
                 id="meals-per-day"
                 value={meals}
                 onChange={e => setMeals(e.target.value)}
-                className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-lg px-4 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
+                className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-control px-4 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
               >
                 <option value="3">3 Meals</option>
                 <option value="4">4 Meals</option>

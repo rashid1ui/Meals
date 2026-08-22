@@ -61,8 +61,10 @@ export default function RemindersStep({ value, onChange }: Props) {
       if (result === 'granted') {
         onChange({ ...value, enabled: true })
         // Best-effort - a subscribe failure here shouldn't block onboarding;
-        // the user can still enable push later from Settings.
-        await subscribeToPush()
+        // the user can still enable push later from Settings. Still logged
+        // so a silent failure is visible in the browser console.
+        const pushResult = await subscribeToPush()
+        if (!pushResult.ok) console.error('[RemindersStep] push subscription failed:', pushResult.error)
       }
     } finally {
       setRequesting(false)
@@ -79,7 +81,7 @@ export default function RemindersStep({ value, onChange }: Props) {
       </div>
 
       {permission !== 'unsupported' && (
-        <div className="p-4 rounded-lg border border-border bg-surface-elevated space-y-3">
+        <div className="p-4 rounded-control border border-border bg-surface-elevated space-y-3">
           {permission === 'granted' ? (
             <label className="flex items-center gap-3 cursor-pointer">
               <input
@@ -109,7 +111,7 @@ export default function RemindersStep({ value, onChange }: Props) {
 
       <div className={`space-y-3 ${value.enabled ? '' : 'opacity-50'}`}>
         {value.perMeal.map((meal, i) => (
-          <div key={i} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+          <div key={i} className="flex items-center justify-between gap-3 p-3 rounded-control border border-border">
             <label className="flex items-center gap-3 flex-1 cursor-pointer" htmlFor={`reminder-meal-${i}`}>
               <input
                 id={`reminder-meal-${i}`}
@@ -127,7 +129,7 @@ export default function RemindersStep({ value, onChange }: Props) {
               value={meal.time}
               disabled={!value.enabled || !meal.enabled}
               onChange={e => setMeal(i, { time: e.target.value })}
-              className="min-h-[44px] bg-background border border-border rounded-lg px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors disabled:cursor-not-allowed"
+              className="min-h-[44px] bg-background border border-border rounded-control px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors disabled:cursor-not-allowed"
             />
           </div>
         ))}

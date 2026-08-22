@@ -44,7 +44,7 @@ export default function LoginPage() {
         </p>
 
         {error && (
-          <div className="w-full flex items-start gap-2 p-4 mb-6 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+          <div className="w-full flex items-start gap-2 p-4 mb-6 text-sm text-error bg-error/10 border border-error/30 rounded-control">
             <AlertIcon size={18} className="shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>

@@ -136,7 +136,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
             title={statusLabel}
             onClick={handleQuickToggle}
             disabled={completion.logging}
-            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {completion.logging ? (
               <SpinnerIcon size={16} className="animate-spin" />
@@ -151,7 +151,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
           onClick={() => setEditing(e => !e)}
           aria-expanded={editing}
           aria-label={`${editing ? 'Collapse' : 'Edit'} ${food.name}`}
-          className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left rounded-lg py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left rounded-control py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -218,7 +218,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
         <button
           onClick={onRemove}
           aria-label={`Remove ${food.name}`}
-          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/50 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <CloseIcon size={16} />
         </button>
@@ -236,7 +236,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
                   onClick={() => logStep(-stepSize)}
                   disabled={completion.logging}
                   aria-label={`Decrease amount of ${food.name} eaten`}
-                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <MinusIcon size={16} />
                 </button>
@@ -247,7 +247,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
                   onChange={e => setLogInputValue(e.target.value)}
                   onBlur={() => commitLoggedQuantity(parseFloat(logInputValue))}
                   aria-label={`Amount of ${food.name} eaten, in ${unit}`}
-                  className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-lg text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="w-16 min-h-[44px] text-center bg-surface border border-border rounded-control text-sm font-mono tabular-nums disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 />
                 <span className="text-sm font-semibold text-foreground">
                   / {plannedDisplayForLog} {unit}
@@ -256,7 +256,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
                   onClick={() => logStep(stepSize)}
                   disabled={completion.logging}
                   aria-label={`Increase amount of ${food.name} eaten`}
-                  className="w-11 h-11 flex items-center justify-center rounded-lg bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <PlusIcon size={16} />
                 </button>

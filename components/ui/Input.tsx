@@ -35,7 +35,7 @@ export default function Input({
           id={inputId}
           aria-describedby={error ? errorId : helperText ? helperId : undefined}
           aria-invalid={Boolean(error)}
-          className={`w-full min-h-[44px] bg-background border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary ${
+          className={`w-full min-h-[44px] bg-background border rounded-control px-4 py-2.5 text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary ${
             error ? 'border-error' : 'border-border'
           } ${numeric ? 'font-mono tabular-nums' : ''} ${trailing ? 'pr-14' : ''} ${className}`}
           {...rest}

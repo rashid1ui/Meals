@@ -90,7 +90,7 @@ export default function CreateFoodForm({
   }
 
   return (
-    <div className="mt-3 p-4 rounded-lg bg-background border border-primary/30 space-y-4">
+    <div className="mt-3 p-4 rounded-control bg-background border border-primary/30 space-y-4">
       <div>
         <h4 className="font-display text-sm font-bold text-foreground">{title}</h4>
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
@@ -103,7 +103,7 @@ export default function CreateFoodForm({
         <select
           value={category}
           onChange={e => setCategory(e.target.value as CreateFoodInput['category'])}
-          className="w-full min-h-[44px] bg-surface border border-border rounded-lg px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="w-full min-h-[44px] bg-surface border border-border rounded-control px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {FOOD_CATEGORY_OPTIONS.map(c => (
             <option key={c.value} value={c.value}>
@@ -118,7 +118,7 @@ export default function CreateFoodForm({
         <select
           value={unit}
           onChange={e => setUnit(e.target.value)}
-          className="w-full min-h-[44px] bg-surface border border-border rounded-lg px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="w-full min-h-[44px] bg-surface border border-border rounded-control px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {DISPLAY_UNIT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>
@@ -152,7 +152,7 @@ export default function CreateFoodForm({
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 p-3 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
+        <div className="flex items-start gap-2 p-3 text-sm text-error bg-error/10 border border-error/30 rounded-control">
           <AlertIcon size={16} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>

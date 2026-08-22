@@ -193,3 +193,12 @@ export function SunIcon(props: IconProps) {
     </svg>
   )
 }
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 9.5 12 3l9 6.5" />
+      <path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+    </svg>
+  )
+}
