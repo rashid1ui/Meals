@@ -16,6 +16,18 @@ export interface UserProfile {
   avatar_url?: string | null;
   created_at?: string;
   updated_at?: string;
+  // Nutrition Engine biometrics (lib/nutrition/engine.ts) - all optional,
+  // collected via the onboarding "About You" step. NULL means "not yet
+  // collected", not a default value - see supabase/migrations/0004.
+  sex?: 'male' | 'female' | null;
+  age?: number | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  activity_level?: 'sedentary' | 'lightly_active' | 'moderately_active' | 'very_active' | 'extremely_active' | null;
+  training_days_per_week?: number | null;
+  body_fat_percent?: number | null;
+  average_daily_steps?: number | null;
+  current_calorie_intake?: number | null;
 }
 
 export interface Food {
@@ -41,6 +53,17 @@ export interface DietPlan {
   carbs_target: number;
   fat_target: number;
   created_at?: string;
+  // Nutrition Engine provenance (lib/nutrition/engine.ts's NutritionTarget) -
+  // all optional. NULL means this plan predates the engine or was entered
+  // fully manually - see supabase/migrations/0005.
+  goal?: 'cut' | 'recomp' | 'lean_bulk' | 'maintain' | null;
+  estimated_maintenance_calories?: number | null;
+  calorie_adjustment_percent?: number | null;
+  protein_g_per_kg?: number | null;
+  fat_g_per_kg?: number | null;
+  target_weekly_rate_percent?: number | null;
+  calculation_version?: string | null;
+  targets_source?: 'recommended' | 'custom' | null;
 }
 
 export interface Meal {

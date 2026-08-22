@@ -60,6 +60,15 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   const carbsList = JSON.parse(formData.get('carbFoodIds') as string || '[]')
   const fatsList = JSON.parse(formData.get('fats') as string || '[]')
 
+  // Nutrition Engine output (lib/nutrition/engine.ts, computed client-side in
+  // OnboardingForm). Both are optional - absent whenever the user hit "Skip"
+  // on the Profile step, in which case this submission behaves exactly like
+  // today's pure manual-entry flow with no profile/goal data written at all.
+  const nutritionProfileRaw = formData.get('nutritionProfile') as string | null
+  const nutritionTargetMetaRaw = formData.get('nutritionTargetMeta') as string | null
+  const nutritionProfile = nutritionProfileRaw ? JSON.parse(nutritionProfileRaw) : null
+  const nutritionTargetMeta = nutritionTargetMetaRaw ? JSON.parse(nutritionTargetMetaRaw) : null
+
   if (!calories || !protein || !carbs || !fat || !mealsCount) {
     return { error: 'Missing macro targets' }
   }
@@ -112,7 +121,17 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
       protein_target: protein,
       carbs_target: carbs,
       fat_target: fat,
-      is_active: !previousPlanId
+      is_active: !previousPlanId,
+      // Nutrition Engine provenance - all NULL when nutritionTargetMeta is
+      // absent (manual entry / "Skip"), matching today's behavior exactly.
+      goal: nutritionTargetMeta?.goal ?? null,
+      estimated_maintenance_calories: nutritionTargetMeta?.estimatedMaintenanceCalories ?? null,
+      calorie_adjustment_percent: nutritionTargetMeta?.calorieAdjustmentPercent ?? null,
+      protein_g_per_kg: nutritionTargetMeta?.proteinGramsPerKg ?? null,
+      fat_g_per_kg: nutritionTargetMeta?.fatGramsPerKg ?? null,
+      target_weekly_rate_percent: nutritionTargetMeta?.targetWeeklyRatePercent ?? null,
+      calculation_version: nutritionTargetMeta?.calculationVersion ?? null,
+      targets_source: nutritionTargetMeta?.targetsSource ?? null
     })
     .select()
     .single()
@@ -181,8 +200,29 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
   }
 
-  // Update profile modified_at just in case
-  await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', user.id)
+  // Update profile modified_at just in case, plus biometrics if the
+  // Nutrition Engine was used (see the "skip" comment above for why this is
+  // conditional - a manual-entry submission must not overwrite/erase any
+  // biometrics the user may have saved on a previous, calculator-driven run).
+  await supabase
+    .from('profiles')
+    .update({
+      updated_at: new Date().toISOString(),
+      ...(nutritionProfile
+        ? {
+            sex: nutritionProfile.sex,
+            age: nutritionProfile.age,
+            weight_kg: nutritionProfile.weightKg,
+            height_cm: nutritionProfile.heightCm,
+            activity_level: nutritionProfile.activityLevel,
+            training_days_per_week: nutritionProfile.trainingDaysPerWeek,
+            body_fat_percent: nutritionProfile.bodyFatPercent,
+            average_daily_steps: nutritionProfile.averageDailySteps,
+            current_calorie_intake: nutritionProfile.currentCalorieIntake
+          }
+        : {})
+    })
+    .eq('id', user.id)
 
   return { success: true }
 }

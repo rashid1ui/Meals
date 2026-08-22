@@ -31,10 +31,28 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     console.error('Failed to load food_database:', dbError)
   }
 
+  // Pre-fills the new Profile/Goal steps from whatever the user last saved,
+  // so the regenerate-plan flow (?newPlan=true, "change goal later") opens
+  // with real values instead of blank. Both are best-effort - a first-time
+  // user simply has no profile row / no active plan yet, and the wizard
+  // falls back to its normal empty state.
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  const { data: activePlans } = await supabase
+    .from('diet_plans')
+    .select('goal')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .limit(1)
+
   return (
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
       <div className="w-full py-12">
-        <OnboardingForm foods={dbFoods || []} isNewPlanFlow={isNewPlanFlow} />
+        <OnboardingForm
+          foods={dbFoods || []}
+          isNewPlanFlow={isNewPlanFlow}
+          initialProfile={profile}
+          initialGoal={activePlans?.[0]?.goal ?? null}
+        />
       </div>
     </main>
   )
