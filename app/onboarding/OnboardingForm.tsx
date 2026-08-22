@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { submitOnboarding } from './actions'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -8,6 +9,7 @@ import Input from '@/components/ui/Input'
 import FoodStep from './FoodStep'
 import GeneratingPanel from './GeneratingPanel'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
+import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 
 type Food = {
   id: string
@@ -28,14 +30,53 @@ const STEP_LABELS = ['Targets', 'Protein', 'Carbs', 'Fat']
 const CALORIE_MISMATCH_TOLERANCE = 0.1
 
 export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) {
-  const PROTEINS = foods.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim()))
-  const CARBS = foods.filter(f => ['carbohydrate', 'fruit'].includes((f.category || '').toLowerCase().trim()))
-  const FATS = foods.filter(f => ['fat'].includes((f.category || '').toLowerCase().trim()))
+  // Local copy of the server-fetched catalog so a custom food created via
+  // FoodStep's "Add Custom Food" appears (and can be selected) immediately,
+  // without a page reload. It's still the same food_database row underneath
+  // (createFoodDatabaseEntry persists it for real) - this is purely a UI
+  // mirror of that table, kept in sync on each creation.
+  const [foodList, setFoodList] = useState<Food[]>(foods)
 
+  const PROTEINS = useMemo(
+    () => foodList.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim())),
+    [foodList]
+  )
+  const CARBS = useMemo(
+    () => foodList.filter(f => ['carbohydrate', 'fruit'].includes((f.category || '').toLowerCase().trim())),
+    [foodList]
+  )
+  const FATS = useMemo(
+    () => foodList.filter(f => ['fat'].includes((f.category || '').toLowerCase().trim())),
+    [foodList]
+  )
+
+  const addFoodToList = (food: FoodOption) => {
+    setFoodList(prev =>
+      prev.some(f => f.id === food.id) ? prev : [...prev, { id: food.id, name: food.name, category: food.category }]
+    )
+  }
+
+  // Auto-selects a newly-created food only when it actually landed in the
+  // category the user was browsing (they can pick any category in the
+  // create form) - otherwise it's still saved and will show up correctly
+  // under its real category's step, just not force-selected here.
+  const handleFoodCreatedFor = (categories: string[], selectedIds: string[], setSelectedIds: (ids: string[]) => void) => (food: FoodOption) => {
+    addFoodToList(food)
+    if (categories.includes(food.category) && !selectedIds.includes(food.id)) {
+      setSelectedIds([...selectedIds, food.id])
+    }
+  }
+
+  const router = useRouter()
   const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(false)
+  // 'idle' is the wizard itself; the other three phases render
+  // GeneratingPanel. Kept as one state machine (rather than separate
+  // loading/generationFailed booleans) so "generating", "succeeded", and
+  // "threw" are mutually exclusive by construction - there's no combination
+  // of flags that could show the error screen while a request that's about
+  // to succeed is still in flight.
+  const [phase, setPhase] = useState<'idle' | 'generating' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [generationFailed, setGenerationFailed] = useState(false)
   // Remounts GeneratingPanel on each attempt so its stage timer resets
   // cleanly on retry, instead of resetting state imperatively in an effect.
   const [attempt, setAttempt] = useState(0)
@@ -82,14 +123,13 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
 
   const handleSubmit = async () => {
     setError(null)
-    setGenerationFailed(false)
     setAttempt(prev => prev + 1)
     if (selectedFats.length === 0) {
       setError('Please select at least one fat source.')
       return
     }
 
-    setLoading(true)
+    setPhase('generating')
     try {
       const formData = new FormData()
       formData.append('calories', calories)
@@ -102,28 +142,44 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
       formData.append('fats', JSON.stringify(selectedFats))
       formData.append('newPlan', isNewPlanFlow ? 'true' : 'false')
 
+      // submitOnboarding never calls Next's redirect() (see actions.ts) - it
+      // always resolves to a plain { error } or { success } object, so a
+      // successful generation can never land in this catch block. Navigation
+      // happens client-side, from handleContinue, only after the success
+      // screen has had its moment.
       const result = await submitOnboarding(formData)
-      if (result?.error) {
+      if ('error' in result) {
         setError(result.error)
-        setLoading(false)
-        setGenerationFailed(true)
+        setPhase('error')
+      } else {
+        setPhase('success')
       }
-      // If successful, the server action redirects to /dashboard
     } catch (err: unknown) {
       setError((err instanceof Error && err.message) || 'Failed to generate meal plan.')
-      setLoading(false)
-      setGenerationFailed(true)
+      setPhase('error')
     }
   }
 
-  if (loading || generationFailed) {
+  const handleContinue = () => {
+    router.push('/dashboard')
+    router.refresh()
+  }
+
+  const handleGoBack = () => {
+    setError(null)
+    setPhase('idle')
+  }
+
+  if (phase !== 'idle') {
     return (
       <div className="w-full max-w-xl mx-auto">
         <GeneratingPanel
           key={attempt}
-          status={generationFailed ? 'error' : 'generating'}
+          status={phase}
           errorMessage={error}
           onRetry={handleSubmit}
+          onGoBack={handleGoBack}
+          onContinue={handleContinue}
         />
       </div>
     )
@@ -162,7 +218,7 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
         </div>
       </div>
 
-      {error && !generationFailed && (
+      {error && (
         <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-lg">
           <AlertIcon size={18} className="shrink-0 mt-0.5" />
           <span>{error}</span>
@@ -256,6 +312,8 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
           items={PROTEINS}
           selected={selectedProteins}
           onToggle={id => toggleSelection(id, selectedProteins, setSelectedProteins)}
+          defaultCategory="protein"
+          onFoodCreated={handleFoodCreatedFor(['protein', 'dairy'], selectedProteins, setSelectedProteins)}
         />
       )}
 
@@ -267,6 +325,8 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
           items={CARBS}
           selected={selectedCarbs}
           onToggle={id => toggleSelection(id, selectedCarbs, setSelectedCarbs)}
+          defaultCategory="carbohydrate"
+          onFoodCreated={handleFoodCreatedFor(['carbohydrate', 'fruit'], selectedCarbs, setSelectedCarbs)}
         />
       )}
 
@@ -278,6 +338,8 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false }: Props) 
           items={FATS}
           selected={selectedFats}
           onToggle={id => toggleSelection(id, selectedFats, setSelectedFats)}
+          defaultCategory="fat"
+          onFoodCreated={handleFoodCreatedFor(['fat'], selectedFats, setSelectedFats)}
         />
       )}
 

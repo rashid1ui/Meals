@@ -15,6 +15,15 @@ const ALLOWED_CATEGORIES = ['protein', 'dairy', 'carbohydrate', 'fruit', 'fat']
 const ALLOWED_DISPLAY_UNITS = DISPLAY_UNIT_OPTIONS.map(o => o.value)
 const MAX_NUTRITION_PER_100 = 2000
 
+const FOOD_OPTION_COLUMNS = 'id, name, serving_size, serving_unit, calories, protein, carbs, fat, category, display_unit, grams_per_display_unit'
+
+// ilike treats % and _ as wildcards - escape them so a name containing
+// either (e.g. an existing "2% Milk") is matched literally, not as a
+// pattern.
+function escapeForIlike(value: string): string {
+  return value.replace(/[%_\\]/g, ch => `\\${ch}`)
+}
+
 export type CreateFoodInput = {
   name: string
   category: string
@@ -72,6 +81,22 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
 
   const supabase = await createClient()
 
+  // food_database is a single shared, unscoped catalog (see comment above) -
+  // reuse an existing active row with the same name (case-insensitive)
+  // instead of forking the catalog. This is what makes repeat "Add Custom
+  // Food" submissions of the same food idempotent instead of piling up
+  // duplicates the AI would have to disambiguate between.
+  const { data: existing } = await supabase
+    .from('food_database')
+    .select(FOOD_OPTION_COLUMNS)
+    .ilike('name', escapeForIlike(name))
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    return { data: existing as FoodOption }
+  }
+
   const { data, error } = await supabase
     .from('food_database')
     .insert({
@@ -87,10 +112,21 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
       grams_per_display_unit: gramsPerDisplayUnit,
       is_active: true
     })
-    .select('id, name, serving_size, serving_unit, calories, protein, carbs, fat, category, display_unit, grams_per_display_unit')
+    .select(FOOD_OPTION_COLUMNS)
     .single()
 
   if (error || !data) {
+    // Unique-constraint race: another request inserted the exact same name
+    // between our lookup above and this insert. Fetch and return that row
+    // instead of failing the user's request.
+    if (error?.code === '23505') {
+      const { data: raceWinner } = await supabase
+        .from('food_database')
+        .select(FOOD_OPTION_COLUMNS)
+        .ilike('name', escapeForIlike(name))
+        .maybeSingle()
+      if (raceWinner) return { data: raceWinner as FoodOption }
+    }
     console.error('[food-actions] createFoodDatabaseEntry insert failed:', error)
     return { error: 'Failed to save the new food. Please try again.' }
   }

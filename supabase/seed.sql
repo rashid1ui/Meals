@@ -22,7 +22,6 @@ VALUES
   ('Egg Whites, Raw', 'protein', 100, 'grams', 52, 10.9, 0.7, 0.2, true),
   ('Tilapia, Raw', 'protein', 100, 'grams', 96, 20.1, 0, 1.7, true),
   ('Tofu, Firm, Raw', 'protein', 100, 'grams', 144, 15.8, 2.8, 8.7, true),
-  ('Pork Tenderloin, Raw', 'protein', 100, 'grams', 120, 21.1, 0, 3.4, true),
   ('Tuna, Light, Canned in Water', 'protein', 100, 'grams', 90, 19.4, 0, 0.8, true),
   ('Bison, Ground, Raw', 'protein', 100, 'grams', 146, 20.2, 0, 7.3, true),
   ('Nonfat Greek Yogurt', 'dairy', 100, 'grams', 59, 10.2, 3.6, 0.4, true),

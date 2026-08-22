@@ -10,7 +10,6 @@ const PERFECT_DATA = [
   { name: 'Egg Whites, Raw', desc: 'Egg, white, raw, fresh', fdcId: '171273', type: 'SR Legacy', prep: 'Raw', kcal: 52, p: 10.9, c: 0.7, f: 0.2, orig: '171275' },
   { name: 'Tilapia, Raw', desc: 'Fish, tilapia, raw', fdcId: '175176', type: 'SR Legacy', prep: 'Raw', kcal: 96, p: 20.1, c: 0, f: 1.7, orig: '175176' },
   { name: 'Tofu, Firm, Raw', desc: 'Tofu, raw, firm, prepared with calcium sulfate', fdcId: '172449', type: 'SR Legacy', prep: 'Raw', kcal: 144, p: 15.8, c: 2.8, f: 8.7, orig: '172449' },
-  { name: 'Pork Tenderloin, Raw', desc: 'Pork, fresh, loin, tenderloin, separable lean and fat, raw', fdcId: '174182', type: 'SR Legacy', prep: 'Raw', kcal: 120, p: 21.1, c: 0, f: 3.4, orig: '174182' },
   { name: 'Tuna, Light, Canned in Water', desc: 'Fish, tuna, light, canned in water, drained solids', fdcId: '173688', type: 'SR Legacy', prep: 'Ready-to-eat', kcal: 90, p: 19.4, c: 0, f: 0.8, orig: '173688' },
   { name: 'Bison, Ground, Raw', desc: 'Bison, ground, raw', fdcId: '174248', type: 'SR Legacy', prep: 'Raw', kcal: 146, p: 20.2, c: 0, f: 7.3, orig: '174248' },
 

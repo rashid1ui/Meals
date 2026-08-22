@@ -1,7 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CheckIcon, SearchIcon } from '@/components/ui/icons'
+import { CheckIcon, SearchIcon, PlusIcon } from '@/components/ui/icons'
+import CreateFoodForm from '@/components/food/CreateFoodForm'
+import type { CreateFoodInput } from '@/app/dashboard/food-actions'
+import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 
 type Food = {
   id: string
@@ -15,6 +18,8 @@ type Props = {
   items: Food[]
   selected: string[]
   onToggle: (id: string) => void
+  defaultCategory: CreateFoodInput['category']
+  onFoodCreated: (food: FoodOption) => void
 }
 
 // Only shows a search box once a category has enough items that scanning the
@@ -23,8 +28,9 @@ type Props = {
 // OnboardingForm.
 const SEARCH_THRESHOLD = 12
 
-export default function FoodStep({ title, description, items, selected, onToggle }: Props) {
+export default function FoodStep({ title, description, items, selected, onToggle, defaultCategory, onFoodCreated }: Props) {
   const [query, setQuery] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const visibleItems = useMemo(() => {
     if (!query.trim()) return items
@@ -86,11 +92,33 @@ export default function FoodStep({ title, description, items, selected, onToggle
           })}
         </div>
       ) : items.length === 0 ? (
-        <div className="p-4 border border-error/30 bg-error/10 rounded-lg text-error text-sm">
-          No options available. Please contact support.
-        </div>
+        <p className="text-sm text-muted-foreground">
+          No foods in this category yet - add your own below.
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">No matches for &quot;{query}&quot;.</p>
+      )}
+
+      {creating ? (
+        <CreateFoodForm
+          defaultCategory={defaultCategory}
+          title="Add Custom Food"
+          description="Not limited to the list above - this is saved to your food catalog and available to the AI for this and future meal plans."
+          onCreated={food => {
+            onFoodCreated(food)
+            setCreating(false)
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="w-full min-h-[44px] px-4 py-3 rounded-lg border border-dashed border-primary/50 flex items-center justify-center gap-2 text-primary font-semibold text-sm hover:bg-primary/10 hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <PlusIcon size={16} />
+          Add Custom Food
+        </button>
       )}
     </div>
   )

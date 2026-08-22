@@ -16,7 +16,6 @@ const TARGETS = [
   { category: 'protein', name: 'Egg Whites, Raw', query: 'Egg, white, raw, fresh' },
   { category: 'protein', name: 'Tilapia, Raw', query: 'Fish, tilapia, raw' },
   { category: 'protein', name: 'Tofu, Firm, Raw', query: 'Tofu, raw, firm' },
-  { category: 'protein', name: 'Pork Tenderloin, Raw', query: 'Pork, fresh, tenderloin, raw' },
   { category: 'protein', name: 'Tuna, Light, Canned in Water', query: 'Fish, tuna, light, canned in water, drained solids' },
   { category: 'protein', name: 'Bison, Ground, Raw', query: 'Bison, ground, raw' },
 

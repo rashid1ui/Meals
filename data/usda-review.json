@@ -80,14 +80,6 @@
     "reason": "Valid Foundation/SR Legacy record matching preparation state."
   },
   {
-    "requested_food": "Pork Tenderloin, Raw",
-    "selected_fdc_id": "174182",
-    "usda_description": "Pork, fresh, loin, tenderloin, separable lean and fat, raw",
-    "data_type": "SR Legacy",
-    "status": "verified",
-    "reason": "Valid Foundation/SR Legacy record matching preparation state."
-  },
-  {
     "requested_food": "Tuna, Light, Canned in Water",
     "selected_fdc_id": "173688",
     "usda_description": "Fish, tuna, light, canned in water, drained solids",

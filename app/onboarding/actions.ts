@@ -2,12 +2,20 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { getUser } from '@/lib/auth/get-user'
 import { generateValidatedDiet, type FoodOption } from '@/lib/diet/generate-diet'
 import { acquireGenerationLock } from '@/lib/diet/generation-lock'
 
-export async function submitOnboarding(formData: FormData) {
+export type SubmitOnboardingResult = { error: string } | { success: true }
+
+// Deliberately never calls redirect() - it throws a framework control-flow
+// exception (NEXT_REDIRECT) that this action's caller (OnboardingForm) needs
+// to distinguish from a real failure while still being able to show a
+// success state before navigating. Returning a plain result and letting the
+// client redirect (via useRouter) keeps "generation succeeded" and
+// "generation threw" unambiguous on the client, instead of relying on the
+// caller correctly special-casing the redirect digest.
+export async function submitOnboarding(formData: FormData): Promise<SubmitOnboardingResult> {
   const user = await getUser()
   if (!user) return { error: 'Not authenticated' }
 
@@ -30,10 +38,11 @@ export async function submitOnboarding(formData: FormData) {
 
   if (previousPlanId && !isNewPlanFlow) {
     // Already onboarded, and this is normal/direct onboarding access rather
-    // than an intentional new-plan request - existing behavior, unchanged.
+    // than an intentional new-plan request - existing behavior, unchanged,
+    // just returned instead of thrown so the client can navigate itself.
     const cookieStore = await cookies()
     cookieStore.set('gym_meals_onboarded', 'true', { path: '/' })
-    redirect('/dashboard')
+    return { success: true }
   }
 
   // Prevent duplicate diet generation - Check 2: Optimistic Concurrency Lock
@@ -175,5 +184,5 @@ export async function submitOnboarding(formData: FormData) {
   // Update profile modified_at just in case
   await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', user.id)
 
-  redirect('/dashboard')
+  return { success: true }
 }

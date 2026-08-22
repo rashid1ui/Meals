@@ -96,18 +96,6 @@
     "source_id": "172449"
   },
   {
-    "name": "Pork Tenderloin, Raw",
-    "category": "protein",
-    "serving_size": 100,
-    "serving_unit": "grams",
-    "calories": 120,
-    "protein": 21.1,
-    "carbs": 0,
-    "fat": 3.4,
-    "source": "USDA FoodData Central",
-    "source_id": "174182"
-  },
-  {
     "name": "Tuna, Light, Canned in Water",
     "category": "protein",
     "serving_size": 100,

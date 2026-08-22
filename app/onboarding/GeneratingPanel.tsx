@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { AlertIcon } from '@/components/ui/icons'
+import { AlertIcon, CheckIcon } from '@/components/ui/icons'
 
 // Purely cosmetic status copy advancing on a client-side timer - it does not
 // reflect real backend completion (the actual generation call in
@@ -19,13 +19,20 @@ const STAGES = [
 
 const STAGE_INTERVAL_MS = 13000
 
+// How long the success state sits before auto-navigating - long enough to
+// read the confirmation, short enough not to feel like a stall. The "View
+// My Meal Plan" button lets an impatient user skip the wait entirely.
+const SUCCESS_AUTO_CONTINUE_MS = 2200
+
 type Props = {
-  status: 'generating' | 'error'
+  status: 'generating' | 'success' | 'error'
   errorMessage?: string | null
   onRetry: () => void
+  onGoBack?: () => void
+  onContinue?: () => void
 }
 
-export default function GeneratingPanel({ status, errorMessage, onRetry }: Props) {
+export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBack, onContinue }: Props) {
   const [stageIndex, setStageIndex] = useState(0)
 
   useEffect(() => {
@@ -36,6 +43,31 @@ export default function GeneratingPanel({ status, errorMessage, onRetry }: Props
     return () => clearInterval(interval)
   }, [status])
 
+  useEffect(() => {
+    if (status !== 'success' || !onContinue) return
+    const timer = setTimeout(onContinue, SUCCESS_AUTO_CONTINUE_MS)
+    return () => clearTimeout(timer)
+  }, [status, onContinue])
+
+  if (status === 'success') {
+    return (
+      <Card className="p-8 text-center space-y-5" role="status" aria-live="polite">
+        <div className="mx-auto w-12 h-12 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
+          <CheckIcon size={22} />
+        </div>
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">🎉 Your Meal Plan Is Ready!</h1>
+          <p className="text-muted-foreground mt-2">
+            Your personalized meal plan has been created successfully.
+          </p>
+        </div>
+        <Button onClick={onContinue} className="w-full">
+          View My Meal Plan →
+        </Button>
+      </Card>
+    )
+  }
+
   if (status === 'error') {
     return (
       <Card className="p-8 text-center space-y-5">
@@ -43,14 +75,21 @@ export default function GeneratingPanel({ status, errorMessage, onRetry }: Props
           <AlertIcon size={22} />
         </div>
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Generation failed</h1>
+          <h1 className="font-display text-2xl font-bold text-foreground">Generation Failed</h1>
           <p className="text-muted-foreground mt-2">
             {errorMessage || 'Something went wrong while building your meal plan.'}
           </p>
         </div>
-        <Button onClick={onRetry} className="w-full">
-          Try Again
-        </Button>
+        <div className="flex gap-3">
+          {onGoBack && (
+            <Button variant="secondary" onClick={onGoBack} className="flex-1">
+              Go Back
+            </Button>
+          )}
+          <Button onClick={onRetry} className="flex-1">
+            Try Again
+          </Button>
+        </div>
       </Card>
     )
   }
