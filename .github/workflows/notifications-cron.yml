@@ -1,0 +1,21 @@
+name: Notification cron
+
+# Vercel Hobby only allows once-daily crons in vercel.json, but meal
+# reminders need ~15-minute granularity. This calls the same
+# /api/cron/notifications endpoint on that cadence instead - the route
+# already accepts any caller that sends the CRON_SECRET bearer header
+# (see the isAuthorized comment in app/api/cron/notifications/route.ts).
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call notification sweep endpoint
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://gym-meals-six.vercel.app/api/cron/notifications"
