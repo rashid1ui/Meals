@@ -16,9 +16,11 @@ import ProfileStep, {
   type ProfileFormValue
 } from './ProfileStep'
 import GoalStep from './GoalStep'
+import RemindersStep, { type RemindersFormValue } from './RemindersStep'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
+import { defaultReminderTimes } from '@/lib/notifications/schedule'
 import type { UserProfile } from '@/lib/types'
 
 type Food = {
@@ -26,6 +28,8 @@ type Food = {
   name: string
   category: string
 }
+
+type InitialMealReminder = { time: string | null; enabled: boolean }
 
 type Props = {
   foods: Food[]
@@ -36,9 +40,14 @@ type Props = {
   // that's what makes "change goal later" just re-running this wizard.
   initialProfile?: Partial<UserProfile> | null
   initialGoal?: Goal | null
+  // Same idea for the Reminders step: prefills from the user's saved
+  // notification_preferences row and (on the regenerate-plan flow only)
+  // their previous active plan's per-meal reminder settings, by position.
+  initialRemindersEnabled?: boolean | null
+  initialMealReminders?: InitialMealReminder[] | null
 }
 
-const STEP_LABELS = ['About You', 'Goal', 'Targets', 'Protein', 'Carbs', 'Fat']
+const STEP_LABELS = ['About You', 'Goal', 'Targets', 'Protein', 'Carbs', 'Fat', 'Reminders']
 const TOTAL_STEPS = STEP_LABELS.length
 
 const GOAL_LABELS: Record<Goal, string> = {
@@ -77,7 +86,14 @@ function formatRate(target: NutritionTarget): string {
   return `~${Math.abs(target.targetWeeklyRatePercent)}% bodyweight/week ${direction}`
 }
 
-export default function OnboardingForm({ foods, isNewPlanFlow = false, initialProfile = null, initialGoal = null }: Props) {
+export default function OnboardingForm({
+  foods,
+  isNewPlanFlow = false,
+  initialProfile = null,
+  initialGoal = null,
+  initialRemindersEnabled = null,
+  initialMealReminders = null
+}: Props) {
   // Local copy of the server-fetched catalog so a custom food created via
   // FoodStep's "Add Custom Food" appears (and can be selected) immediately,
   // without a page reload. It's still the same food_database row underneath
@@ -146,6 +162,42 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
   const [carbs, setCarbs] = useState('250')
   const [fat, setFat] = useState('70')
   const [meals, setMeals] = useState('4')
+
+  // Reminders step state - collected by POSITION (see RemindersStep's
+  // comment) since the real meal names don't exist until after generation.
+  // Resizes to follow the "Meals Per Day" select (step 3) so going back and
+  // changing meal count never leaves this out of sync, preserving whatever
+  // the user already configured for positions that still exist.
+  const [reminders, setReminders] = useState<RemindersFormValue>(() => {
+    const count = parseInt(meals) || 0
+    const defaults = defaultReminderTimes(count)
+    return {
+      enabled: initialRemindersEnabled ?? false,
+      perMeal: Array.from({ length: count }, (_, i) => ({
+        time: initialMealReminders?.[i]?.time ?? defaults[i],
+        enabled: initialMealReminders?.[i]?.enabled ?? true
+      }))
+    }
+  })
+
+  // Resizes reminders.perMeal to follow the "Meals Per Day" select without an
+  // effect - React's documented pattern for "adjust state when a prop/other
+  // state changes" (react.dev/learn/you-might-not-need-an-effect), tracking
+  // the count seen last render and updating both states in the same pass if
+  // it changed, rather than a setState-in-effect extra render round-trip.
+  const [lastSyncedMealsCount, setLastSyncedMealsCount] = useState(() => parseInt(meals) || 0)
+  const mealsCount = parseInt(meals) || 0
+  if (mealsCount !== lastSyncedMealsCount) {
+    const defaults = defaultReminderTimes(mealsCount)
+    setLastSyncedMealsCount(mealsCount)
+    setReminders(prev => ({
+      ...prev,
+      perMeal: Array.from({ length: mealsCount }, (_, i) => prev.perMeal[i] ?? {
+        time: initialMealReminders?.[i]?.time ?? defaults[i],
+        enabled: initialMealReminders?.[i]?.enabled ?? true
+      })
+    }))
+  }
 
   const [selectedProteins, setSelectedProteins] = useState<string[]>([])
   const [selectedCarbs, setSelectedCarbs] = useState<string[]>([])
@@ -260,6 +312,15 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
         return
       }
       setStep(6)
+      return
+    }
+
+    if (step === 6) {
+      if (selectedFats.length === 0) {
+        setError('Please select at least one fat source.')
+        return
+      }
+      setStep(7)
     }
   }
 
@@ -283,6 +344,14 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
       formData.append('carbFoodIds', JSON.stringify(selectedCarbs))
       formData.append('fats', JSON.stringify(selectedFats))
       formData.append('newPlan', isNewPlanFlow ? 'true' : 'false')
+      formData.append(
+        'reminders',
+        JSON.stringify({
+          enabled: reminders.enabled,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          perMeal: reminders.perMeal
+        })
+      )
 
       if (calculatorUsed && nutritionTarget) {
         const weightKg = weightInKg(profile)
@@ -568,6 +637,9 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
           onFoodCreated={handleFoodCreatedFor(['fat'], selectedFats, setSelectedFats)}
         />
       )}
+
+      {/* Step 7: Reminders */}
+      {step === 7 && <RemindersStep value={reminders} onChange={setReminders} />}
 
       {/* Actions */}
       <div className="flex gap-4 pt-6 border-t border-border">

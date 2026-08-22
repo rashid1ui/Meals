@@ -39,10 +39,34 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
   const { data: activePlans } = await supabase
     .from('diet_plans')
-    .select('goal')
+    .select('id, goal')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .limit(1)
+
+  const { data: notificationPrefs } = await supabase
+    .from('notification_preferences')
+    .select('reminders_enabled')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  // Regenerate-plan flow only: prefill the Reminders step from the plan
+  // being replaced, by position (sort_order) - same "reopen with last-saved
+  // values" treatment as Profile/Goal above. A first-time onboarding has no
+  // active plan yet, so this is simply null.
+  const activePlanId = activePlans?.[0]?.id
+  const { data: previousMeals } = activePlanId
+    ? await supabase
+        .from('meals')
+        .select('sort_order, reminder_time, reminder_enabled')
+        .eq('diet_plan_id', activePlanId)
+        .order('sort_order')
+    : { data: null }
+
+  const initialMealReminders = previousMeals?.map(m => ({
+    time: m.reminder_time ? String(m.reminder_time).slice(0, 5) : null,
+    enabled: m.reminder_enabled
+  })) ?? null
 
   return (
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
@@ -52,6 +76,8 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           isNewPlanFlow={isNewPlanFlow}
           initialProfile={profile}
           initialGoal={activePlans?.[0]?.goal ?? null}
+          initialRemindersEnabled={notificationPrefs?.reminders_enabled ?? null}
+          initialMealReminders={initialMealReminders}
         />
       </div>
     </main>

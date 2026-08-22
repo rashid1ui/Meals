@@ -20,8 +20,17 @@ import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import DailyProgress from './DailyProgress'
 import NextMealSpotlight from './NextMealSpotlight'
+import ReminderStatusBar from './ReminderStatusBar'
 import Button from '@/components/ui/Button'
 import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
+import { getReminderSchedule, type NotificationPreferencesDTO, type ReminderMealDTO } from '@/lib/notifications/actions'
+import { useMealReminders } from '@/lib/notifications/useMealReminders'
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferencesDTO = {
+  remindersEnabled: false,
+  milestonesEnabled: true,
+  timezone: null
+}
 
 export interface FoodOption extends FoodMacro {
   category: string
@@ -88,6 +97,31 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
       cancelled = true
     }
   }, [localDate])
+
+  // Meal reminders/milestones - a separate concern from both the planning
+  // draft and the tracking fetch above, fetched once on mount. Reminder
+  // scheduling/dedup/copy logic all lives in lib/notifications/; this
+  // component only holds the fetched state and renders the status bar.
+  const [reminderMeals, setReminderMeals] = useState<ReminderMealDTO[]>([])
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferencesDTO>(
+    DEFAULT_NOTIFICATION_PREFERENCES
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    getReminderSchedule().then(result => {
+      if (cancelled) return
+      if ('data' in result) {
+        setReminderMeals(result.data.meals)
+        setNotificationPreferences(result.data.preferences)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useMealReminders(reminderMeals, notificationPreferences, dailyTracking, localDate)
 
   const completionByMealId = useMemo(() => {
     const map = new Map<string, DailyTrackingSummary['meals'][number]>()
@@ -251,6 +285,8 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
 
   return (
     <div className="space-y-8">
+      <ReminderStatusBar preferences={notificationPreferences} onPreferencesChange={setNotificationPreferences} />
+
       {/* Section 1 - Today's Actual Progress: the ONE daily section, sourced
           strictly from actually-logged consumption (dailyTracking.consumed),
           never from the planned diet total. Answers "how much of my daily

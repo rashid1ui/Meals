@@ -60,7 +60,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
     // reading another user's food rows via a crafted originalFoodId.
     const { data: currentMeals, error: currentMealsError } = await supabase
       .from('meals')
-      .select('id, name, foods(id, name)')
+      .select('id, name, reminder_time, reminder_enabled, foods(id, name)')
       .eq('diet_plan_id', currentPlan.id)
 
     if (currentMealsError) {
@@ -68,6 +68,17 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
     }
 
     const currentMealIds = (currentMeals || []).map(m => m.id)
+
+    // Meal ids churn on every save (this function always deletes+reinserts
+    // meals - see step 6 below), so reminder_time/reminder_enabled would
+    // otherwise be silently wiped on every unrelated diet edit (adding a
+    // food, changing a quantity, etc). Carried forward by NAME, the same
+    // reconciliation approach computeFoodRelinkPairs already uses below for
+    // food_tracking rows. A brand-new meal (no name match) simply gets no
+    // reminder configured, same as any freshly-added meal today.
+    const reminderByMealName = new Map(
+      (currentMeals || []).map(m => [m.name, { reminderTime: m.reminder_time, reminderEnabled: m.reminder_enabled }])
+    )
     const oldMealsForRelink: NamedMeal[] = (currentMeals || []).map(m => ({
       name: m.name,
       foods: (m.foods || []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name }))
@@ -150,13 +161,16 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
     try {
       for (let i = 0; i < resolvedMeals.length; i++) {
         const meal = resolvedMeals[i]
+        const carriedReminder = reminderByMealName.get(meal.name)
         const { data: newMeal, error: insertMealError } = await supabase
           .from('meals')
           .insert({
             user_id: user.id,
             diet_plan_id: newPlan.id,
             name: meal.name,
-            sort_order: i
+            sort_order: i,
+            reminder_time: carriedReminder?.reminderTime ?? null,
+            reminder_enabled: carriedReminder?.reminderEnabled ?? true
           })
           .select()
           .single()

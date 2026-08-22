@@ -8,6 +8,8 @@ import Avatar from '@/components/Avatar'
 import { ChevronLeftIcon } from '@/components/ui/icons'
 import GenerateNewPlanButton from './GenerateNewPlanButton'
 import ResetAccountButton from './ResetAccountButton'
+import NotificationSettings from './NotificationSettings'
+import { getReminderSchedule } from '@/lib/notifications/actions'
 
 export default async function SettingsPage() {
   const user = await getUser()
@@ -36,6 +38,9 @@ export default async function SettingsPage() {
     .limit(1)
 
   const activePlan = activePlans?.[0]
+
+  const reminderScheduleResult = await getReminderSchedule()
+  const reminderSchedule = 'data' in reminderScheduleResult ? reminderScheduleResult.data : null
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -111,6 +116,19 @@ export default async function SettingsPage() {
               </p>
               <GenerateNewPlanButton />
             </div>
+          </Card>
+        </section>
+
+        {/* Meal Reminders */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Meal Reminders</h2>
+          <Card className="p-6">
+            <NotificationSettings
+              initialMeals={reminderSchedule?.meals ?? []}
+              initialPreferences={
+                reminderSchedule?.preferences ?? { remindersEnabled: false, milestonesEnabled: true, timezone: null }
+              }
+            />
           </Card>
         </section>
 

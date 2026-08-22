@@ -6,6 +6,13 @@ import { getUser } from '@/lib/auth/get-user'
 import { generateValidatedDiet, type FoodOption } from '@/lib/diet/generate-diet'
 import { acquireGenerationLock } from '@/lib/diet/generation-lock'
 import { isValidHeightCm, HEIGHT_CM_MIN, HEIGHT_CM_MAX } from '@/lib/nutrition/engine'
+import { isValidReminderTime } from '@/lib/notifications/schedule'
+
+interface RemindersSubmission {
+  enabled: boolean
+  timezone?: string | null
+  perMeal?: { time?: string; enabled?: boolean }[]
+}
 
 export type SubmitOnboardingResult = { error: string } | { success: true }
 
@@ -69,6 +76,19 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   const nutritionTargetMetaRaw = formData.get('nutritionTargetMeta') as string | null
   const nutritionProfile = nutritionProfileRaw ? JSON.parse(nutritionProfileRaw) : null
   const nutritionTargetMeta = nutritionTargetMetaRaw ? JSON.parse(nutritionTargetMetaRaw) : null
+
+  // Reminders (RemindersStep, computed client-side). Optional/best-effort -
+  // an absent or malformed entry never blocks diet generation, it just
+  // leaves that meal with no reminder configured (reminder_time: null),
+  // same "degrade gracefully, don't fail the submission" treatment as the
+  // rest of this non-critical, non-nutrition-math input.
+  const remindersRaw = formData.get('reminders') as string | null
+  let reminders: RemindersSubmission | null = null
+  try {
+    reminders = remindersRaw ? JSON.parse(remindersRaw) : null
+  } catch {
+    reminders = null
+  }
 
   // Defense in depth: ProfileStep/OnboardingForm already gate this in the
   // browser, but a request can reach a server action directly (bypassing
@@ -155,13 +175,24 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   // Transaction fallback using manual rollback
   try {
     for (const meal of finalValidatedDiet.meals) {
+      // Reminders were collected by POSITION during onboarding (meal names
+      // don't exist until this AI generation step returns them) - matched
+      // back up here via sort_order. A bad/missing entry never blocks plan
+      // creation, it just leaves that meal reminder-less.
+      const reminderForMeal = reminders?.perMeal?.[meal.sort_order]
+      const reminderTime =
+        reminderForMeal?.time && isValidReminderTime(reminderForMeal.time) ? reminderForMeal.time : null
+      const reminderEnabled = reminderForMeal ? Boolean(reminderForMeal.enabled) : true
+
       const { data: newMeal, error: insertMealError } = await supabase
         .from('meals')
         .insert({
           user_id: user.id,
           diet_plan_id: newPlan.id,
           name: meal.name,
-          sort_order: meal.sort_order
+          sort_order: meal.sort_order,
+          reminder_time: reminderTime,
+          reminder_enabled: reminderEnabled
         })
         .select()
         .single()
@@ -210,6 +241,26 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   if (previousPlanId) {
     await supabase.from('diet_plans').update({ is_active: false }).eq('id', previousPlanId)
     await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
+  }
+
+  // Best-effort: never blocks/rolls back the already-fully-persisted plan
+  // above. Only written when the wizard actually submitted a reminders
+  // payload - an old client or a defensive-missing field leaves whatever
+  // notification_preferences row (or lack of one) the user already had
+  // untouched, rather than silently overwriting it with all-disabled.
+  if (reminders) {
+    const { error: prefsError } = await supabase.from('notification_preferences').upsert(
+      {
+        user_id: user.id,
+        reminders_enabled: reminders.enabled,
+        timezone: reminders.timezone ?? null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'user_id' }
+    )
+    if (prefsError) {
+      console.error('[onboarding] failed to save notification preferences:', prefsError)
+    }
   }
 
   // Update profile modified_at just in case, plus biometrics if the

@@ -72,6 +72,30 @@ export interface Meal {
   name: string; // e.g. "Breakfast", "Lunch"
   order_index: number;
   created_at?: string;
+  // First-class reminder scheduling (see supabase/migrations/0006 and
+  // lib/notifications/*). NULL reminder_time means "no reminder configured"
+  // - distinct from reminder_enabled=false, which means "configured but
+  // paused". Never derived from `name` - meal names are free text a user may
+  // suffix with a time (see AddMealModal), which is not reliably parseable.
+  reminder_time?: string | null; // "HH:MM", local wall-clock time
+  reminder_enabled?: boolean;
+}
+
+// One row per user (supabase/migrations/0006). The single master switch that
+// gates ALL notifications (reminders_enabled); milestones_enabled is a
+// secondary sub-toggle for users who want meal reminders but not progress
+// pings, or vice versa. `timezone` is captured client-side (Intl API) during
+// onboarding and is Phase 1 metadata only - Phase 1 delivery always uses the
+// browser's own local clock (see lib/notifications/schedule.ts); it exists
+// now so a future server-side Web Push dispatcher (which has no browser
+// clock) can compute each user's local time without a schema change.
+export interface NotificationPreferences {
+  user_id: string;
+  reminders_enabled: boolean;
+  milestones_enabled: boolean;
+  timezone?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface DietFood {
