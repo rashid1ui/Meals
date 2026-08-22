@@ -31,10 +31,20 @@ test('timeToMinutes / minutesToTime round-trip', () => {
   assert.strictEqual(minutesToTime(0), '00:00')
 })
 
-test('isMealReminderDue - true at and after the scheduled minute, false before', () => {
+test('isMealReminderDue - true at and shortly after the scheduled minute, false before', () => {
   assert.strictEqual(isMealReminderDue('09:00', 540), true) // exactly due
-  assert.strictEqual(isMealReminderDue('09:00', 541), true) // past due (late open)
+  assert.strictEqual(isMealReminderDue('09:00', 541), true) // 1 min late - still due
   assert.strictEqual(isMealReminderDue('09:00', 539), false) // not yet
+})
+
+test('isMealReminderDue - within the catch-up window (cron/tab caught it a bit late) still fires', () => {
+  assert.strictEqual(isMealReminderDue('09:00', 560), true) // 20 min late
+  assert.strictEqual(isMealReminderDue('09:00', 570), true) // exactly 30 min late (boundary, inclusive)
+})
+
+test('isMealReminderDue - beyond the catch-up window no longer fires (prevents an end-of-day burst)', () => {
+  assert.strictEqual(isMealReminderDue('09:00', 571), false) // 31 min late
+  assert.strictEqual(isMealReminderDue('09:00', 780), false) // 4 hours late - the reproduced bug scenario
 })
 
 test('nowMinutesLocal uses local wall-clock hours/minutes, not UTC', () => {
@@ -85,10 +95,17 @@ test('dueMealReminders - skips a meal already fully logged (no spam for complete
   assert.strictEqual(result.length, 0)
 })
 
-test('dueMealReminders - stays due for the rest of the day (late catch-up), not just at the exact minute', () => {
-  // Opened the app at 13:00 (780 min) with a 09:00 (540 min) reminder still unlogged.
-  const result = dueMealReminders([meal({ reminderTime: '09:00', status: 'partial' })], 780)
+test('dueMealReminders - fires within a short catch-up window after the scheduled minute, not just at the exact minute', () => {
+  // Opened the app at 09:20 (560 min) with a 09:00 (540 min) reminder still unlogged.
+  const result = dueMealReminders([meal({ reminderTime: '09:00', status: 'partial' })], 560)
   assert.strictEqual(result.length, 1)
+})
+
+test('dueMealReminders - does NOT fire hours late (bug regression: catching up must not resurrect a long-passed reminder)', () => {
+  // Opened the app at 13:00 (780 min) with a 09:00 (540 min) reminder still unlogged -
+  // 4 hours late is stale backlog, not "the meal's own notification" anymore.
+  const result = dueMealReminders([meal({ reminderTime: '09:00', status: 'partial' })], 780)
+  assert.strictEqual(result.length, 0)
 })
 
 test('dueMealReminders - evaluates multiple meals independently', () => {
@@ -97,6 +114,33 @@ test('dueMealReminders - evaluates multiple meals independently', () => {
     meal({ id: 'lunch', reminderTime: '13:00', status: 'none' }), // due, fires
     meal({ id: 'dinner', reminderTime: '20:00', status: 'none' }) // not due yet
   ]
-  const result = dueMealReminders(meals, 14 * 60) // 14:00
+  const result = dueMealReminders(meals, 13 * 60 + 5) // 13:05 - lunch just became due
   assert.deepStrictEqual(result.map(m => m.id), ['lunch'])
+})
+
+test('dueMealReminders - bug regression: a whole day of meals spread across 08:00-22:00 does NOT all fire together when checked at 20:40', () => {
+  // Exactly the reported scenario: Breakfast 08:00, Lunch 13:00, Dinner 19:00, Snack 22:00,
+  // checked once (e.g. a cron catching up after being down all day) at 20:40 (1240 min).
+  // Only a meal within its own 30-minute catch-up window may fire - here, none are (Dinner's
+  // window closed at 19:30, Snack hasn't arrived yet) - so the correct result is zero, never
+  // "all of today's already-passed meals at once".
+  const meals: ReminderMeal[] = [
+    meal({ id: 'breakfast', reminderTime: '08:00', status: 'none' }),
+    meal({ id: 'lunch', reminderTime: '13:00', status: 'none' }),
+    meal({ id: 'dinner', reminderTime: '19:00', status: 'none' }),
+    meal({ id: 'snack', reminderTime: '22:00', status: 'none' })
+  ]
+  const result = dueMealReminders(meals, 20 * 60 + 40) // 20:40
+  assert.deepStrictEqual(result, [])
+})
+
+test('dueMealReminders - the same scenario correctly fires only Dinner when checked within its own window', () => {
+  const meals: ReminderMeal[] = [
+    meal({ id: 'breakfast', reminderTime: '08:00', status: 'none' }),
+    meal({ id: 'lunch', reminderTime: '13:00', status: 'none' }),
+    meal({ id: 'dinner', reminderTime: '19:00', status: 'none' }),
+    meal({ id: 'snack', reminderTime: '22:00', status: 'none' })
+  ]
+  const result = dueMealReminders(meals, 19 * 60 + 10) // 19:10 - 10 min after Dinner, well before Snack
+  assert.deepStrictEqual(result.map(m => m.id), ['dinner'])
 })

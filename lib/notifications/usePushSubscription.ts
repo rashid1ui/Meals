@@ -43,17 +43,32 @@ export function isPushSupported(): boolean {
 // when the browser subscription itself already existed - e.g. permission
 // was granted in an earlier session and the user is just re-confirming.
 export async function subscribeToPush(): Promise<PushSubscribeResult> {
-  if (!isPushSupported()) return { ok: false, error: 'Push notifications are not supported in this browser.' }
+  if (!isPushSupported()) {
+    const error = 'Push notifications are not supported in this browser.'
+    console.error('[push] subscribeToPush: unsupported browser -', error)
+    return { ok: false, error }
+  }
 
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  if (!vapidPublicKey) return { ok: false, error: 'Push notifications are not configured.' }
+  if (!vapidPublicKey) {
+    const error = 'Push notifications are not configured.'
+    console.error('[push] subscribeToPush: NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing -', error)
+    return { ok: false, error }
+  }
 
+  let registration: ServiceWorkerRegistration
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js')
+    registration = await navigator.serviceWorker.register('/sw.js')
     await navigator.serviceWorker.ready
+  } catch (err) {
+    console.error('[push] subscribeToPush: service worker registration failed:', err)
+    return { ok: false, error: err instanceof Error ? err.message : 'Failed to register the service worker.' }
+  }
 
+  let subscription: PushSubscription
+  try {
     const existing = await registration.pushManager.getSubscription()
-    const subscription =
+    subscription =
       existing ??
       (await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -63,13 +78,17 @@ export async function subscribeToPush(): Promise<PushSubscribeResult> {
         // BufferSource-shaped Uint8Array.
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       }))
-
-    const result = await savePushSubscription(subscription.toJSON() as PushSubscriptionInput)
-    if ('error' in result) return { ok: false, error: result.error }
-    return { ok: true }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Failed to subscribe to push notifications.' }
+    console.error('[push] subscribeToPush: pushManager.subscribe failed:', err)
+    return { ok: false, error: err instanceof Error ? err.message : 'Failed to create a push subscription.' }
   }
+
+  const result = await savePushSubscription(subscription.toJSON() as PushSubscriptionInput)
+  if ('error' in result) {
+    console.error('[push] subscribeToPush: savePushSubscription failed:', result.error)
+    return { ok: false, error: result.error }
+  }
+  return { ok: true }
 }
 
 // Tears down both halves - the browser-level subscription (so this device

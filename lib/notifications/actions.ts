@@ -172,7 +172,19 @@ export async function savePushSubscription(subscription: PushSubscriptionInput):
     return { error: 'Invalid push subscription.' }
   }
 
-  const admin = createAdminClient()
+  // createAdminClient() throws synchronously if SUPABASE_SERVICE_ROLE_KEY/
+  // NEXT_PUBLIC_SUPABASE_URL are missing - without this try/catch, that
+  // throw propagated out of this 'use server' action uncaught, which Next.js
+  // then redacts to a generic error on the client in production, hiding the
+  // real cause from both the browser console and this function's caller.
+  let admin: ReturnType<typeof createAdminClient>
+  try {
+    admin = createAdminClient()
+  } catch (err) {
+    console.error('[notifications] savePushSubscription: admin client unavailable (missing env config):', err)
+    return { error: 'Push notifications are not fully configured on the server.' }
+  }
+
   const { error } = await admin.from('push_subscriptions').upsert(
     {
       user_id: user.id,

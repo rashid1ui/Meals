@@ -40,8 +40,12 @@ export default function ReminderStatusBar({ preferences, onPreferencesChange }: 
         if ('data' in saved) onPreferencesChange(saved.data)
         // Best-effort: a failed subscribe (e.g. VAPID misconfigured) still
         // leaves the in-tab Notification API path (useMealReminders.ts)
-        // working, so it must never block the preference save above.
-        await subscribeToPush()
+        // working, so it must never block the preference save above -
+        // but it's still logged (subscribeToPush itself logs the specific
+        // stage that failed), so a silent failure is at least visible in
+        // the browser console instead of vanishing entirely.
+        const pushResult = await subscribeToPush()
+        if (!pushResult.ok) console.error('[ReminderStatusBar] push subscription failed:', pushResult.error)
       }
     } finally {
       setEnabling(false)

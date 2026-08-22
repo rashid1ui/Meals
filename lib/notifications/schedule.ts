@@ -24,13 +24,29 @@ export function minutesToTime(totalMinutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
-// A meal reminder is "due" once local wall-clock time has reached its
-// scheduled time - staying true for the rest of the day is what gives a
-// late-opened app its one reasonable catch-up notification (dedup, not this
-// function, is what stops that from becoming a repeat - see
-// lib/notifications/actions.ts's claimNotificationEvent).
+// How late a reminder can fire and still count as "the meal's own
+// notification" rather than stale backlog - roughly 2x the cron's ~15 minute
+// cadence (see .github/workflows/notifications-cron.yml), generously
+// covering scheduler jitter. Without an upper bound here, a single cron run
+// (or a dashboard opened late) that finds several already-passed reminder
+// times all still unclaimed would fire every one of them together in one
+// burst - e.g. breakfast/lunch/dinner all at once at 8pm - instead of each
+// firing near its own scheduled time. This was a real, reproduced bug: after
+// the cron was down for a while, the next successful run sent every overdue
+// meal for the day in a single batch (confirmed via notification_events
+// timestamps clustering within ~1 second of each other, one row per meal).
+const MAX_CATCHUP_MINUTES = 30
+
+// A meal reminder is "due" only within a short window after its scheduled
+// time - not for the rest of the day. Dedup (see
+// lib/notifications/actions.ts's claimNotificationEvent /
+// lib/notifications/admin.ts's claimNotificationEventForUser) is what stops
+// a reminder inside that window from repeating on every tick/cron run; this
+// window bound is what stops reminders from hours earlier in the day from
+// suddenly firing together once the window is missed.
 export function isMealReminderDue(reminderTime: string, nowMinutes: number): boolean {
-  return timeToMinutes(reminderTime) <= nowMinutes
+  const minutesLate = nowMinutes - timeToMinutes(reminderTime)
+  return minutesLate >= 0 && minutesLate <= MAX_CATCHUP_MINUTES
 }
 
 export function nowMinutesLocal(now: Date = new Date()): number {
