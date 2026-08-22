@@ -6,9 +6,10 @@
 // rather than their own inline nav markup.
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import { SignOutButton } from '@/components/SignOutButton'
-import { MenuIcon, CloseIcon } from '@/components/ui/icons'
+import { MenuIcon, CloseIcon, ChartIcon } from '@/components/ui/icons'
 
 type Props = {
   userName: string
@@ -29,6 +30,8 @@ export default function Header({
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const fallback = avatarFallback || userName.charAt(0) || 'U'
+  const pathname = usePathname()
+  const isInsightsActive = pathname?.startsWith('/dashboard/insights') ?? false
 
   useEffect(() => {
     if (!menuOpen) return
@@ -60,18 +63,34 @@ export default function Header({
   }, [menuOpen])
 
   return (
-    <nav className="relative w-full bg-surface border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-2 sm:gap-3 min-h-[44px] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0">
-          GM
-        </div>
-        <span className="font-display font-bold text-lg sm:text-xl tracking-tight text-foreground">
-          Gym Meals
-        </span>
-      </Link>
+    <nav className="relative w-full bg-surface border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 sm:gap-3 min-h-[44px] rounded-lg shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0">
+            GM
+          </div>
+          <span className="font-display font-bold text-lg sm:text-xl tracking-tight text-foreground">
+            Gym Meals
+          </span>
+        </Link>
+
+        <Link
+          href="/dashboard/insights"
+          aria-label="Insights"
+          aria-current={isInsightsActive ? 'page' : undefined}
+          className={`hidden sm:flex items-center gap-1.5 min-h-[44px] px-2.5 md:px-3 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+            isInsightsActive
+              ? 'bg-primary/15 text-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-surface-elevated'
+          }`}
+        >
+          <ChartIcon size={18} />
+          <span className="hidden md:inline">Insights</span>
+        </Link>
+      </div>
 
       {/* Desktop: full identity + inline actions, 640px and up */}
       <div className="hidden sm:flex items-center gap-4">
@@ -124,6 +143,18 @@ export default function Header({
               <div className="text-xs text-muted-foreground truncate">{userEmail}</div>
             </div>
           </div>
+          <Link
+            href="/dashboard/insights"
+            role="menuitem"
+            aria-current={isInsightsActive ? 'page' : undefined}
+            onClick={() => setMenuOpen(false)}
+            className={`flex items-center gap-2 min-h-[44px] px-3 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              isInsightsActive ? 'bg-primary/15 text-primary' : 'text-foreground hover:bg-surface'
+            }`}
+          >
+            <ChartIcon size={16} />
+            Insights
+          </Link>
           {showSettingsLink && (
             <Link
               href="/settings"

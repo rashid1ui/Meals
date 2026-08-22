@@ -28,7 +28,7 @@ export default async function InsightsPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Insights</h1>
-            <p className="text-sm text-muted-foreground mt-1">Track your nutrition trends and daily consistency.</p>
+            <p className="text-sm text-muted-foreground mt-1">Track your nutrition progress over time.</p>
           </div>
           <Link
             href="/dashboard"

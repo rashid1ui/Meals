@@ -6,7 +6,7 @@ import { getMonthlyCalendar, type CalendarDay, type MonthlyCalendar } from '../t
 import { adherenceTier, pctOf, type AdherenceTier } from '@/lib/tracking/logic'
 import { getLocalDateString } from '@/lib/tracking/date'
 import Card from '@/components/ui/Card'
-import { AlertIcon, CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
+import { AlertIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -254,33 +254,32 @@ export default function DailyProgressCalendar() {
 
   return (
     <Card className="p-4 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <CalendarIcon size={18} className="text-muted-foreground" />
-          <h2 className="font-display text-lg font-bold text-foreground">Daily Progress</h2>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={goPrev}
-            aria-label="Previous month"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <ChevronLeftIcon size={18} />
-          </button>
-          <span className="font-mono tabular-nums text-sm font-bold text-foreground min-w-[7rem] text-center">
-            {monthLabel(viewYear, viewMonth)}
-          </span>
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={isCurrentMonth}
-            aria-label="Next month"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <ChevronRightIcon size={18} />
-          </button>
-        </div>
+      {/* No inner "Daily Progress" heading here - the Insights page already
+          gives this section that exact h2 immediately above the card, and
+          repeating it here read as duplicated text rather than helpful
+          context. Just the month navigator, which stays meaningful on its
+          own since the outer heading already established what it's part of. */}
+      <div className="flex items-center justify-center gap-1">
+        <button
+          type="button"
+          onClick={goPrev}
+          aria-label="Previous month"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ChevronLeftIcon size={18} />
+        </button>
+        <span className="font-mono tabular-nums text-sm font-bold text-foreground min-w-[7rem] text-center">
+          {monthLabel(viewYear, viewMonth)}
+        </span>
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={isCurrentMonth}
+          aria-label="Next month"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ChevronRightIcon size={18} />
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

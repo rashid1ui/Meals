@@ -143,6 +143,16 @@ export function CalendarIcon(props: IconProps) {
   )
 }
 
+// Ascending bars - used for the Insights nav item and anywhere else a
+// generic "analytics/performance" glyph is needed.
+export function ChartIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 20V12M12 20V4M20 20V14" />
+    </svg>
+  )
+}
+
 // Tracking tri-state: empty circle (not eaten).
 export function CircleIcon(props: IconProps) {
   return (

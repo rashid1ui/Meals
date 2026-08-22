@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary } from '../tracking-actions'
 import Card from '@/components/ui/Card'
-import { AlertIcon } from '@/components/ui/icons'
+import { AlertIcon, CalendarIcon } from '@/components/ui/icons'
 import DailyProgressCalendar from './DailyProgressCalendar'
 
 type Tab = 'week' | 'month'
@@ -23,10 +23,10 @@ function MetricRow({ label, value, colorClass }: { label: string; value: number;
   )
 }
 
-// Owns its own fetch for one period. Keyed by `tab` from the parent so
-// switching periods remounts it fresh - loading/data/error all start clean
-// via their own initial state, with no need to reset them imperatively
-// inside an effect.
+// Owns its own fetch for one period. Week and month are two permanently
+// separate instances (see InsightsView below) rather than one panel
+// switched by a tab, so each fetches and renders completely independently -
+// a slow/erroring month never blocks or clears the week section.
 function PeriodPanel({ tab }: { tab: Tab }) {
   const [data, setData] = useState<PeriodTrackingSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -119,31 +119,52 @@ function PeriodPanel({ tab }: { tab: Tab }) {
   )
 }
 
-export default function InsightsView() {
-  const [tab, setTab] = useState<Tab>('week')
+type SectionHeaderProps = { title: string; description: string; icon?: React.ReactNode }
 
+// One consistent heading treatment per section (matches the Dashboard
+// page's own h2 style: font-display text-2xl font-bold tracking-tight,
+// border-b border-border pb-4) so Weekly Insights, Monthly Insights, and
+// Daily Progress read as three parallel, equally-weighted views of the same
+// page - not one primary view with two features bolted on beside it.
+function SectionHeader({ title, description, icon }: SectionHeaderProps) {
   return (
-    <div className="space-y-6">
-      <div className="inline-flex rounded-lg border border-border bg-surface p-1 gap-1" role="tablist" aria-label="Insights period">
-        {(['week', 'month'] as const).map(t => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`min-h-[44px] px-4 rounded-md text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              tab === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t === 'week' ? 'This Week' : 'This Month'}
-          </button>
-        ))}
+    <div className="flex items-start gap-2 border-b border-border pb-4">
+      {icon}
+      <div>
+        <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
+    </div>
+  )
+}
 
-      <PeriodPanel key={tab} tab={tab} />
+// Weekly Insights, Monthly Insights, and Daily Progress are three always-
+// visible, independently-scannable sections - not tabs hiding one behind
+// the other. A user landing on /dashboard/insights sees the full shape of
+// what this page covers without an extra click, matching the "Dashboard ->
+// Insights -> Weekly / Monthly / Daily Progress" journey this page exists
+// to make obvious.
+export default function InsightsView() {
+  return (
+    <div className="space-y-10">
+      <section className="space-y-4" aria-label="Weekly Insights">
+        <SectionHeader title="Weekly Insights" description="Your nutrition performance over the last 7 days." />
+        <PeriodPanel tab="week" />
+      </section>
 
-      <DailyProgressCalendar />
+      <section className="space-y-4" aria-label="Monthly Insights">
+        <SectionHeader title="Monthly Insights" description="Your performance and trends this month." />
+        <PeriodPanel tab="month" />
+      </section>
+
+      <section className="space-y-4" aria-label="Daily Progress">
+        <SectionHeader
+          title="Daily Progress"
+          description="Every day this month, and how close you came to your targets."
+          icon={<CalendarIcon size={22} className="text-muted-foreground mt-1 shrink-0" />}
+        />
+        <DailyProgressCalendar />
+      </section>
     </div>
   )
 }
