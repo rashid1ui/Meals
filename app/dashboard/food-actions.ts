@@ -13,6 +13,7 @@ import type { FoodOption } from './components/DietEditor'
 
 const ALLOWED_CATEGORIES = ['protein', 'dairy', 'carbohydrate', 'fruit', 'fat']
 const ALLOWED_DISPLAY_UNITS = DISPLAY_UNIT_OPTIONS.map(o => o.value)
+const ALLOWED_PROTEIN_TYPES = ['animal', 'plant', 'supplement']
 const MAX_NUTRITION_PER_100 = 2000
 
 const FOOD_OPTION_COLUMNS = 'id, name, serving_size, serving_unit, calories, protein, carbs, fat, category, display_unit, grams_per_display_unit'
@@ -33,6 +34,7 @@ export type CreateFoodInput = {
   proteinPer100: number
   carbsPer100: number
   fatPer100: number
+  proteinType: string
 }
 
 type Result = { data: FoodOption } | { error: string }
@@ -55,6 +57,10 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
 
   if (!ALLOWED_DISPLAY_UNITS.includes(input.displayUnit as (typeof ALLOWED_DISPLAY_UNITS)[number])) {
     return { error: 'Please select a valid measurement unit.' }
+  }
+
+  if (!ALLOWED_PROTEIN_TYPES.includes(input.proteinType)) {
+    return { error: 'Please select a valid protein type.' }
   }
 
   let gramsPerDisplayUnit = fixedGramsPerUnit(input.displayUnit)
@@ -110,6 +116,7 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
       fat: input.fatPer100,
       display_unit: input.displayUnit,
       grams_per_display_unit: gramsPerDisplayUnit,
+      protein_type: input.proteinType,
       is_active: true
     })
     .select(FOOD_OPTION_COLUMNS)

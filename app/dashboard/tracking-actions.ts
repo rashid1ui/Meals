@@ -23,6 +23,7 @@ import {
   type TrackableFood,
   type MacroTotals
 } from '@/lib/tracking/logic'
+import { splitProteinByType, type ProteinBreakdown, type ProteinType } from '@/lib/nutrition/proteinType'
 
 // One food's tracking state within a meal. `planned` is that food's own
 // full planned macros (what it contributes if fully eaten); `actual` is
@@ -54,6 +55,10 @@ export type DailyTrackingSummary = {
   consumed: { calories: number; protein: number; carbs: number; fat: number }
   target: { calories: number; protein: number; carbs: number; fat: number }
   meals: MealCompletionState[]
+  // Animal/plant/supplement split of `consumed.protein` - always sums to
+  // exactly that number (lib/nutrition/proteinType.ts's splitProteinByType
+  // classifies every tracked food into exactly one bucket, never drops one).
+  proteinBreakdown: ProteinBreakdown
 }
 
 export type PeriodTrackingSummary = {
@@ -77,12 +82,34 @@ interface MealRow {
 
 interface TrackedFoodRow {
   food_id: string | null
+  food_name: string
   completed: boolean
   quantity: number
   calories: number
   protein: number
   carbs: number
   fat: number
+}
+
+interface ProteinTypeCatalogRow {
+  name: string
+  protein_type: ProteinType | null
+  category: string | null
+}
+
+// Small, shared-catalog lookup (food_database has no per-user scoping) used
+// to classify each logged food's protein by source. Loaded fresh on every
+// call rather than cached - the catalog is small (dozens of rows) and this
+// keeps a newly-added custom food's classification correct immediately.
+async function loadProteinTypeLookups(
+  supabase: SupabaseServerClient
+): Promise<{ typeByName: Map<string, ProteinType | null>; categoryByName: Map<string, string | null> }> {
+  const { data } = await supabase.from('food_database').select('name, protein_type, category')
+  const rows = (data as ProteinTypeCatalogRow[] | null) || []
+  return {
+    typeByName: new Map(rows.map(r => [r.name, r.protein_type])),
+    categoryByName: new Map(rows.map(r => [r.name, r.category]))
+  }
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
@@ -120,16 +147,27 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
 
   const { data: trackedFoods } = await supabase
     .from('food_tracking')
-    .select('food_id, completed, quantity, calories, protein, carbs, fat')
+    .select('food_id, food_name, completed, quantity, calories, protein, carbs, fat')
     .eq('user_id', user.id)
     .eq('tracking_date', localDate)
 
   // Only completed=true rows represent an actual logged quantity - a
   // completed=false row (an explicit "un-mark") is the same as no row.
   const trackedByFoodId = new Map<string, TrackedFoodRow>()
+  const completedTrackedFoods: TrackedFoodRow[] = []
   for (const t of (trackedFoods as TrackedFoodRow[] | null) || []) {
-    if (t.completed && t.food_id) trackedByFoodId.set(t.food_id, t)
+    if (t.completed && t.food_id) {
+      trackedByFoodId.set(t.food_id, t)
+      completedTrackedFoods.push(t)
+    }
   }
+
+  const { typeByName, categoryByName } = await loadProteinTypeLookups(supabase)
+  const proteinBreakdown = splitProteinByType(
+    completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
+    typeByName,
+    categoryByName
+  )
 
   const mealStates: MealCompletionState[] = mealRows.map(meal => {
     const planned = sumMacros(meal.foods)
@@ -189,7 +227,8 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
         carbs: activePlan.carbs_target,
         fat: activePlan.fat_target
       },
-      meals: mealStates
+      meals: mealStates,
+      proteinBreakdown
     }
   }
 }

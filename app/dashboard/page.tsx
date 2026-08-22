@@ -148,6 +148,9 @@ export default async function DashboardPage() {
           initialMeals={initialMeals}
           targets={targets}
           foodOptions={foodOptions}
+          trainingTime={profile?.training_time ?? null}
+          trainingTimeCustom={profile?.training_time_custom ?? null}
+          goal={dietPlan.goal ?? null}
         />
 
         <div className="space-y-6">

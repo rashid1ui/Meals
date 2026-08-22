@@ -7,6 +7,7 @@ import {
   DISPLAY_UNIT_OPTIONS
 } from '@/lib/nutrition/units'
 import { createFoodDatabaseEntry, type CreateFoodInput } from '@/app/dashboard/food-actions'
+import { classifyProteinType, type ProteinType } from '@/lib/nutrition/proteinType'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -18,6 +19,12 @@ export const FOOD_CATEGORY_OPTIONS = [
   { value: 'carbohydrate', label: 'Carbohydrate' },
   { value: 'fruit', label: 'Fruit' },
   { value: 'fat', label: 'Fat' }
+]
+
+const PROTEIN_TYPE_OPTIONS: { value: ProteinType; label: string }[] = [
+  { value: 'animal', label: 'Animal' },
+  { value: 'plant', label: 'Plant' },
+  { value: 'supplement', label: 'Supplement' }
 ]
 
 type Props = {
@@ -43,6 +50,7 @@ export default function CreateFoodForm({
 }: Props) {
   const [name, setName] = useState('')
   const [category, setCategory] = useState(defaultCategory)
+  const [proteinType, setProteinType] = useState<ProteinType>(() => classifyProteinType('', defaultCategory))
   const [unit, setUnit] = useState('g')
   const [gramsPerUnit, setGramsPerUnit] = useState('50')
   const [calories, setCalories] = useState('')
@@ -78,7 +86,8 @@ export default function CreateFoodForm({
       caloriesPer100: parsedNutrition[0],
       proteinPer100: parsedNutrition[1],
       carbsPer100: parsedNutrition[2],
-      fatPer100: parsedNutrition[3]
+      fatPer100: parsedNutrition[3],
+      proteinType
     })
     setSaving(false)
 
@@ -108,6 +117,21 @@ export default function CreateFoodForm({
           {FOOD_CATEGORY_OPTIONS.map(c => (
             <option key={c.value} value={c.value}>
               {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-semibold text-foreground block">Protein Source</label>
+        <select
+          value={proteinType}
+          onChange={e => setProteinType(e.target.value as ProteinType)}
+          className="w-full min-h-[44px] bg-surface border border-border rounded-control px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {PROTEIN_TYPE_OPTIONS.map(p => (
+            <option key={p.value} value={p.value}>
+              {p.label}
             </option>
           ))}
         </select>

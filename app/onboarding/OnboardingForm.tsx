@@ -17,6 +17,11 @@ import ProfileStep, {
 } from './ProfileStep'
 import GoalStep from './GoalStep'
 import RemindersStep, { type RemindersFormValue } from './RemindersStep'
+import TrainingNutritionStep, {
+  emptyTrainingNutritionFormValue,
+  isTrainingNutritionFormComplete,
+  type TrainingNutritionFormValue
+} from './TrainingNutritionStep'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
@@ -47,7 +52,7 @@ type Props = {
   initialMealReminders?: InitialMealReminder[] | null
 }
 
-const STEP_LABELS = ['About You', 'Goal', 'Targets', 'Protein', 'Carbs', 'Fat', 'Reminders']
+const STEP_LABELS = ['About You', 'Goal', 'Targets', 'Protein', 'Carbs', 'Fat', 'Training', 'Reminders']
 const TOTAL_STEPS = STEP_LABELS.length
 
 const GOAL_LABELS: Record<Goal, string> = {
@@ -77,6 +82,20 @@ function profileFormFromUserProfile(p?: Partial<UserProfile> | null): ProfileFor
     bodyFatPercent: p.body_fat_percent != null ? String(p.body_fat_percent) : '',
     averageDailySteps: p.average_daily_steps != null ? String(p.average_daily_steps) : '',
     currentCalorieIntake: p.current_calorie_intake != null ? String(p.current_calorie_intake) : ''
+  }
+}
+
+function trainingNutritionFromUserProfile(p?: Partial<UserProfile> | null): TrainingNutritionFormValue {
+  const base = emptyTrainingNutritionFormValue()
+  if (!p) return base
+  return {
+    ...base,
+    trainingTime: p.training_time ?? '',
+    trainingTimeCustom: p.training_time_custom ?? '',
+    supplement: p.uses_supplements ? (p.supplement_type ?? 'other') : 'none',
+    proteinBrand: p.protein_brand ?? '',
+    proteinServingLabel: p.protein_serving_label ?? '',
+    proteinPerServingG: p.protein_per_serving_g != null ? String(p.protein_per_serving_g) : ''
   }
 }
 
@@ -198,6 +217,10 @@ export default function OnboardingForm({
       })
     }))
   }
+
+  const [trainingNutrition, setTrainingNutrition] = useState<TrainingNutritionFormValue>(() =>
+    trainingNutritionFromUserProfile(initialProfile)
+  )
 
   const [selectedProteins, setSelectedProteins] = useState<string[]>([])
   const [selectedCarbs, setSelectedCarbs] = useState<string[]>([])
@@ -321,6 +344,15 @@ export default function OnboardingForm({
         return
       }
       setStep(7)
+      return
+    }
+
+    if (step === 7) {
+      if (!isTrainingNutritionFormComplete(trainingNutrition)) {
+        setError('Please finish your training nutrition setup.')
+        return
+      }
+      setStep(8)
     }
   }
 
@@ -344,6 +376,19 @@ export default function OnboardingForm({
       formData.append('carbFoodIds', JSON.stringify(selectedCarbs))
       formData.append('fats', JSON.stringify(selectedFats))
       formData.append('newPlan', isNewPlanFlow ? 'true' : 'false')
+      formData.append(
+        'trainingNutrition',
+        JSON.stringify({
+          trainingTime: trainingNutrition.trainingTime || null,
+          trainingTimeCustom: trainingNutrition.trainingTime === 'custom' ? trainingNutrition.trainingTimeCustom : null,
+          supplementType: trainingNutrition.supplement === 'none' ? null : trainingNutrition.supplement,
+          proteinBrand: trainingNutrition.supplement === 'whey' ? trainingNutrition.proteinBrand || null : null,
+          proteinServingLabel:
+            trainingNutrition.supplement === 'whey' ? trainingNutrition.proteinServingLabel || null : null,
+          proteinPerServingG:
+            trainingNutrition.supplement === 'whey' ? parseFloat(trainingNutrition.proteinPerServingG) || null : null
+        })
+      )
       formData.append(
         'reminders',
         JSON.stringify({
@@ -638,8 +683,11 @@ export default function OnboardingForm({
         />
       )}
 
-      {/* Step 7: Reminders */}
-      {step === 7 && <RemindersStep value={reminders} onChange={setReminders} />}
+      {/* Step 7: Training Nutrition Setup */}
+      {step === 7 && <TrainingNutritionStep value={trainingNutrition} onChange={setTrainingNutrition} />}
+
+      {/* Step 8: Reminders */}
+      {step === 8 && <RemindersStep value={reminders} onChange={setReminders} />}
 
       {/* Actions */}
       <div className="flex gap-4 pt-6 border-t border-border">

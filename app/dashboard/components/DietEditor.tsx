@@ -19,8 +19,12 @@ import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import DailyProgress from './DailyProgress'
+import ProteinBreakdownCard from './ProteinBreakdownCard'
+import WorkoutMealRecommendations from './WorkoutMealRecommendations'
 import NextMealSpotlight from './NextMealSpotlight'
 import ReminderStatusBar from './ReminderStatusBar'
+import type { TrainingTime } from '@/lib/nutrition/workoutMeals'
+import type { Goal } from '@/lib/nutrition/engine'
 import Button from '@/components/ui/Button'
 import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
 import { getReminderSchedule, type NotificationPreferencesDTO, type ReminderMealDTO } from '@/lib/notifications/actions'
@@ -47,13 +51,28 @@ type Props = {
   initialMeals: DraftMeal[]
   targets: Targets
   foodOptions: FoodOption[]
+  // Training Nutrition Setup (profiles.training_time/training_time_custom)
+  // and the active plan's goal - feeds WorkoutMealRecommendations below.
+  // Both null for a user who hasn't completed that onboarding step / whose
+  // plan predates the Nutrition Engine, same optional treatment as every
+  // other profile/plan field this component already reads.
+  trainingTime: TrainingTime | null
+  trainingTimeCustom: string | null
+  goal: Goal | null
 }
 
 function cloneMeals(meals: DraftMeal[]): DraftMeal[] {
   return meals.map(m => ({ ...m, foods: m.foods.map(f => ({ ...f })) }))
 }
 
-export default function DietEditor({ initialMeals, targets, foodOptions: initialFoodOptions }: Props) {
+export default function DietEditor({
+  initialMeals,
+  targets,
+  foodOptions: initialFoodOptions,
+  trainingTime,
+  trainingTimeCustom,
+  goal
+}: Props) {
   const router = useRouter()
 
   // Stateful (not the raw prop) so a food created via "Add a new food" in
@@ -307,7 +326,20 @@ export default function DietEditor({ initialMeals, targets, foodOptions: initial
           <span>{trackingError}</span>
         </div>
       ) : (
-        <DailyProgress tracking={dailyTracking!} targets={targets} />
+        <>
+          <DailyProgress tracking={dailyTracking!} targets={targets} />
+
+          <div className={trainingTime ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
+            <ProteinBreakdownCard breakdown={dailyTracking!.proteinBreakdown} target={targets.protein} />
+            <WorkoutMealRecommendations
+              trainingTime={trainingTime}
+              trainingTimeCustom={trainingTimeCustom}
+              goal={goal}
+              remainingProtein={Math.max(0, targets.protein - dailyTracking!.consumed.protein)}
+              remainingCalories={Math.max(0, targets.calories - dailyTracking!.consumed.calories)}
+            />
+          </div>
+        </>
       )}
 
       <div className="flex justify-end">

@@ -28,6 +28,16 @@ export interface UserProfile {
   body_fat_percent?: number | null;
   average_daily_steps?: number | null;
   current_calorie_intake?: number | null;
+  // Training Nutrition Setup (lib/nutrition/workoutMeals.ts's TrainingTime) -
+  // collected via the onboarding "Training Nutrition Setup" step. NULL means
+  // "not yet collected" - see supabase/migrations/0007_training_nutrition.
+  training_time?: 'morning' | 'afternoon' | 'evening' | 'custom' | null;
+  training_time_custom?: string | null; // "HH:MM", only set when training_time = 'custom'
+  uses_supplements?: boolean;
+  supplement_type?: 'whey' | 'creatine' | 'other' | null;
+  protein_brand?: string | null;
+  protein_serving_label?: string | null; // free text, e.g. "1 scoop"
+  protein_per_serving_g?: number | null;
 }
 
 export interface Food {
@@ -42,6 +52,12 @@ export interface Food {
   fat: number;
   is_active: boolean;
   created_at?: string;
+  // Protein-source classification (lib/nutrition/proteinType.ts) - NULL for
+  // rows added before supabase/migrations/0007_training_nutrition, or any
+  // custom food a user adds without one; lib/nutrition/proteinType.ts's
+  // classifyProteinType() fallback covers those at read-time, so every food
+  // is always attributed to exactly one bucket in the dashboard breakdown.
+  protein_type?: 'animal' | 'plant' | 'supplement' | null;
 }
 
 export interface DietPlan {

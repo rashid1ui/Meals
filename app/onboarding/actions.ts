@@ -14,6 +14,30 @@ interface RemindersSubmission {
   perMeal?: { time?: string; enabled?: boolean }[]
 }
 
+const VALID_TRAINING_TIMES = ['morning', 'afternoon', 'evening', 'custom'] as const
+const VALID_SUPPLEMENT_TYPES = ['whey', 'creatine', 'other'] as const
+
+interface TrainingNutritionSubmission {
+  trainingTime?: (typeof VALID_TRAINING_TIMES)[number] | null
+  trainingTimeCustom?: string | null
+  supplementType?: (typeof VALID_SUPPLEMENT_TYPES)[number] | null
+  proteinBrand?: string | null
+  proteinServingLabel?: string | null
+  proteinPerServingG?: number | null
+}
+
+// Roughly the canonical-gram weight of "1 serving" for a whey supplement
+// food_database row (see the food_database.protein_type='supplement' insert
+// below). The app has no real scale reading for a scoop - this number only
+// exists so the existing display_unit='serving' / grams_per_display_unit
+// conversion (lib/nutrition/units.ts) has a basis to convert against; the
+// user always sees "1 serving", never this raw gram figure.
+const SUPPLEMENT_SERVING_CANONICAL_GRAMS = 30
+
+function escapeForIlike(value: string): string {
+  return value.replace(/[%_\\]/g, ch => `\\${ch}`)
+}
+
 export type SubmitOnboardingResult = { error: string } | { success: true }
 
 // Deliberately never calls redirect() - it throws a framework control-flow
@@ -90,6 +114,23 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     reminders = null
   }
 
+  // Training Nutrition Setup (TrainingNutritionStep). Same best-effort,
+  // never-blocks-generation treatment as reminders above - a malformed or
+  // absent payload just means these optional fields aren't saved this run.
+  const trainingNutritionRaw = formData.get('trainingNutrition') as string | null
+  let trainingNutrition: TrainingNutritionSubmission | null = null
+  try {
+    trainingNutrition = trainingNutritionRaw ? JSON.parse(trainingNutritionRaw) : null
+  } catch {
+    trainingNutrition = null
+  }
+  if (trainingNutrition?.trainingTime && !VALID_TRAINING_TIMES.includes(trainingNutrition.trainingTime)) {
+    trainingNutrition.trainingTime = null
+  }
+  if (trainingNutrition?.supplementType && !VALID_SUPPLEMENT_TYPES.includes(trainingNutrition.supplementType)) {
+    trainingNutrition.supplementType = null
+  }
+
   // Defense in depth: ProfileStep/OnboardingForm already gate this in the
   // browser, but a request can reach a server action directly (bypassing
   // client JS entirely), and this value gets persisted to profiles.height_cm
@@ -136,6 +177,99 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   }
 
   const finalValidatedDiet = genResult.diet
+
+  // Whey protein (TrainingNutritionStep) becomes a real, trackable food in
+  // its own "Supplements" meal - never a separate, parallel bookkeeping path.
+  // Appended to the AI-generated meals array before persistence below, so it
+  // rides through the exact same insert-then-rollback-on-failure logic as
+  // every other meal (see the loop under "Transaction fallback" below).
+  if (
+    trainingNutrition?.supplementType === 'whey' &&
+    trainingNutrition.proteinServingLabel?.trim() &&
+    typeof trainingNutrition.proteinPerServingG === 'number' &&
+    isFinite(trainingNutrition.proteinPerServingG) &&
+    trainingNutrition.proteinPerServingG > 0 &&
+    trainingNutrition.proteinPerServingG <= 200
+  ) {
+    const proteinPerServing = trainingNutrition.proteinPerServingG
+    const brand = trainingNutrition.proteinBrand?.trim()
+    const supplementName = brand ? `${brand} Whey Protein` : 'Whey Protein'
+    // Per-100-canonical-grams basis, matching every other food_database row
+    // (serving_size=100) - display_unit='serving' + grams_per_display_unit
+    // is what converts that back to "1 serving" for the user (lib/nutrition/units.ts).
+    const proteinPer100 = (proteinPerServing / SUPPLEMENT_SERVING_CANONICAL_GRAMS) * 100
+    const caloriesPer100 = proteinPer100 * 4
+
+    // Idempotent create-or-reuse, same pattern as food-actions.ts's
+    // createFoodDatabaseEntry: food_database is a single shared catalog, so a
+    // second onboarding run (or another user with the same brand) reuses the
+    // existing row instead of forking the catalog.
+    const { data: existingSupplementFood } = await supabase
+      .from('food_database')
+      .select('id')
+      .ilike('name', escapeForIlike(supplementName))
+      .limit(1)
+      .maybeSingle()
+
+    let supplementFoodId: string | null = existingSupplementFood?.id ?? null
+    if (!supplementFoodId) {
+      const { data: newSupplementFood, error: supplementInsertError } = await supabase
+        .from('food_database')
+        .insert({
+          name: supplementName,
+          category: 'protein',
+          protein_type: 'supplement',
+          serving_size: 100,
+          serving_unit: 'grams',
+          calories: caloriesPer100,
+          protein: proteinPer100,
+          carbs: 0,
+          fat: 0,
+          display_unit: 'serving',
+          grams_per_display_unit: SUPPLEMENT_SERVING_CANONICAL_GRAMS,
+          is_active: true
+        })
+        .select('id')
+        .single()
+
+      if (supplementInsertError?.code === '23505') {
+        // Unique-name race with another concurrent request - reuse the row
+        // that won instead of failing to attach the Supplements meal.
+        const { data: raceWinner } = await supabase
+          .from('food_database')
+          .select('id')
+          .ilike('name', escapeForIlike(supplementName))
+          .maybeSingle()
+        supplementFoodId = raceWinner?.id ?? null
+      } else {
+        supplementFoodId = newSupplementFood?.id ?? null
+      }
+    }
+
+    if (supplementFoodId) {
+      const supplementCalories = proteinPerServing * 4
+      finalValidatedDiet.meals.push({
+        name: 'Supplements',
+        sort_order: finalValidatedDiet.meals.length,
+        foods: [
+          {
+            food_id: supplementFoodId,
+            name: supplementName,
+            quantity: SUPPLEMENT_SERVING_CANONICAL_GRAMS,
+            unit: 'grams',
+            calories: supplementCalories,
+            protein: proteinPerServing,
+            carbs: 0,
+            fat: 0
+          }
+        ],
+        calories: supplementCalories,
+        protein: proteinPerServing,
+        carbs: 0,
+        fat: 0
+      })
+    }
+  }
 
   // 1. Insert Diet Plan. When replacing an existing active plan (new-plan
   // flow), the new row must start inactive - a unique DB index
@@ -282,6 +416,32 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
             body_fat_percent: nutritionProfile.bodyFatPercent,
             average_daily_steps: nutritionProfile.averageDailySteps,
             current_calorie_intake: nutritionProfile.currentCalorieIntake
+          }
+        : {}),
+      // Training Nutrition Setup - saved whenever the wizard submitted a
+      // payload, same conditional treatment as nutritionProfile above (an
+      // old client or a defensive-missing field leaves whatever the user
+      // already had untouched rather than overwriting it with nulls).
+      ...(trainingNutrition
+        ? {
+            training_time: trainingNutrition.trainingTime ?? null,
+            training_time_custom:
+              trainingNutrition.trainingTime === 'custom' &&
+              trainingNutrition.trainingTimeCustom &&
+              isValidReminderTime(trainingNutrition.trainingTimeCustom)
+                ? trainingNutrition.trainingTimeCustom
+                : null,
+            uses_supplements: Boolean(trainingNutrition.supplementType),
+            supplement_type: trainingNutrition.supplementType ?? null,
+            protein_brand: trainingNutrition.supplementType === 'whey' ? trainingNutrition.proteinBrand ?? null : null,
+            protein_serving_label:
+              trainingNutrition.supplementType === 'whey' ? trainingNutrition.proteinServingLabel ?? null : null,
+            protein_per_serving_g:
+              trainingNutrition.supplementType === 'whey' &&
+              typeof trainingNutrition.proteinPerServingG === 'number' &&
+              isFinite(trainingNutrition.proteinPerServingG)
+                ? trainingNutrition.proteinPerServingG
+                : null
           }
         : {})
     })
