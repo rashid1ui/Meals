@@ -5,6 +5,7 @@ import { CheckIcon, SearchIcon, PlusIcon } from '@/components/ui/icons'
 import CreateFoodForm from '@/components/food/CreateFoodForm'
 import type { CreateFoodInput } from '@/app/dashboard/food-actions'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
+import { getFoodEmoji } from '@/lib/food/foodEmojiMap'
 
 type Food = {
   id: string
@@ -83,7 +84,12 @@ export default function FoodStep({ title, description, items, selected, onToggle
                     : 'bg-background border-border text-foreground hover:border-muted-foreground'
                 }`}
               >
-                <span className="font-semibold text-left">{item.name}</span>
+                <span className="font-semibold text-left flex items-center gap-2 min-w-0">
+                  <span aria-hidden="true" className="text-lg leading-none shrink-0">
+                    {getFoodEmoji(item.name)}
+                  </span>
+                  <span className="min-w-0">{item.name}</span>
+                </span>
                 {isSelected && (
                   <CheckIcon size={18} className="shrink-0 text-primary" />
                 )}
