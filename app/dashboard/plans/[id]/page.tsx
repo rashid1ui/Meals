@@ -6,6 +6,7 @@ import Header from '@/components/ui/Header'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { ChevronLeftIcon, ClockIcon } from '@/components/ui/icons'
+import { formatMealName } from '@/lib/nutrition/workoutMeals'
 
 interface FoodRow {
   id: string
@@ -166,7 +167,7 @@ export default async function PreviousPlanPage({ params }: PageProps) {
               return (
                 <Card key={meal.id} className="p-6 flex flex-col">
                   <div className="flex items-center justify-between border-b border-border pb-4 mb-4">
-                    <h3 className="font-display text-xl font-bold text-foreground">{meal.name}</h3>
+                    <h3 className="font-display text-xl font-bold text-foreground">{formatMealName(meal.name)}</h3>
                     <div className="font-mono tabular-nums text-sm font-semibold text-muted-foreground bg-surface-elevated border border-border px-3 py-1 rounded-full">
                       {Math.round(mealCal)} kcal
                     </div>

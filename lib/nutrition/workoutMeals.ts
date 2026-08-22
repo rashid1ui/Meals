@@ -158,3 +158,15 @@ export function recommendWorkoutMeals(params: {
     postWorkout: rank(POST_WORKOUT_TEMPLATES)
   }
 }
+
+export function formatMealName(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('breakfast')) return `🍳 ${name}`
+  if (lower.includes('lunch')) return `🍗 ${name}`
+  if (lower.includes('dinner')) return `🥗 ${name}`
+  if (lower.includes('pre-workout')) return `⚡ ${name}`
+  if (lower.includes('post-workout')) return `💪 ${name}`
+  if (lower.includes('snack')) return `🍎 ${name}`
+  if (lower.includes('supplement')) return `💊 ${name}`
+  return name
+}

@@ -163,47 +163,35 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     return { error: 'One or more requested foods are inactive or do not exist.' }
   }
 
-  const genResult = await generateValidatedDiet({
-    dbFoods: dbFoods as unknown as FoodOption[],
-    calories,
-    protein,
-    carbs,
-    fat,
-    mealsCount
-  })
+  // ── Supplement handling (whey protein) ──────────────────────────────────
+  // Create/find the supplement food_database entry BEFORE AI generation so we
+  // can: (a) exclude it from the AI's food pool, and (b) subtract its fixed
+  // macro contribution from the targets the AI solves for. The supplement is
+  // appended as a dedicated meal AFTER generation, ensuring it appears exactly
+  // once at the user's configured serving size — never randomly split by the AI.
+  let supplementFoodId: string | null = null
+  let supplementName = ''
+  let supplementProtein = 0
+  let supplementCalories = 0
+  const supplementFoodIds = new Set<string>()
 
-  if ('error' in genResult) {
-    return { error: genResult.error }
-  }
-
-  const finalValidatedDiet = genResult.diet
-
-  // Whey protein (TrainingNutritionStep) becomes a real, trackable food in
-  // its own "Supplements" meal - never a separate, parallel bookkeeping path.
-  // Appended to the AI-generated meals array before persistence below, so it
-  // rides through the exact same insert-then-rollback-on-failure logic as
-  // every other meal (see the loop under "Transaction fallback" below).
-  if (
+  const isWheyConfigured =
     trainingNutrition?.supplementType === 'whey' &&
     trainingNutrition.proteinServingLabel?.trim() &&
     typeof trainingNutrition.proteinPerServingG === 'number' &&
     isFinite(trainingNutrition.proteinPerServingG) &&
     trainingNutrition.proteinPerServingG > 0 &&
     trainingNutrition.proteinPerServingG <= 200
-  ) {
-    const proteinPerServing = trainingNutrition.proteinPerServingG
-    const brand = trainingNutrition.proteinBrand?.trim()
-    const supplementName = brand ? `${brand} Whey Protein` : 'Whey Protein'
-    // Per-100-canonical-grams basis, matching every other food_database row
-    // (serving_size=100) - display_unit='serving' + grams_per_display_unit
-    // is what converts that back to "1 serving" for the user (lib/nutrition/units.ts).
-    const proteinPer100 = (proteinPerServing / SUPPLEMENT_SERVING_CANONICAL_GRAMS) * 100
+
+  if (isWheyConfigured) {
+    supplementProtein = trainingNutrition!.proteinPerServingG!
+    supplementCalories = supplementProtein * 4
+    const brand = trainingNutrition!.proteinBrand?.trim()
+    supplementName = brand ? `${brand} Whey Protein` : 'Whey Protein'
+    const proteinPer100 = (supplementProtein / SUPPLEMENT_SERVING_CANONICAL_GRAMS) * 100
     const caloriesPer100 = proteinPer100 * 4
 
-    // Idempotent create-or-reuse, same pattern as food-actions.ts's
-    // createFoodDatabaseEntry: food_database is a single shared catalog, so a
-    // second onboarding run (or another user with the same brand) reuses the
-    // existing row instead of forking the catalog.
+    // Idempotent create-or-reuse (same pattern as food-actions.ts)
     const { data: existingSupplementFood } = await supabase
       .from('food_database')
       .select('id')
@@ -211,7 +199,7 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
       .limit(1)
       .maybeSingle()
 
-    let supplementFoodId: string | null = existingSupplementFood?.id ?? null
+    supplementFoodId = existingSupplementFood?.id ?? null
     if (!supplementFoodId) {
       const { data: newSupplementFood, error: supplementInsertError } = await supabase
         .from('food_database')
@@ -233,8 +221,6 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
         .single()
 
       if (supplementInsertError?.code === '23505') {
-        // Unique-name race with another concurrent request - reuse the row
-        // that won instead of failing to attach the Supplements meal.
         const { data: raceWinner } = await supabase
           .from('food_database')
           .select('id')
@@ -247,27 +233,99 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     }
 
     if (supplementFoodId) {
-      const supplementCalories = proteinPerServing * 4
-      finalValidatedDiet.meals.push({
-        name: 'Supplements',
-        sort_order: finalValidatedDiet.meals.length,
-        foods: [
-          {
-            food_id: supplementFoodId,
-            name: supplementName,
-            quantity: SUPPLEMENT_SERVING_CANONICAL_GRAMS,
-            unit: 'grams',
-            calories: supplementCalories,
-            protein: proteinPerServing,
-            carbs: 0,
-            fat: 0
-          }
-        ],
+      supplementFoodIds.add(supplementFoodId)
+    }
+  }
+
+  // Also exclude any other food_database rows with protein_type='supplement'
+  // that the user may have selected as a regular food — prevents the AI from
+  // distributing supplement foods across random meals.
+  const otherSupplements: FoodOption[] = []
+  for (const f of dbFoods) {
+    if ((f as Record<string, unknown>).protein_type === 'supplement' && f.id !== supplementFoodId) {
+      supplementFoodIds.add(f.id)
+      otherSupplements.push(f as unknown as FoodOption)
+    }
+  }
+
+  // Subtract the supplement's fixed macro contribution from the AI's targets
+  // so the regular foods fill the remaining budget. The supplement meal is
+  // appended after generation, making the total = solved + supplement = original.
+  const aiCalories = supplementFoodId ? Math.max(0, calories - supplementCalories) : calories
+  const aiProtein = supplementFoodId ? Math.max(0, protein - supplementProtein) : protein
+
+  // Resolve training time for workout-aware meal naming
+  const resolvedTrainingTime = trainingNutrition?.trainingTime ?? null
+
+  const genResult = await generateValidatedDiet({
+    dbFoods: dbFoods as unknown as FoodOption[],
+    calories: aiCalories,
+    protein: aiProtein,
+    carbs,
+    fat,
+    mealsCount,
+    supplementFoodIds: supplementFoodIds.size > 0 ? supplementFoodIds : undefined,
+    trainingTime: resolvedTrainingTime
+  })
+
+  if ('error' in genResult) {
+    return { error: genResult.error }
+  }
+
+  const finalValidatedDiet = genResult.diet
+
+  // Append supplements. For training users, place them inside the Post-Workout
+  // Meal if one exists; otherwise create a standalone "Supplements" meal.
+  const hasOtherSupplements = otherSupplements.length > 0
+  if ((supplementFoodId && isWheyConfigured) || hasOtherSupplements) {
+    const postWorkoutMeal = resolvedTrainingTime
+      ? finalValidatedDiet.meals.find(m => m.name === 'Post-Workout Meal')
+      : null
+
+    const mealToAppendTo = postWorkoutMeal || {
+      name: 'Supplements',
+      sort_order: finalValidatedDiet.meals.length,
+      foods: [],
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0
+    }
+    
+    if (!postWorkoutMeal) {
+      finalValidatedDiet.meals.push(mealToAppendTo)
+    }
+
+    if (supplementFoodId && isWheyConfigured && !mealToAppendTo.foods.some(f => f.food_id === supplementFoodId)) {
+      mealToAppendTo.foods.push({
+        food_id: supplementFoodId,
+        name: supplementName,
+        quantity: SUPPLEMENT_SERVING_CANONICAL_GRAMS,
+        unit: 'grams',
         calories: supplementCalories,
-        protein: proteinPerServing,
+        protein: supplementProtein,
         carbs: 0,
         fat: 0
       })
+      mealToAppendTo.calories += supplementCalories
+      mealToAppendTo.protein += supplementProtein
+    }
+
+    // Append any other supplements (like Creatine) WITHOUT adding to meal macros
+    // (since they essentially have 0 impact on macro targets)
+    for (const otherSupp of otherSupplements) {
+      if (!mealToAppendTo.foods.some(f => f.food_id === otherSupp.id)) {
+        mealToAppendTo.foods.push({
+          food_id: otherSupp.id,
+          name: otherSupp.name,
+          quantity: 5, // typical creatine serving size in grams
+          unit: 'grams',
+          calories: 0, // Exclude from totals as requested
+          protein: 0,
+          carbs: 0,
+          fat: 0
+        })
+      }
     }
   }
 

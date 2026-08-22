@@ -1,5 +1,6 @@
 import { calculateDiet, validateMacros, type FoodMacro, type CalculatedDiet } from '@/lib/nutrition/calculator'
 import { solveDietQuantities } from '@/lib/nutrition/solver'
+import type { TrainingTime } from '@/lib/nutrition/workoutMeals'
 
 // Shared diet-generation engine used by both onboarding (app/onboarding/actions.ts)
 // and meal-plan regeneration (app/settings/actions.ts), so both entry points go
@@ -18,6 +19,14 @@ export interface GenerateDietParams {
   carbs: number
   fat: number
   mealsCount: number
+  // Food IDs that should NOT be assigned by the AI (e.g. supplements with
+  // a fixed serving that the caller will append as a dedicated meal after
+  // generation). These are excluded from both the prompt and the solver so
+  // the AI never randomly splits them across meals.
+  supplementFoodIds?: Set<string>
+  // When the user trains, the AI should use workout-timed meal names
+  // (Pre-Workout Meal, Post-Workout Meal) instead of generic Snacks.
+  trainingTime?: TrainingTime | null
 }
 
 export type GenerateDietResult = { diet: CalculatedDiet } | { error: string }
@@ -28,14 +37,20 @@ interface ChatMessage {
 }
 
 export async function generateValidatedDiet(params: GenerateDietParams): Promise<GenerateDietResult> {
-  const { dbFoods, calories, protein, carbs, fat, mealsCount } = params
+  const { dbFoods, calories, protein, carbs, fat, mealsCount, supplementFoodIds, trainingTime } = params
 
   const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
   if (!DEEPSEEK_API_KEY) {
     return { error: 'Server misconfiguration: AI key missing' }
   }
 
-  const foodContext = dbFoods.map(f => ({
+  // Filter out supplement foods so the AI never assigns them to random meals.
+  // Supplements are handled separately after generation (see onboarding/actions.ts).
+  const aiEligibleFoods = supplementFoodIds && supplementFoodIds.size > 0
+    ? dbFoods.filter(f => !supplementFoodIds.has(f.id))
+    : dbFoods
+
+  const foodContext = aiEligibleFoods.map(f => ({
     id: f.id,
     name: f.name,
     category: f.category,
@@ -47,7 +62,7 @@ export async function generateValidatedDiet(params: GenerateDietParams): Promise
     fat: f.fat
   }))
 
-  const feasibilityCheck = solveDietQuantities(dbFoods, calories, protein, carbs, fat)
+  const feasibilityCheck = solveDietQuantities(aiEligibleFoods, calories, protein, carbs, fat)
   if (!feasibilityCheck.feasible) {
     return { error: feasibilityCheck.reason || 'Your selected foods cannot reach these macro targets within the allowed portions.' }
   }
@@ -58,6 +73,15 @@ export async function generateValidatedDiet(params: GenerateDietParams): Promise
   let lastErrorClassification = 'UNKNOWN_GENERATION_ERROR'
   let lastValidationErrors: string[] = []
   let lastCalculatedMacros: { calories: number; protein: number; carbs: number; fat: number } | null = null
+
+  // Build workout-specific meal naming instructions for training users
+  const workoutMealInstructions = trainingTime
+    ? `\n- WORKOUT NUTRITION: The user trains in the ${trainingTime}. Instead of generic "Snack" meals, use workout-specific timing:
+  - Name one meal "Pre-Workout Meal" — focus on easy-to-digest carbohydrates, moderate protein, low fat
+  - Name one meal "Post-Workout Meal" — focus on high-quality protein and fast/moderate carbohydrates for recovery
+  - Remaining meals should be standard meals (Breakfast, Lunch, Dinner, etc.)
+  - Do NOT use the name "Snack" or "Snacks" for any meal`
+    : ''
 
   const systemPrompt = `You are a strict meal-planning engine.
 Build a practical daily meal plan using ONLY the food IDs provided.
@@ -71,7 +95,7 @@ REQUIREMENTS:
   Carbohydrates: ${carbs}g
   Fat: ${fat}g
 - Improve food variety: Avoid using the exact same primary protein in every meal. Avoid identical meal compositions.
-- Respect user preferences: You may ONLY select foods from the ALLOWED FOODS list.
+- Respect user preferences: You may ONLY select foods from the ALLOWED FOODS list.${workoutMealInstructions}
 
 ALLOWED FOODS (Source of Truth for IDs, Units, and Macros per serving_size):
 ${JSON.stringify(foodContext, null, 2)}
@@ -210,6 +234,31 @@ You MUST respond with valid JSON matching exactly this schema:
       continue
     }
 
+    if (trainingTime) {
+      const mealNames = parsedDiet.diet.meals.map((m: { name?: string }) => (m.name || '').toLowerCase())
+      const hasSnack = mealNames.some((n: string) => n.includes('snack'))
+      const hasPreWorkout = mealNames.some((n: string) => n.includes('pre-workout'))
+      const hasPostWorkout = mealNames.some((n: string) => n.includes('post-workout'))
+
+      if (hasSnack || !hasPreWorkout || !hasPostWorkout) {
+        lastErrorClassification = 'INVALID_AI_OUTPUT'
+        console.error(`[Generation Error] INVALID_AI_OUTPUT on validation attempt ${attempt}: AI generated invalid meal names for training user.`)
+        messages.push(aiMessage)
+        
+        const feedback = []
+        if (hasSnack) feedback.push('You included a "Snack" meal. Because this user trains, you MUST NOT use generic snacks.')
+        if (!hasPreWorkout) feedback.push('You forgot to include the required "Pre-Workout Meal".')
+        if (!hasPostWorkout) feedback.push('You forgot to include the required "Post-Workout Meal".')
+        
+        messages.push({ 
+          role: 'user', 
+          content: feedback.join(' ') + ' Correct this and try again.' 
+        })
+        attempt++
+        continue
+      }
+    }
+
     // Step 2: The deterministic solver calculates quantities
     // First, collect all unique foods DeepSeek assigned to this diet
     const assignedFoodIds = new Set<string>()
@@ -219,7 +268,7 @@ You MUST respond with valid JSON matching exactly this schema:
       }
     }
 
-    const assignedDbFoods = dbFoods.filter(f => assignedFoodIds.has(f.id))
+    const assignedDbFoods = aiEligibleFoods.filter(f => assignedFoodIds.has(f.id))
     // Check if the AI hallucinated invalid food IDs
     if (assignedDbFoods.length === 0 || assignedDbFoods.length !== assignedFoodIds.size) {
       lastErrorClassification = 'INVALID_AI_OUTPUT'
@@ -262,7 +311,7 @@ You MUST respond with valid JSON matching exactly this schema:
           // (Solver tests show validateMacros handles minor discrepancies).
           // We can just use exact decimals and let UI round, or round now:
           food.quantity = Math.round(totalQty / splits)
-          const dbFood = dbFoods.find(f => f.id === food.food_id)
+          const dbFood = aiEligibleFoods.find(f => f.id === food.food_id)
           food.unit = dbFood ? dbFood.serving_unit : 'grams'
         }
       }
@@ -271,7 +320,7 @@ You MUST respond with valid JSON matching exactly this schema:
     const { diet, error: calcError } = calculateDiet(
       parsedDiet.diet.name || "Personalized Diet",
       parsedDiet.diet.meals,
-      dbFoods
+      aiEligibleFoods
     )
 
     if (calcError || !diet) {
@@ -332,7 +381,7 @@ Generate a corrected meal plan.`
     } else {
       console.error(`[Generation Error] ${lastErrorClassification} (Final) on attempt ${attempt > MAX_ATTEMPTS ? MAX_ATTEMPTS : attempt - 1}.`)
     }
-    return { error: `AI failed to generate a valid diet within required tolerances after ${MAX_ATTEMPTS} attempts. Try adjusting targets.` }
+    return { error: 'Unable to generate your meal plan correctly. Please try again.' }
   }
 
   return { diet: finalValidatedDiet }

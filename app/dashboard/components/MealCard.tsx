@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal } from '@/lib/diet/diff'
 import { pctOf, type MacroTotals } from '@/lib/tracking/logic'
+import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import type { FoodTrackingState } from '../tracking-actions'
 import FoodRow from './FoodRow'
 import AddFoodPopover from './AddFoodPopover'
@@ -38,6 +39,7 @@ type Props = {
   foodOptions: FoodOption[]
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
+  onUpdateFoodQuantity?: (foodId: string, quantity: number) => void
   onFoodCreated?: (food: FoodOption) => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
@@ -60,6 +62,7 @@ export default function MealCard({
   foodOptions,
   onRemoveFood,
   onAddFood,
+  onUpdateFoodQuantity,
   onFoodCreated,
   completion,
   isNext = false
@@ -129,7 +132,7 @@ export default function MealCard({
 
         <h3 className="font-display text-xl font-bold text-foreground truncate flex items-center gap-2">
           {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
-          {meal.name}
+          {formatMealName(meal.name)}
         </h3>
 
         {/* Target vs Actual - two explicitly labeled rows so the numbers are
@@ -204,6 +207,7 @@ export default function MealCard({
                 badges={getFoodBadges(changes, food.id)}
                 onRemove={() => onRemoveFood(food.id)}
                 dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
+                onUpdateQuantity={onUpdateFoodQuantity ? (q) => onUpdateFoodQuantity(food.id, q) : undefined}
                 completion={
                   completion && foodTracking
                     ? {

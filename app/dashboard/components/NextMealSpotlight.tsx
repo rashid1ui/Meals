@@ -2,6 +2,7 @@
 
 import type { DraftMeal } from '@/lib/diet/diff'
 import { computeMealTotals } from '@/lib/diet/diff'
+import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { ChevronRightIcon } from '@/components/ui/icons'
@@ -23,7 +24,7 @@ export default function NextMealSpotlight({ meal, onView }: Props) {
         <div className="min-w-0">
           <span className="text-xs font-semibold uppercase tracking-wide text-primary">Next Meal</span>
           <h3 className="font-display text-2xl font-bold text-foreground tracking-tight truncate mt-0.5">
-            {meal.name}
+            {formatMealName(meal.name)}
           </h3>
           <div className="flex items-center gap-3 flex-wrap mt-2 font-mono tabular-nums text-sm">
             <span className="font-semibold text-calories">{Math.round(totals.calories)} kcal</span>

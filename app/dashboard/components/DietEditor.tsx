@@ -19,12 +19,11 @@ import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
 import ChangeSummaryPanel from './ChangeSummaryPanel'
 import DailyProgress from './DailyProgress'
-import ProteinBreakdownCard from './ProteinBreakdownCard'
-import WorkoutMealRecommendations from './WorkoutMealRecommendations'
+
 import NextMealSpotlight from './NextMealSpotlight'
 import ReminderStatusBar from './ReminderStatusBar'
-import type { TrainingTime } from '@/lib/nutrition/workoutMeals'
-import type { Goal } from '@/lib/nutrition/engine'
+
+
 import Button from '@/components/ui/Button'
 import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
 import { getReminderSchedule, type NotificationPreferencesDTO, type ReminderMealDTO } from '@/lib/notifications/actions'
@@ -51,14 +50,6 @@ type Props = {
   initialMeals: DraftMeal[]
   targets: Targets
   foodOptions: FoodOption[]
-  // Training Nutrition Setup (profiles.training_time/training_time_custom)
-  // and the active plan's goal - feeds WorkoutMealRecommendations below.
-  // Both null for a user who hasn't completed that onboarding step / whose
-  // plan predates the Nutrition Engine, same optional treatment as every
-  // other profile/plan field this component already reads.
-  trainingTime: TrainingTime | null
-  trainingTimeCustom: string | null
-  goal: Goal | null
 }
 
 function cloneMeals(meals: DraftMeal[]): DraftMeal[] {
@@ -68,10 +59,7 @@ function cloneMeals(meals: DraftMeal[]): DraftMeal[] {
 export default function DietEditor({
   initialMeals,
   targets,
-  foodOptions: initialFoodOptions,
-  trainingTime,
-  trainingTimeCustom,
-  goal
+  foodOptions: initialFoodOptions
 }: Props) {
   const router = useRouter()
 
@@ -244,6 +232,33 @@ export default function DietEditor({
     )))
   }
 
+  const handleUpdateFoodQuantity = (mealId: string, foodId: string, quantity: number) => {
+    commit(current => current.map(meal => {
+      if (meal.id !== mealId) return meal
+      return {
+        ...meal,
+        foods: meal.foods.map(food => {
+          if (food.id !== foodId) return food
+          if (!food.foodDatabaseId) return food // locked food, cannot update macros
+
+          const dbFood = foodOptionsById.get(food.foodDatabaseId)
+          if (!dbFood) return food
+
+          const calculated = calculateFoodMacros(quantity, dbFood)
+          return {
+            ...food,
+            quantity: calculated.quantity,
+            unit: calculated.unit,
+            calories: calculated.calories,
+            protein: calculated.protein,
+            carbs: calculated.carbs,
+            fat: calculated.fat
+          }
+        })
+      }
+    }))
+  }
+
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
@@ -329,16 +344,7 @@ export default function DietEditor({
         <>
           <DailyProgress tracking={dailyTracking!} targets={targets} />
 
-          <div className={trainingTime ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
-            <ProteinBreakdownCard breakdown={dailyTracking!.proteinBreakdown} target={targets.protein} />
-            <WorkoutMealRecommendations
-              trainingTime={trainingTime}
-              trainingTimeCustom={trainingTimeCustom}
-              goal={goal}
-              remainingProtein={Math.max(0, targets.protein - dailyTracking!.consumed.protein)}
-              remainingCalories={Math.max(0, targets.calories - dailyTracking!.consumed.calories)}
-            />
-          </div>
+
         </>
       )}
 
@@ -381,6 +387,7 @@ export default function DietEditor({
               isNext={nextMeal?.id === meal.id}
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
+              onUpdateFoodQuantity={(foodId, qty) => handleUpdateFoodQuantity(meal.id, foodId, qty)}
               onFoodCreated={handleFoodCreated}
               completion={
                 isPersistedMealId(meal.id) && completionByMealId.get(meal.id)

@@ -58,13 +58,16 @@ type Props = {
   // for a "Locked" food with no live match (see the `locked` badge below) -
   // it falls back to plain grams, identical to its existing behavior.
   dbFood?: FoodOption | null
+  // Fired when the user edits the planned quantity of this food. Missing
+  // for a "Locked" food, since its macros cannot be recomputed.
+  onUpdateQuantity?: (newCanonicalGrams: number) => void
 }
 
 // A food row reads as a single scannable LINE ITEM (checkbox, name, unit,
 // macros, delete) - never a bordered card-inside-a-card. Logging a partial
 // amount eaten stays hidden until the row itself is expanded, so the
 // default view is "what did I eat", not "here is a form".
-export default function FoodRow({ food, badges, onRemove, completion, dbFood }: Props) {
+export default function FoodRow({ food, badges, onRemove, completion, dbFood, onUpdateQuantity }: Props) {
   const locked = food.foodDatabaseId === null
   const unitConfig: UnitConfig = {
     displayUnit: dbFood?.display_unit || 'g',
@@ -89,6 +92,9 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
   const plannedDisplayForLog = completion ? toDisplayQuantity(completion.plannedQuantity, unitConfig) : 0
   const [logInputValue, setLogInputValue] = useState(String(consumedDisplay))
 
+  // Local state for the planned quantity editor
+  const [plannedInputValue, setPlannedInputValue] = useState(String(displayQuantity))
+
   // Keeps the "how much did you eat" input in sync with the server-confirmed
   // amount whenever it changes from outside this input (e.g. the quick
   // checkbox toggle, or another tab) - never fires from the user's own
@@ -98,6 +104,12 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
     if (completion) setLogInputValue(String(consumedDisplay))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completion?.consumedQuantity])
+
+  // Sync planned input value if the underlying food quantity changes
+  // externally (e.g. undo/redo)
+  useEffect(() => {
+    setPlannedInputValue(String(displayQuantity))
+  }, [displayQuantity])
 
   const commitLoggedQuantity = (displayValue: number) => {
     if (!completion || !isFinite(displayValue)) return
@@ -110,6 +122,20 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
     if (!completion) return
     const next = Math.max(0, Math.min(consumedDisplay + delta, plannedDisplayForLog))
     commitLoggedQuantity(next)
+  }
+
+  const commitPlannedQuantity = (displayValue: number) => {
+    if (!onUpdateQuantity || !isFinite(displayValue) || displayValue <= 0) {
+      setPlannedInputValue(String(displayQuantity)) // revert on invalid
+      return
+    }
+    setPlannedInputValue(String(displayValue))
+    onUpdateQuantity(toCanonicalGrams(displayValue, unitConfig))
+  }
+
+  const plannedStep = (delta: number) => {
+    const next = Math.max(stepSize, displayQuantity + delta)
+    commitPlannedQuantity(next)
   }
 
   // Primary interaction: tap the checkbox to log the FULL planned amount as
@@ -260,6 +286,43 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood }: 
                 >
                   <PlusIcon size={16} />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {onUpdateQuantity && (
+            <div className={`space-y-1.5 ${completion ? 'pt-4 border-t border-border/60' : ''}`}>
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
+                Planned Amount
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => plannedStep(-stepSize)}
+                    aria-label={`Decrease planned amount of ${food.name}`}
+                    className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <MinusIcon size={16} />
+                  </button>
+                  <input
+                    type="number"
+                    value={plannedInputValue}
+                    onChange={e => setPlannedInputValue(e.target.value)}
+                    onBlur={() => commitPlannedQuantity(parseFloat(plannedInputValue))}
+                    aria-label={`Planned amount of ${food.name}, in ${unit}`}
+                    className="w-20 min-h-[44px] text-center bg-surface border border-border rounded-control text-sm font-mono tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                  <button
+                    onClick={() => plannedStep(stepSize)}
+                    aria-label={`Increase planned amount of ${food.name}`}
+                    className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <PlusIcon size={16} />
+                  </button>
+                </div>
+                <span className="text-sm font-semibold text-foreground">
+                  {unit}
+                </span>
               </div>
             </div>
           )}

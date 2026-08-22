@@ -15,6 +15,25 @@ export default async function InsightsPage() {
   const supabase = await createClient()
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
+  // Active diet plan — needed for protein target + goal (WorkoutMealRecommendations)
+  const { data: dietPlans } = await supabase
+    .from('diet_plans')
+    .select('id, calories_target, protein_target, carbs_target, fat_target, goal')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .limit(1)
+
+  const dietPlan = dietPlans?.[0]
+
+  const targets = dietPlan
+    ? {
+        calories: dietPlan.calories_target,
+        protein: dietPlan.protein_target,
+        carbs: dietPlan.carbs_target,
+        fat: dietPlan.fat_target,
+      }
+    : null
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Header
@@ -28,7 +47,7 @@ export default async function InsightsPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Insights</h1>
-            <p className="text-sm text-muted-foreground mt-1">Track your nutrition progress over time.</p>
+            <p className="text-sm text-muted-foreground mt-1">Your nutrition analytics center — protein breakdown, workout nutrition, and progress trends.</p>
           </div>
           <Link
             href="/dashboard"
@@ -39,7 +58,12 @@ export default async function InsightsPage() {
           </Link>
         </div>
 
-        <InsightsView />
+        <InsightsView
+          targets={targets}
+          trainingTime={profile?.training_time ?? null}
+          trainingTimeCustom={profile?.training_time_custom ?? null}
+          goal={dietPlan?.goal ?? null}
+        />
       </div>
     </main>
   )

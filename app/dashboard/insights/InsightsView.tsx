@@ -1,12 +1,31 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary } from '../tracking-actions'
+import { getTodayTracking, getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary, type DailyTrackingSummary } from '../tracking-actions'
+import { getLocalDateString } from '@/lib/tracking/date'
+import type { TrainingTime } from '@/lib/nutrition/workoutMeals'
+import type { Goal } from '@/lib/nutrition/engine'
 import Card from '@/components/ui/Card'
 import { AlertIcon, CalendarIcon } from '@/components/ui/icons'
 import DailyProgressCalendar from './DailyProgressCalendar'
+import ProteinBreakdownCard from '../components/ProteinBreakdownCard'
+import WorkoutMealRecommendations from '../components/WorkoutMealRecommendations'
 
 type Tab = 'week' | 'month'
+
+interface Targets {
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+type Props = {
+  targets: Targets | null
+  trainingTime: TrainingTime | null
+  trainingTimeCustom: string | null
+  goal: Goal | null
+}
 
 function MetricRow({ label, value, colorClass }: { label: string; value: number; colorClass: string }) {
   const pct = Math.min(100, Math.max(0, value))
@@ -138,15 +157,87 @@ function SectionHeader({ title, description, icon }: SectionHeaderProps) {
   )
 }
 
-// Weekly Insights, Monthly Insights, and Daily Progress are three always-
-// visible, independently-scannable sections - not tabs hiding one behind
-// the other. A user landing on /dashboard/insights sees the full shape of
-// what this page covers without an extra click, matching the "Dashboard ->
-// Insights -> Weekly / Monthly / Daily Progress" journey this page exists
-// to make obvious.
-export default function InsightsView() {
+// Today's nutrition analytics panel - fetches daily tracking once on mount
+// and renders the ProteinBreakdownCard + WorkoutMealRecommendations that
+// were moved here from DietEditor. Same data source (getTodayTracking),
+// same calculation pattern - just a different rendering location.
+function TodayNutritionAnalytics({ targets, trainingTime, trainingTimeCustom, goal }: Props) {
+  const [localDate] = useState<string>(() => getLocalDateString())
+  const [dailyTracking, setDailyTracking] = useState<DailyTrackingSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getTodayTracking(localDate).then(result => {
+      if (cancelled) return
+      if ('error' in result) setError(result.error)
+      else setDailyTracking(result.data)
+      setLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [localDate])
+
+  if (loading) {
+    return (
+      <div className="space-y-4" aria-hidden="true">
+        <div className="h-52 rounded-card bg-surface border border-border animate-pulse" />
+        <div className="h-52 rounded-card bg-surface border border-border animate-pulse" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-start gap-2 p-4 text-sm text-error bg-error/10 border border-error/30 rounded-control">
+        <AlertIcon size={18} className="shrink-0 mt-0.5" />
+        <span>{error}</span>
+      </div>
+    )
+  }
+
+  if (!dailyTracking || !targets) return null
+
+  const remainingProtein = Math.max(0, targets.protein - dailyTracking.consumed.protein)
+  const remainingCalories = Math.max(0, targets.calories - dailyTracking.consumed.calories)
+
+  return (
+    <div className={trainingTime ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
+      <ProteinBreakdownCard breakdown={dailyTracking.proteinBreakdown} target={targets.protein} />
+      <WorkoutMealRecommendations
+        trainingTime={trainingTime}
+        trainingTimeCustom={trainingTimeCustom}
+        goal={goal}
+        remainingProtein={remainingProtein}
+        remainingCalories={remainingCalories}
+      />
+    </div>
+  )
+}
+
+// Weekly Insights, Monthly Insights, Daily Progress, and the new Protein
+// Analytics / Workout Nutrition sections are all always-visible,
+// independently-scannable sections - not tabs hiding one behind the other.
+// Protein analytics at the top, workout nutrition below it, then the
+// existing weekly/monthly/calendar sections.
+export default function InsightsView({ targets, trainingTime, trainingTimeCustom, goal }: Props) {
   return (
     <div className="space-y-10">
+      <section className="space-y-4" aria-label="Protein Analytics & Workout Nutrition">
+        <SectionHeader
+          title="Today's Nutrition Analytics"
+          description="Protein breakdown by source and workout meal recommendations based on your goals."
+        />
+        <TodayNutritionAnalytics
+          targets={targets}
+          trainingTime={trainingTime}
+          trainingTimeCustom={trainingTimeCustom}
+          goal={goal}
+        />
+      </section>
+
       <section className="space-y-4" aria-label="Weekly Insights">
         <SectionHeader title="Weekly Insights" description="Your nutrition performance over the last 7 days." />
         <PeriodPanel tab="week" />
@@ -168,3 +259,4 @@ export default function InsightsView() {
     </div>
   )
 }
+
