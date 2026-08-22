@@ -10,6 +10,7 @@ import { usePathname } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import { SignOutButton } from '@/components/SignOutButton'
 import { MenuIcon, CloseIcon, ChartIcon } from '@/components/ui/icons'
+import ThemeToggle from '@/components/ui/ThemeToggle'
 
 type Props = {
   userName: string
@@ -107,6 +108,7 @@ export default function Header({
             Settings
           </Link>
         )}
+        <ThemeToggle />
         <div className="ml-2 pl-4 border-l border-border">
           <SignOutButton />
         </div>
@@ -165,6 +167,7 @@ export default function Header({
               Settings
             </Link>
           )}
+          <ThemeToggle variant="menu-item" />
           <div className="px-3 pt-1 pb-1">
             <SignOutButton />
           </div>
