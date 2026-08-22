@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { getUser } from '@/lib/auth/get-user'
 import { generateValidatedDiet, type FoodOption } from '@/lib/diet/generate-diet'
 import { acquireGenerationLock } from '@/lib/diet/generation-lock'
+import { isValidHeightCm, HEIGHT_CM_MIN, HEIGHT_CM_MAX } from '@/lib/nutrition/engine'
 
 export type SubmitOnboardingResult = { error: string } | { success: true }
 
@@ -68,6 +69,17 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
   const nutritionTargetMetaRaw = formData.get('nutritionTargetMeta') as string | null
   const nutritionProfile = nutritionProfileRaw ? JSON.parse(nutritionProfileRaw) : null
   const nutritionTargetMeta = nutritionTargetMetaRaw ? JSON.parse(nutritionTargetMetaRaw) : null
+
+  // Defense in depth: ProfileStep/OnboardingForm already gate this in the
+  // browser, but a request can reach a server action directly (bypassing
+  // client JS entirely), and this value gets persisted to profiles.height_cm
+  // for reuse by future calculator runs - an invalid height here would
+  // silently corrupt every BMR/TDEE/calorie/macro number derived from it,
+  // now or later. Checked before any DB write or the (slow) AI generation
+  // call, not after.
+  if (nutritionProfile && !isValidHeightCm(nutritionProfile.heightCm)) {
+    return { error: `Height must be a whole number between ${HEIGHT_CM_MIN} and ${HEIGHT_CM_MAX} cm.` }
+  }
 
   if (!calories || !protein || !carbs || !fat || !mealsCount) {
     return { error: 'Missing macro targets' }

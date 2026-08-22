@@ -15,6 +15,9 @@ import {
   FAT_DEFAULT_G_PER_KG,
   FAT_MIN_G_PER_KG,
   LOW_CALORIE_WARNING_FLOOR,
+  isValidHeightCm,
+  HEIGHT_CM_MIN,
+  HEIGHT_CM_MAX,
   type Goal,
   type ActivityLevel,
   type NutritionProfileInput
@@ -245,4 +248,43 @@ test('manual override is a UI-state concern, not an engine concern - the engine 
   const snapshot = JSON.parse(JSON.stringify(input))
   buildNutritionTarget(input)
   assert.deepStrictEqual(input, snapshot)
+})
+
+// ---------------------------------------------------------------------------
+// Height validation - guards against a 1-2 digit entry (e.g. "75" instead
+// of "175") silently corrupting BMR/TDEE/calorie/macro output.
+// ---------------------------------------------------------------------------
+
+test('isValidHeightCm - accepts normal 3-digit metric heights', () => {
+  assert.strictEqual(isValidHeightCm(160), true)
+  assert.strictEqual(isValidHeightCm(175), true)
+  assert.strictEqual(isValidHeightCm(183), true)
+  assert.strictEqual(isValidHeightCm(195), true)
+})
+
+test('isValidHeightCm - rejects short/garbage/out-of-range values', () => {
+  assert.strictEqual(isValidHeightCm(7), false)
+  assert.strictEqual(isValidHeightCm(75), false)
+  assert.strictEqual(isValidHeightCm(99), false)
+  assert.strictEqual(isValidHeightCm(251), false)
+  assert.strictEqual(isValidHeightCm(1000), false)
+  assert.strictEqual(isValidHeightCm(1200), false)
+})
+
+test('isValidHeightCm - boundary values are inclusive', () => {
+  assert.strictEqual(isValidHeightCm(HEIGHT_CM_MIN), true)
+  assert.strictEqual(isValidHeightCm(HEIGHT_CM_MAX), true)
+  assert.strictEqual(isValidHeightCm(HEIGHT_CM_MIN - 1), false)
+  assert.strictEqual(isValidHeightCm(HEIGHT_CM_MAX + 1), false)
+  assert.strictEqual(HEIGHT_CM_MIN, 100)
+  assert.strictEqual(HEIGHT_CM_MAX, 250)
+})
+
+test('isValidHeightCm - rejects non-integers, NaN, empty/non-numeric parses, and negatives', () => {
+  assert.strictEqual(isValidHeightCm(175.5), false)
+  assert.strictEqual(isValidHeightCm(Number('')), false) // empty input -> 0
+  assert.strictEqual(isValidHeightCm(Number('abc')), false) // non-numeric input -> NaN
+  assert.strictEqual(isValidHeightCm(Number('75cm')), false) // trailing junk -> NaN
+  assert.strictEqual(isValidHeightCm(-175), false)
+  assert.strictEqual(isValidHeightCm(0), false)
 })

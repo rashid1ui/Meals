@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { ChevronDownIcon } from '@/components/ui/icons'
-import { lbToKg, kgToLb, type Sex, type ActivityLevel } from '@/lib/nutrition/engine'
+import { lbToKg, kgToLb, isValidHeightCm, HEIGHT_CM_MIN, HEIGHT_CM_MAX, type Sex, type ActivityLevel } from '@/lib/nutrition/engine'
 
 export interface ProfileFormValue {
   sex: Sex | ''
@@ -43,25 +43,39 @@ export function weightInKg(value: ProfileFormValue): number | null {
   return value.weightUnit === 'lb' ? lbToKg(raw) : raw
 }
 
+// null for "not a valid height" - covers empty input, non-numeric input,
+// decimals, and anything outside [HEIGHT_CM_MIN, HEIGHT_CM_MAX] (which is
+// also exactly "not 3 digits", e.g. 75 or 1200). Mirrors weightInKg()'s
+// shape/pattern above so the two fields validate the same way.
+export function heightInCm(value: ProfileFormValue): number | null {
+  const raw = Number(value.heightCm)
+  if (value.heightCm === '' || !isValidHeightCm(raw)) return null
+  return raw
+}
+
 export function isProfileFormComplete(value: ProfileFormValue): boolean {
   return Boolean(
     value.sex &&
       value.age &&
       parseFloat(value.age) > 0 &&
       weightInKg(value) !== null &&
-      value.heightCm &&
-      parseFloat(value.heightCm) > 0 &&
+      heightInCm(value) !== null &&
       value.activityLevel &&
       value.trainingDaysPerWeek !== ''
   )
 }
 
+// Describes movement OUTSIDE structured training only - "Training Days /
+// Week" above already captures gym/workout frequency, so these options must
+// never mention exercise days or gym frequency (that would make the two
+// inputs redundant again). 'extremely_active' remains a valid ActivityLevel
+// for the engine/DB (untouched), it's just not offered as a choice here -
+// "Very Active" already covers a physical job + high daily movement.
 const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string; hint: string }[] = [
-  { value: 'sedentary', label: 'Sedentary', hint: 'Little to no exercise, desk job' },
-  { value: 'lightly_active', label: 'Lightly Active', hint: 'Light exercise 1-3 days/week' },
-  { value: 'moderately_active', label: 'Moderately Active', hint: 'Moderate exercise 3-5 days/week' },
-  { value: 'very_active', label: 'Very Active', hint: 'Hard exercise 6-7 days/week' },
-  { value: 'extremely_active', label: 'Extremely Active', hint: 'Very hard exercise, physical job' }
+  { value: 'sedentary', label: 'Mostly Sedentary', hint: 'Desk job, little walking, mostly sitting' },
+  { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job + regular walking/movement during the day' },
+  { value: 'moderately_active', label: 'Moderately Active', hint: 'Active job or lots of walking throughout the day' },
+  { value: 'very_active', label: 'Very Active', hint: 'Physical job + high daily movement' }
 ]
 
 type Props = {
@@ -131,11 +145,13 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
           label="Height"
           type="number"
           numeric
-          min={1}
-          max={299}
+          min={HEIGHT_CM_MIN}
+          max={HEIGHT_CM_MAX}
+          placeholder="e.g. 175 cm"
           value={value.heightCm}
           onChange={e => set('heightCm', e.target.value)}
           trailing="cm"
+          error={value.heightCm !== '' && heightInCm(value) === null ? 'Enter your height in cm (e.g. 175).' : undefined}
         />
         <div className="relative">
           <Input
@@ -166,13 +182,17 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
           value={value.trainingDaysPerWeek}
           onChange={e => set('trainingDaysPerWeek', e.target.value)}
           trailing="days"
+          helperText="How many days per week do you do planned workouts?"
         />
       </div>
 
       <div className="space-y-2">
         <label htmlFor="activity-level" className="text-sm font-semibold text-foreground block">
-          Activity Level
+          Daily Activity Outside Training
         </label>
+        <p className="text-xs text-muted-foreground -mt-1">
+          How much do you move during the rest of your day - not counting workouts?
+        </p>
         <div className="relative">
           <select
             id="activity-level"
@@ -181,7 +201,7 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
             className="w-full min-h-[44px] appearance-none bg-background border border-border rounded-lg pl-4 pr-10 py-2.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus:border-primary transition-colors cursor-pointer"
           >
             <option value="" disabled>
-              Select your activity level
+              Select your daily activity outside training
             </option>
             {ACTIVITY_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>

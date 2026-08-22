@@ -72,6 +72,21 @@ export const GOAL_TARGET_WEEKLY_RATE_PERCENT: Record<Goal, number> = {
 // extreme diet.
 export const LOW_CALORIE_WARNING_FLOOR = 1200
 
+// Valid metric-height bounds. Deliberately narrow (not just ">0") - a stray
+// 1-2 digit entry like "75" is a plausible-looking but catastrophically
+// wrong height (should be 175) that would silently corrupt every downstream
+// BMR/TDEE/calorie/macro number. Every value in [100, 250] is exactly 3
+// digits, so this single range check also enforces "3-digit height" without
+// a separate digit-count rule. Shared by both the client (ProfileStep) and
+// the server (onboarding actions) so there is one authoritative definition
+// of "valid height", not two that could drift apart.
+export const HEIGHT_CM_MIN = 100
+export const HEIGHT_CM_MAX = 250
+
+export function isValidHeightCm(heightCm: number): boolean {
+  return Number.isInteger(heightCm) && heightCm >= HEIGHT_CM_MIN && heightCm <= HEIGHT_CM_MAX
+}
+
 export interface NutritionProfileInput {
   sex: Sex
   age: number

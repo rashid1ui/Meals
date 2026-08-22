@@ -12,6 +12,7 @@ import ProfileStep, {
   emptyProfileFormValue,
   isProfileFormComplete,
   weightInKg,
+  heightInCm,
   type ProfileFormValue
 } from './ProfileStep'
 import GoalStep from './GoalStep'
@@ -208,11 +209,16 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
         setError('Please go back and enter a valid weight.')
         return
       }
+      const heightCm = heightInCm(profile)
+      if (heightCm === null) {
+        setError('Please go back and enter your height in cm (e.g. 175).')
+        return
+      }
       const target = buildNutritionTarget({
         sex: profile.sex as 'male' | 'female',
         age: parseInt(profile.age),
         weightKg,
-        heightCm: parseFloat(profile.heightCm),
+        heightCm,
         activityLevel: profile.activityLevel as ActivityLevel,
         trainingDaysPerWeek: parseInt(profile.trainingDaysPerWeek),
         goal,
@@ -286,7 +292,7 @@ export default function OnboardingForm({ foods, isNewPlanFlow = false, initialPr
             sex: profile.sex,
             age: parseInt(profile.age),
             weightKg,
-            heightCm: parseFloat(profile.heightCm),
+            heightCm: heightInCm(profile),
             activityLevel: profile.activityLevel,
             trainingDaysPerWeek: parseInt(profile.trainingDaysPerWeek),
             bodyFatPercent: profile.bodyFatPercent ? parseFloat(profile.bodyFatPercent) : null,
