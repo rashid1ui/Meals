@@ -163,6 +163,31 @@ export function classifyTarget(actual: number, target: number): TargetComparison
   return { status, diff, diffPct }
 }
 
+// Moves a food from one meal to another by id, unchanged otherwise - the
+// food's quantity/unit/macros are carried over verbatim (no recompute), so
+// computeMealTotals/computeDailyTotals reflect the move for free once called
+// against the returned tree. A no-op (returns `meals` as-is) if the source/
+// target meal or the food itself can't be found, or if they're the same meal.
+export function moveFood(meals: DraftMeal[], sourceMealId: string, foodId: string, targetMealId: string): DraftMeal[] {
+  if (sourceMealId === targetMealId) return meals
+
+  let movedFood: DraftFood | null = null
+  const withoutFood = meals.map(meal => {
+    if (meal.id !== sourceMealId) return meal
+    const found = meal.foods.find(f => f.id === foodId)
+    if (!found) return meal
+    movedFood = found
+    return { ...meal, foods: meal.foods.filter(f => f.id !== foodId) }
+  })
+
+  if (!movedFood) return meals
+  if (!withoutFood.some(m => m.id === targetMealId)) return meals
+
+  return withoutFood.map(meal =>
+    meal.id === targetMealId ? { ...meal, foods: [...meal.foods, movedFood as DraftFood] } : meal
+  )
+}
+
 export type FoodBadge = 'added' | 'increased' | 'decreased' | 'moved'
 
 // Which badges (if any) apply to a single rendered food row. A food can be

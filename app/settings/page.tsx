@@ -32,7 +32,7 @@ export default async function SettingsPage() {
   // existing submitOnboarding action untouched.
   const { data: activePlans } = await supabase
     .from('diet_plans')
-    .select('name, calories_target, protein_target, carbs_target, fat_target')
+    .select('name, calories_target, protein_target, carbs_target, fat_target, plan_source')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .limit(1)
@@ -88,7 +88,12 @@ export default async function SettingsPage() {
           <Card className="p-6 space-y-6">
             {activePlan && (
               <div>
-                <div className="text-sm font-semibold text-foreground mb-3">{activePlan.name}</div>
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <div className="text-sm font-semibold text-foreground">{activePlan.name}</div>
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground px-1.5 py-0.5 rounded bg-surface-elevated border border-border">
+                    {activePlan.plan_source === 'user_customized' ? 'Customized by you' : 'AI Generated'}
+                  </span>
+                </div>
                 <div className="grid grid-cols-4 gap-3 font-mono tabular-nums text-center text-sm">
                   <div>
                     <div className="text-xs text-muted-foreground font-sans mb-0.5">Calories</div>

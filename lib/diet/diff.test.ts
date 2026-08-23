@@ -6,6 +6,7 @@ import {
   computeDailyTotals,
   classifyTarget,
   getFoodBadges,
+  moveFood,
   type DraftMeal
 } from './diff'
 
@@ -118,6 +119,62 @@ test('diffMeals - moved AND resized food produces both a moved and a quantity ch
   assert.strictEqual(changes.length, 2)
   const types = changes.map(c => c.type).sort()
   assert.deepStrictEqual(types, ['increased', 'moved'])
+})
+
+test('moveFood - relocates the food to the target meal, preserving quantity and macros exactly', () => {
+  const chicken = food('f1', 'Chicken Breast', 150, 180, 33.75, 0, 3.9)
+  const meals = [
+    meal('dinner', 'Dinner', [chicken]),
+    meal('post', 'Post-Workout', [])
+  ]
+
+  const result = moveFood(meals, 'dinner', 'f1', 'post')
+  const dinner = result.find(m => m.id === 'dinner')!
+  const post = result.find(m => m.id === 'post')!
+
+  assert.strictEqual(dinner.foods.length, 0)
+  assert.strictEqual(post.foods.length, 1)
+  assert.deepStrictEqual(post.foods[0], chicken, 'quantity/unit/macros must be carried over unchanged')
+})
+
+test('moveFood - recalculating totals after a move shows the macros on the new meal, not the old one', () => {
+  const chicken = food('f1', 'Chicken Breast', 150, 180, 33.75, 0, 3.9)
+  const meals = [
+    meal('dinner', 'Dinner', [chicken]),
+    meal('post', 'Post-Workout', [])
+  ]
+
+  const result = moveFood(meals, 'dinner', 'f1', 'post')
+  const dinnerTotals = computeMealTotals(result.find(m => m.id === 'dinner')!)
+  const postTotals = computeMealTotals(result.find(m => m.id === 'post')!)
+
+  assert.deepStrictEqual(dinnerTotals, { calories: 0, protein: 0, carbs: 0, fat: 0 })
+  assert.strictEqual(postTotals.calories, 180)
+  assert.strictEqual(postTotals.protein, 33.75)
+
+  // Daily totals are unaffected by which meal a food sits in.
+  assert.deepStrictEqual(computeDailyTotals(meals), computeDailyTotals(result))
+})
+
+test('moveFood - is a no-op when the source and target meal are the same', () => {
+  const meals = [meal('dinner', 'Dinner', [food('f1', 'Chicken', 150, 180, 33.75, 0, 3.9)])]
+  const result = moveFood(meals, 'dinner', 'f1', 'dinner')
+  assert.strictEqual(result, meals)
+})
+
+test('moveFood - is a no-op when the food id does not exist in the source meal', () => {
+  const meals = [
+    meal('dinner', 'Dinner', [food('f1', 'Chicken', 150, 180, 33.75, 0, 3.9)]),
+    meal('post', 'Post-Workout', [])
+  ]
+  const result = moveFood(meals, 'dinner', 'does-not-exist', 'post')
+  assert.deepStrictEqual(result, meals)
+})
+
+test('moveFood - is a no-op when the target meal does not exist', () => {
+  const meals = [meal('dinner', 'Dinner', [food('f1', 'Chicken', 150, 180, 33.75, 0, 3.9)])]
+  const result = moveFood(meals, 'dinner', 'f1', 'does-not-exist')
+  assert.deepStrictEqual(result, meals)
 })
 
 test('computeMealTotals - sums foods within a meal (macro recalculation)', () => {

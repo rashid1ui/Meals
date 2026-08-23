@@ -147,7 +147,12 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
         protein_target: currentPlan.protein_target,
         carbs_target: currentPlan.carbs_target,
         fat_target: currentPlan.fat_target,
-        is_active: false
+        is_active: false,
+        // The user just hand-edited this plan's foods - see migration
+        // 0015_diet_plans_plan_source.sql. Sticky once set: a plan already
+        // 'user_customized' stays that way through further edits (there's
+        // no 'ai_generated' plan to fall back to here).
+        plan_source: 'user_customized'
       })
       .select()
       .single()

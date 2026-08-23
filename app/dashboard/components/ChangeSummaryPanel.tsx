@@ -14,10 +14,11 @@ function describeChange(change: ChangeEntry): { dotClass: string; text: string }
       return { dotClass: 'bg-success', text: `Added — ${change.foodName} (${change.quantity}${change.unit}) to ${change.mealName}` }
     case 'removed':
       return { dotClass: 'bg-error', text: `Removed — ${change.foodName} (${change.quantity}${change.unit}) from ${change.mealName}` }
+    // Neutral, not a warning - editing a planned amount is normal use of a
+    // plan the user now owns, not a deviation from a fixed AI target.
     case 'increased':
-      return { dotClass: 'bg-warning', text: `Increased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
     case 'decreased':
-      return { dotClass: 'bg-warning', text: `Decreased — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
+      return { dotClass: 'bg-muted-foreground', text: `Updated — ${change.foodName}: ${change.fromQuantity}${change.unit} → ${change.toQuantity}${change.unit}` }
     case 'moved':
       return { dotClass: 'bg-muted-foreground', text: `Moved — ${change.foodName}: ${change.fromMealName} → ${change.toMealName}` }
   }

@@ -409,6 +409,10 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
         carbs_target: carbs,
         fat_target: fat,
         is_active: !previousPlanId,
+        // AI-generated, as opposed to app/dashboard/actions.ts's saveDietPlan
+        // (which marks its output 'user_customized') - see migration
+        // 0015_diet_plans_plan_source.sql for why this distinction exists.
+        plan_source: 'ai_generated',
         // Nutrition Engine provenance - all NULL when nutritionTargetMeta is
         // absent (manual entry / "Skip"), matching today's behavior exactly.
         goal: nutritionTargetMeta?.goal ?? null,

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
-import { diffMeals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { diffMeals, moveFood, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
 import {
   getTodayTracking,
@@ -259,6 +259,10 @@ export default function DietEditor({
     }))
   }
 
+  const handleMoveFood = (sourceMealId: string, foodId: string, targetMealId: string) => {
+    commit(current => moveFood(current, sourceMealId, foodId, targetMealId))
+  }
+
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
@@ -388,6 +392,8 @@ export default function DietEditor({
               onRemoveFood={(foodId) => handleRemoveFood(meal.id, foodId)}
               onAddFood={(dbFoodId, qty) => handleAddFood(meal.id, dbFoodId, qty)}
               onUpdateFoodQuantity={(foodId, qty) => handleUpdateFoodQuantity(meal.id, foodId, qty)}
+              onMoveFood={(foodId, targetMealId) => handleMoveFood(meal.id, foodId, targetMealId)}
+              otherMeals={draft.filter(m => m.id !== meal.id).map(m => ({ id: m.id, name: m.name }))}
               onFoodCreated={handleFoodCreated}
               completion={
                 isPersistedMealId(meal.id) && completionByMealId.get(meal.id)

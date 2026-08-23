@@ -40,6 +40,11 @@ type Props = {
   onRemoveFood: (foodId: string) => void
   onAddFood: (foodDatabaseId: string, quantity: number) => void
   onUpdateFoodQuantity?: (foodId: string, quantity: number) => void
+  // Moves a food out of this meal into another one in the same draft,
+  // preserving its quantity/macros verbatim - see lib/diet/diff.ts's moveFood.
+  onMoveFood?: (foodId: string, targetMealId: string) => void
+  // Every other meal in the current draft, offered as move destinations.
+  otherMeals?: { id: string; name: string }[]
   onFoodCreated?: (food: FoodOption) => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
@@ -63,6 +68,8 @@ export default function MealCard({
   onRemoveFood,
   onAddFood,
   onUpdateFoodQuantity,
+  onMoveFood,
+  otherMeals,
   onFoodCreated,
   completion,
   isNext = false
@@ -208,6 +215,8 @@ export default function MealCard({
                 onRemove={() => onRemoveFood(food.id)}
                 dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
                 onUpdateQuantity={onUpdateFoodQuantity ? (q) => onUpdateFoodQuantity(food.id, q) : undefined}
+                onMove={onMoveFood ? (targetMealId) => onMoveFood(food.id, targetMealId) : undefined}
+                otherMeals={otherMeals}
                 completion={
                   completion && foodTracking
                     ? {

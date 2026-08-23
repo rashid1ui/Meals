@@ -15,21 +15,30 @@ import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
 import { getFoodEmoji } from '@/lib/food/foodEmojiMap'
+import { formatMealName } from '@/lib/nutrition/workoutMeals'
 
 const QUANTITY_STEP = 10
 
-const BADGE_VARIANT: Record<FoodBadge, 'success' | 'warning' | 'error' | 'neutral'> = {
+// The user owns their plan once it's generated: freely editing a planned
+// quantity is normal, expected use, not a deviation from a fixed AI target -
+// so only structural facts ('added'/'moved') get a badge here. 'increased'/
+// 'decreased' are deliberately excluded from per-food display (they'd read
+// as a warning that something is wrong); ChangeSummaryPanel still lists them
+// in the neutral, informational unsaved-changes summary.
+type DisplayBadge = Extract<FoodBadge, 'added' | 'moved'>
+
+const BADGE_VARIANT: Record<DisplayBadge, 'success' | 'warning' | 'error' | 'neutral'> = {
   added: 'success',
-  increased: 'warning',
-  decreased: 'error',
   moved: 'neutral'
 }
 
-const BADGE_LABELS: Record<FoodBadge, string> = {
+const BADGE_LABELS: Record<DisplayBadge, string> = {
   added: 'Added',
-  increased: 'Increased',
-  decreased: 'Decreased',
   moved: 'Moved'
+}
+
+function isDisplayBadge(badge: FoodBadge): badge is DisplayBadge {
+  return badge === 'added' || badge === 'moved'
 }
 
 export type FoodTrackingStatus = 'none' | 'partial' | 'complete'
@@ -61,13 +70,18 @@ type Props = {
   // Fired when the user edits the planned quantity of this food. Missing
   // for a "Locked" food, since its macros cannot be recomputed.
   onUpdateQuantity?: (newCanonicalGrams: number) => void
+  // Fired with the target meal id when the user moves this food elsewhere.
+  // Available even for a "Locked" food - moving doesn't touch its macros.
+  onMove?: (targetMealId: string) => void
+  // Every other meal in the current draft, offered as move destinations.
+  otherMeals?: { id: string; name: string }[]
 }
 
 // A food row reads as a single scannable LINE ITEM (checkbox, name, unit,
 // macros, delete) - never a bordered card-inside-a-card. Logging a partial
 // amount eaten stays hidden until the row itself is expanded, so the
 // default view is "what did I eat", not "here is a form".
-export default function FoodRow({ food, badges, onRemove, completion, dbFood, onUpdateQuantity }: Props) {
+export default function FoodRow({ food, badges, onRemove, completion, dbFood, onUpdateQuantity, onMove, otherMeals }: Props) {
   const locked = food.foodDatabaseId === null
   const unitConfig: UnitConfig = {
     displayUnit: dbFood?.display_unit || 'g',
@@ -197,7 +211,7 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
                 </span>
                 <span className="font-semibold text-foreground truncate">{food.name}</span>
               </span>
-              {badges.map(badge => (
+              {badges.filter(isDisplayBadge).map(badge => (
                 <Badge key={badge} variant={BADGE_VARIANT[badge]}>
                   {BADGE_LABELS[badge]}
                 </Badge>
@@ -334,6 +348,29 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
                   {unit}
                 </span>
               </div>
+            </div>
+          )}
+
+          {onMove && otherMeals && otherMeals.length > 0 && (
+            <div className={`space-y-1.5 ${completion || onUpdateQuantity ? 'pt-4 border-t border-border/60' : ''}`}>
+              <label htmlFor={`move-${food.id}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
+                Move to
+              </label>
+              <select
+                id={`move-${food.id}`}
+                value=""
+                onChange={e => {
+                  const targetMealId = e.target.value
+                  if (targetMealId) onMove(targetMealId)
+                }}
+                aria-label={`Move ${food.name} to another meal`}
+                className="w-full min-h-[44px] px-3 bg-surface border border-border rounded-control text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <option value="" disabled>Choose a meal&hellip;</option>
+                {otherMeals.map(m => (
+                  <option key={m.id} value={m.id}>{formatMealName(m.name)}</option>
+                ))}
+              </select>
             </div>
           )}
         </div>
