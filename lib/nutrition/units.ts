@@ -99,3 +99,17 @@ export function unitLabel(unit: string, quantity: number): string {
 export function canonicalServingUnitFor(displayUnit: string): 'grams' | 'ml' {
   return displayUnit === 'ml' ? 'ml' : 'grams'
 }
+
+// Determines the food_database.serving_size a newly-created food should use.
+// calculateFoodMacros (lib/nutrition/calculator.ts) scales its stored
+// calories/protein/carbs/fat by quantity/serving_size - for a piece-like
+// unit (scoop/serving/piece/slice) that serving_size MUST be the unit's own
+// gram weight, so nutrition entered "per one scoop" (the natural way a
+// product's own label states it) scales correctly: 1 scoop's canonical
+// grams == serving_size == gramsPerDisplayUnit, multiplier 1, giving back
+// exactly the values entered. For g/kg/ml this stays 100 (or 100ml),
+// preserving the existing per-100g/100ml convention for every normal food
+// exactly as before this function existed.
+export function servingSizeFor(displayUnit: string, gramsPerDisplayUnit: number): number {
+  return requiresGramsPerUnit(displayUnit) ? gramsPerDisplayUnit : 100
+}

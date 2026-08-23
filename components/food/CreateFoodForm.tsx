@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   requiresGramsPerUnit,
   isValidGramsPerUnit,
+  unitLabel,
   DISPLAY_UNIT_OPTIONS
 } from '@/lib/nutrition/units'
 import { createFoodDatabaseEntry, type CreateFoodInput } from '@/app/dashboard/food-actions'
@@ -18,7 +19,9 @@ export const FOOD_CATEGORY_OPTIONS = [
   { value: 'dairy', label: 'Dairy' },
   { value: 'carbohydrate', label: 'Carbohydrate' },
   { value: 'fruit', label: 'Fruit' },
-  { value: 'fat', label: 'Fat' }
+  { value: 'vegetable', label: 'Vegetable' },
+  { value: 'fat', label: 'Fat' },
+  { value: 'supplement', label: 'Supplement' }
 ]
 
 const PROTEIN_TYPE_OPTIONS: { value: ProteinType; label: string }[] = [
@@ -61,7 +64,12 @@ export default function CreateFoodForm({
   const [error, setError] = useState<string | null>(null)
 
   const needsWeight = requiresGramsPerUnit(unit)
-  const per100Label = unit === 'ml' ? 'per 100ml' : 'per 100g'
+  // Serving-based products (whey scoops, creatine servings, egg pieces) list
+  // nutrition per scoop/serving/piece on their own label - asking the user
+  // to convert that to a per-100g figure is unnecessary and error-prone, so
+  // the form (and the values it saves - see food-actions.ts's servingSize)
+  // matches whichever basis the product actually uses.
+  const nutritionLabel = needsWeight ? `per ${unitLabel(unit, 1)}` : unit === 'ml' ? 'per 100ml' : 'per 100g'
 
   const handleSubmit = async () => {
     setError(null)
@@ -165,7 +173,7 @@ export default function CreateFoodForm({
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          Nutrition {per100Label}
+          Nutrition {nutritionLabel}
         </p>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Calories" type="number" numeric value={calories} onChange={e => setCalories(e.target.value)} />

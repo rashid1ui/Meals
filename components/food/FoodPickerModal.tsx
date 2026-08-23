@@ -7,41 +7,38 @@ import Button from '@/components/ui/Button'
 import CreateFoodForm from '@/components/food/CreateFoodForm'
 import { calculateFoodMacros } from '@/lib/nutrition/calculator'
 import { toCanonicalGrams, requiresGramsPerUnit, unitLabel, type UnitConfig } from '@/lib/nutrition/units'
+import { servingDisplayFor } from '@/lib/food/servingDisplay'
+import { searchFoods } from '@/lib/food/search'
 import type { MacroTotals } from '@/lib/diet/diff'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { SearchIcon, PlusIcon, CloseIcon, ChevronLeftIcon } from '@/components/ui/icons'
 
 type CategoryTabKey = 'protein' | 'carbs' | 'fats' | 'produce' | 'supplements'
 
-// The DB only has 6 real food_database categories (protein, dairy,
-// carbohydrate, fruit, fat, supplement) - there is no separate 'vegetable'
-// category, so "Vegetables & Fruits" surfaces the real 'fruit' rows under
-// the spec's combined label rather than fabricating empty vegetable data.
+// 'produce' covers both 'fruit' and 'vegetable' food_database categories
+// under one combined tab label - the two are nutritionally similar enough
+// (and few enough in the catalog) not to need separate tabs.
 const CATEGORY_TABS: { key: CategoryTabKey; label: string; matches: (category: string | null | undefined) => boolean }[] = [
   { key: 'protein', label: 'Protein', matches: c => c === 'protein' || c === 'dairy' },
   { key: 'carbs', label: 'Carbs', matches: c => c === 'carbohydrate' },
   { key: 'fats', label: 'Fats', matches: c => c === 'fat' },
-  { key: 'produce', label: 'Vegetables & Fruits', matches: c => c === 'fruit' },
+  { key: 'produce', label: 'Vegetables & Fruits', matches: c => c === 'fruit' || c === 'vegetable' },
   { key: 'supplements', label: 'Supplements', matches: c => c === 'supplement' }
 ]
 
-// CreateFoodForm's own category dropdown has no 'supplement' option (see
-// components/food/CreateFoodForm.tsx's FOOD_CATEGORY_OPTIONS), so the
-// escape hatch from the Supplements tab defaults to 'protein' rather than a
-// value the form's own select can't represent.
-const CREATE_FORM_DEFAULT_CATEGORY: Record<CategoryTabKey, 'protein' | 'carbohydrate' | 'fat' | 'fruit'> = {
+const CREATE_FORM_DEFAULT_CATEGORY: Record<CategoryTabKey, 'protein' | 'carbohydrate' | 'fat' | 'fruit' | 'supplement'> = {
   protein: 'protein',
   carbs: 'carbohydrate',
   fats: 'fat',
   produce: 'fruit',
-  supplements: 'protein'
+  supplements: 'supplement'
 }
 
 function categoryBadgeVariant(category: string | null | undefined): 'protein' | 'carbs' | 'fat' | 'success' | 'neutral' {
   if (category === 'protein' || category === 'dairy') return 'protein'
   if (category === 'carbohydrate') return 'carbs'
   if (category === 'fat') return 'fat'
-  if (category === 'fruit') return 'success'
+  if (category === 'fruit' || category === 'vegetable') return 'success'
   return 'neutral'
 }
 
@@ -57,6 +54,8 @@ function categoryLabel(category: string | null | undefined): string {
       return 'Fat'
     case 'fruit':
       return 'Fruit'
+    case 'vegetable':
+      return 'Vegetable'
     case 'supplement':
       return 'Supplement'
     default:
@@ -97,9 +96,12 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
 
   const activeTab = CATEGORY_TABS.find(t => t.key === activeCategory)!
 
+  // A non-empty query searches the ENTIRE catalog, not just the active tab -
+  // typing "banana" while the Protein tab happens to be selected must still
+  // find it. With no query, the tab filter alone decides what's shown.
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return foodOptions.filter(f => activeTab.matches(f.category) && (!q || f.name.toLowerCase().includes(q)))
+    if (query.trim()) return searchFoods(foodOptions, query)
+    return foodOptions.filter(f => activeTab.matches(f.category))
   }, [foodOptions, activeTab, query])
 
   const parsedQuantity = parseFloat(quantity)
@@ -195,42 +197,43 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder={`Search ${activeTab.label.toLowerCase()}...`}
-              aria-label={`Search ${activeTab.label}`}
+              placeholder="Search all foods..."
+              aria-label="Search all foods"
               className="w-full min-h-[44px] bg-background border border-border rounded-control pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
           </div>
 
           {results.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[45vh] overflow-y-auto">
-              {results.map(food => (
-                <button
-                  key={food.id}
-                  type="button"
-                  onClick={() => selectFood(food)}
-                  className="text-left p-3 rounded-control border border-border bg-surface hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary space-y-1.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-semibold text-sm text-foreground">{food.name}</span>
-                    <Badge variant={categoryBadgeVariant(food.category)} className="shrink-0">
-                      {categoryLabel(food.category)}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-3 font-mono tabular-nums text-xs font-semibold">
-                    <span className="text-calories">{Math.round(food.calories)} kcal</span>
-                    <span className="text-protein">{Math.round(food.protein)}p</span>
-                    <span className="text-carbs">{Math.round(food.carbs)}c</span>
-                    <span className="text-fat">{Math.round(food.fat)}f</span>
-                  </div>
-                  <span className="block text-[11px] text-muted-foreground">
-                    per {food.serving_size}{food.serving_unit === 'ml' ? 'ml' : 'g'}
-                  </span>
-                </button>
-              ))}
+              {results.map(food => {
+                const display = servingDisplayFor(food)
+                return (
+                  <button
+                    key={food.id}
+                    type="button"
+                    onClick={() => selectFood(food)}
+                    className="text-left p-3 rounded-control border border-border bg-surface hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary space-y-1.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-semibold text-sm text-foreground">{food.name}</span>
+                      <Badge variant={categoryBadgeVariant(food.category)} className="shrink-0">
+                        {categoryLabel(food.category)}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-3 font-mono tabular-nums text-xs font-semibold">
+                      <span className="text-calories">{Math.round(display.calories)} kcal</span>
+                      <span className="text-protein">{Math.round(display.protein)}p</span>
+                      <span className="text-carbs">{Math.round(display.carbs)}c</span>
+                      <span className="text-fat">{Math.round(display.fat)}f</span>
+                    </div>
+                    <span className="block text-[11px] text-muted-foreground">{display.label}</span>
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-6">
-              {query.trim() ? `No foods match "${query}" in ${activeTab.label}.` : `No foods in ${activeTab.label} yet.`}
+              {query.trim() ? `No foods match "${query}".` : `No foods in ${activeTab.label} yet.`}
             </p>
           )}
 
@@ -258,6 +261,7 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
             <input
               type="number"
               autoFocus
+              step={requiresGramsPerUnit(selected.display_unit || 'g') ? 0.5 : 1}
               value={quantity}
               onChange={e => setQuantity(e.target.value)}
               aria-label={`Quantity in ${unitLabel(selected.display_unit || 'g', parsedQuantity || 0)}`}

@@ -7,11 +7,12 @@ import {
   fixedGramsPerUnit,
   isValidGramsPerUnit,
   canonicalServingUnitFor,
+  servingSizeFor,
   DISPLAY_UNIT_OPTIONS
 } from '@/lib/nutrition/units'
 import type { FoodOption } from './components/DietEditor'
 
-const ALLOWED_CATEGORIES = ['protein', 'dairy', 'carbohydrate', 'fruit', 'fat']
+const ALLOWED_CATEGORIES = ['protein', 'dairy', 'carbohydrate', 'fruit', 'vegetable', 'fat', 'supplement']
 const ALLOWED_DISPLAY_UNITS = DISPLAY_UNIT_OPTIONS.map(o => o.value)
 const ALLOWED_PROTEIN_TYPES = ['animal', 'plant', 'supplement']
 const MAX_NUTRITION_PER_100 = 2000
@@ -30,6 +31,13 @@ export type CreateFoodInput = {
   category: string
   displayUnit: string
   gramsPerDisplayUnit: number | null // required for piece/slice/serving, ignored otherwise
+  // For displayUnit 'g'/'kg'/'ml' these are per 100g/100ml, matching the
+  // existing weight-based catalog convention exactly. For a piece-like unit
+  // (piece/slice/serving) these are per ONE of that unit instead (e.g. "25g
+  // protein per scoop") - entered directly, not derived from a per-100g
+  // figure, since a serving-based product's own label already states
+  // nutrition per scoop/serving and forcing a per-100g conversion is both
+  // unnecessary and error-prone for the user. See serving_size below.
   caloriesPer100: number
   proteinPer100: number
   carbsPer100: number
@@ -84,6 +92,7 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
   }
 
   const servingUnit = canonicalServingUnitFor(input.displayUnit)
+  const servingSize = servingSizeFor(input.displayUnit, gramsPerDisplayUnit)
 
   const supabase = await createClient()
 
@@ -108,7 +117,7 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
     .insert({
       name,
       category: input.category,
-      serving_size: 100,
+      serving_size: servingSize,
       serving_unit: servingUnit,
       calories: input.caloriesPer100,
       protein: input.proteinPer100,

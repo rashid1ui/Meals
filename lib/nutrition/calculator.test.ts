@@ -51,6 +51,57 @@ test('calculateFoodMacros - decimal', () => {
   assert.strictEqual(result.protein, 33.75)
 })
 
+// --- Serving-based foods (scoops/servings, not grams) ---
+// A serving-based food stores serving_size = the natural serving's own
+// gram weight (30g for a scoop here), with calories/protein/etc entered
+// directly per that serving - not derived from a per-100g figure. The
+// caller (FoodPickerModal) converts "N scoops" to canonical grams via
+// lib/nutrition/units.ts's toCanonicalGrams(N, {gramsPerDisplayUnit: 30})
+// before calling calculateFoodMacros, exactly like any other food.
+
+const mockWheyScoop: FoodMacro = {
+  id: 'whey-id',
+  name: 'Whey Protein',
+  serving_size: 30, // 1 scoop = 30g
+  serving_unit: 'grams',
+  calories: 120,
+  protein: 25,
+  carbs: 3,
+  fat: 2,
+  display_unit: 'serving',
+  grams_per_display_unit: 30
+}
+
+test('calculateFoodMacros - 1 scoop of a serving-based food gives the exact per-serving protein', () => {
+  // 1 scoop -> 30 canonical grams -> multiplier 30/30 = 1
+  const result = calculateFoodMacros(30, mockWheyScoop)
+  assert.strictEqual(result.protein, 25)
+  assert.strictEqual(result.calories, 120)
+})
+
+test('calculateFoodMacros - 2 scoops doubles every macro', () => {
+  // 2 scoops -> 60 canonical grams -> multiplier 60/30 = 2
+  const result = calculateFoodMacros(60, mockWheyScoop)
+  assert.strictEqual(result.protein, 50)
+  assert.strictEqual(result.calories, 240)
+  assert.strictEqual(result.carbs, 6)
+  assert.strictEqual(result.fat, 4)
+})
+
+test('calculateFoodMacros - 0.5 scoop halves every macro', () => {
+  const result = calculateFoodMacros(15, mockWheyScoop)
+  assert.strictEqual(result.protein, 12.5)
+  assert.strictEqual(result.calories, 60)
+})
+
+test('calculateFoodMacros - existing gram-based foods are unaffected by the serving-based model (regression)', () => {
+  const result = calculateFoodMacros(100, mockChicken)
+  assert.strictEqual(result.calories, 120)
+  assert.strictEqual(result.protein, 22.5)
+  assert.strictEqual(result.carbs, 0)
+  assert.strictEqual(result.fat, 2.6)
+})
+
 test('calculateDiet - valid payload', () => {
   const parsedMeals = [
     {

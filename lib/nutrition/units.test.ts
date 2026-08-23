@@ -8,6 +8,7 @@ import {
   fixedGramsPerUnit,
   requiresGramsPerUnit,
   canonicalServingUnitFor,
+  servingSizeFor,
   type UnitConfig
 } from './units'
 
@@ -93,6 +94,18 @@ test('requiresGramsPerUnit - only piece/slice/serving require an explicit weight
   assert.strictEqual(requiresGramsPerUnit('g'), false)
   assert.strictEqual(requiresGramsPerUnit('kg'), false)
   assert.strictEqual(requiresGramsPerUnit('ml'), false)
+})
+
+test('servingSizeFor - a scoop-based food uses its own gram weight as serving_size, not 100', () => {
+  assert.strictEqual(servingSizeFor('serving', 30), 30)
+  assert.strictEqual(servingSizeFor('piece', 50), 50)
+  assert.strictEqual(servingSizeFor('slice', 35), 35)
+})
+
+test('servingSizeFor - g/kg/ml foods keep the existing per-100 convention', () => {
+  assert.strictEqual(servingSizeFor('g', 1), 100)
+  assert.strictEqual(servingSizeFor('kg', 1000), 100)
+  assert.strictEqual(servingSizeFor('ml', 1), 100)
 })
 
 test('canonicalServingUnitFor - ml maps to the existing ml convention, everything else maps to grams', () => {
