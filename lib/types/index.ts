@@ -68,6 +68,12 @@ export interface Food {
   // classifyProteinType() fallback covers those at read-time, so every food
   // is always attributed to exactly one bucket in the dashboard breakdown.
   protein_type?: 'animal' | 'plant' | 'supplement' | null;
+  // Carb-source classification (lib/nutrition/carbType.ts) - NULL for rows
+  // added before supabase/migrations/0016_food_database_carb_type, or any
+  // custom food a user adds without one; lib/nutrition/carbType.ts's
+  // classifyCarbType() fallback covers those at read-time, so every food is
+  // always attributed to exactly one bucket in the Carb Education guidance.
+  carb_type?: 'simple' | 'complex' | null;
 }
 
 export interface DietPlan {

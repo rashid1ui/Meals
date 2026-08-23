@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/diet/supplements.test.ts lib/diet/generation-lock.test.ts lib/diet/generate-diet.test.ts lib/tracking/logic.test.ts app/dashboard/actions.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts",
+    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/carbType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/diet/supplements.test.ts lib/diet/generation-lock.test.ts lib/diet/generate-diet.test.ts lib/diet/manual-plan.test.ts lib/tracking/logic.test.ts app/dashboard/actions.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts",
     "test:audit": "node --import tsx --test tests/integration/audit.test.ts",
-    "test:supplement-db": "node --import tsx --test tests/integration/supplement-db.test.ts"
+    "test:supplement-db": "node --import tsx --test tests/integration/supplement-db.test.ts",
+    "test:manual-plan": "node --import tsx --test tests/integration/manual-plan.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

@@ -11,6 +11,7 @@ import { useState } from 'react'
 import Button from '@/components/ui/Button'
 import { useNotificationPermission, notifyPermissionChanged } from '@/lib/notifications/useNotificationPermission'
 import { subscribeToPush } from '@/lib/notifications/usePushSubscription'
+import { formatMealName } from '@/lib/nutrition/workoutMeals'
 
 export interface ReminderFormMeal {
   time: string
@@ -25,6 +26,13 @@ export interface RemindersFormValue {
 type Props = {
   value: RemindersFormValue
   onChange: (value: RemindersFormValue) => void
+  // Real, already-created meal names (the manual builder's post-save "Meal
+  // Reminders" step, app/onboarding/manual-actions.ts's createManualDietPlan
+  // result) - used verbatim in place of the generic position-based guesses
+  // below when provided, since there's no name-matching ambiguity once the
+  // meals actually exist. Undefined for the AI path, whose meal names don't
+  // exist until generation finishes.
+  mealNames?: string[]
 }
 
 const MEAL_LABELS: Record<number, string[]> = {
@@ -40,11 +48,14 @@ function labelsFor(count: number): string[] {
   return MEAL_LABELS[count] ?? Array.from({ length: count }, (_, i) => `Meal ${i + 1}`)
 }
 
-export default function RemindersStep({ value, onChange }: Props) {
+export default function RemindersStep({ value, onChange, mealNames }: Props) {
   const permission = useNotificationPermission()
   const [requesting, setRequesting] = useState(false)
 
-  const labels = labelsFor(value.perMeal.length)
+  const labels =
+    mealNames && mealNames.length === value.perMeal.length
+      ? mealNames.map(formatMealName)
+      : labelsFor(value.perMeal.length)
 
   const setMeal = (index: number, patch: Partial<ReminderFormMeal>) => {
     onChange({ ...value, perMeal: value.perMeal.map((m, i) => (i === index ? { ...m, ...patch } : m)) })
@@ -76,7 +87,9 @@ export default function RemindersStep({ value, onChange }: Props) {
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">Meal reminders</h1>
         <p className="text-muted-foreground">
-          We&apos;ll match these times to your generated meals, in order. Fine-tune everything later in Settings.
+          {mealNames
+            ? 'Set reminder times for your meals. Fine-tune everything later in Settings.'
+            : "We'll match these times to your generated meals, in order. Fine-tune everything later in Settings."}
         </p>
       </div>
 

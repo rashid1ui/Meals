@@ -30,18 +30,24 @@ type Props = {
   onRetry: () => void
   onGoBack?: () => void
   onContinue?: () => void
+  // 'manual' is a near-instant DB write (create-plan, no external API call),
+  // not a ~60s AI generation - shown a single static message instead of the
+  // 4-stage cycling copy below, which would otherwise read as misleadingly
+  // slow. Defaults to 'ai' so every existing (AI-path) call site is
+  // unaffected without passing this prop.
+  mode?: 'ai' | 'manual'
 }
 
-export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBack, onContinue }: Props) {
+export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBack, onContinue, mode = 'ai' }: Props) {
   const [stageIndex, setStageIndex] = useState(0)
 
   useEffect(() => {
-    if (status !== 'generating') return
+    if (status !== 'generating' || mode === 'manual') return
     const interval = setInterval(() => {
       setStageIndex(prev => (prev < STAGES.length - 1 ? prev + 1 : prev))
     }, STAGE_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [status])
+  }, [status, mode])
 
   useEffect(() => {
     if (status !== 'success' || !onContinue) return
@@ -89,6 +95,20 @@ export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBac
           <Button onClick={onRetry} className="flex-1">
             Try Again
           </Button>
+        </div>
+      </Card>
+    )
+  }
+
+  if (mode === 'manual') {
+    return (
+      <Card className="p-8 text-center space-y-6" role="status" aria-busy="true" aria-live="polite">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">Saving your plan</h1>
+          <p className="text-muted-foreground mt-2">This will just take a moment&hellip;</p>
+        </div>
+        <div className="h-1.5 rounded-full bg-surface-elevated border border-border overflow-hidden relative">
+          <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-primary animate-indeterminate-bar" />
         </div>
       </Card>
     )

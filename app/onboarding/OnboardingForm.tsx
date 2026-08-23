@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitOnboarding } from './actions'
 import Card from '@/components/ui/Card'
@@ -22,10 +22,17 @@ import TrainingNutritionStep, {
   isTrainingNutritionFormComplete,
   type TrainingNutritionFormValue
 } from './TrainingNutritionStep'
+import NutritionCreationChoice from './NutritionCreationChoice'
+import DailyTargetsStep from './DailyTargetsStep'
+import ManualMealBuilderStep, { type ManualFoodOption } from './ManualMealBuilderStep'
+import FinalReviewStep from './FinalReviewStep'
+import { createManualDietPlan, saveMealReminders, type CreatedMeal } from './manual-actions'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, validateNutritionTarget, validateMacroValues, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
 import { defaultReminderTimes } from '@/lib/notifications/schedule'
+import type { DraftMeal } from '@/lib/diet/diff'
+import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import type { UserProfile } from '@/lib/types'
 
 // Onboarding is 8 steps deep and collects real effort (biometrics, macro
@@ -54,6 +61,17 @@ interface OnboardingDraft {
   selectedProteins: string[]
   selectedCarbs: string[]
   selectedFats: string[]
+  // 'ai' is never actually reachable through the UI (see
+  // NutritionCreationChoice) - kept in the type only so the dead AI-path
+  // JSX/handleNext branches below still type-check against a real value.
+  path: 'manual' | 'ai' | null
+  manualMeals: DraftMeal[]
+  // Only meaningful once step 8 (Create Plan) has already succeeded - see
+  // the createdMeals state comment below. Persisted so a refresh mid-step-9
+  // (plan saved, reminders not yet configured) doesn't strand the user on a
+  // Reminders step with no meals to address.
+  createdMeals: CreatedMeal[]
+  manualReminders: RemindersFormValue
 }
 
 function loadOnboardingDraft(): OnboardingDraft | null {
@@ -97,10 +115,20 @@ type Props = {
   // their previous active plan's per-meal reminder settings, by position.
   initialRemindersEnabled?: boolean | null
   initialMealReminders?: InitialMealReminder[] | null
+  // The manual builder's searchable food library - additive alongside
+  // `foods` above (which continues to feed the untouched, unreachable AI
+  // steps only). Includes supplement rows, unlike `foods`.
+  manualFoodOptions?: ManualFoodOption[]
 }
 
-const STEP_LABELS = ['About You', 'Goal', 'Targets', 'Protein', 'Carbs', 'Fat', 'Training', 'Reminders']
-const TOTAL_STEPS = STEP_LABELS.length
+// Base steps every path shares (About You / Goal / Targets), plus the
+// choice screen itself - the array is genuinely only this long until the
+// user actually picks a path, since the manual builder's own step count
+// (Training/Targets recap/Build Meals/Review/Reminders) has nothing to
+// project forward before that choice is made. See STEP_LABELS below, which
+// extends this once `path === 'manual'`.
+const BASE_STEP_LABELS = ['About You', 'Goal', 'Targets', 'Create Plan']
+const MANUAL_STEP_LABELS = ['Training', 'Your Targets', 'Build Meals', 'Review', 'Reminders']
 
 const GOAL_LABELS: Record<Goal, string> = {
   cut: 'Cut',
@@ -157,6 +185,25 @@ function trainingNutritionFromUserProfile(p?: Partial<UserProfile> | null): Trai
   }
 }
 
+// Seeds the temp-id counter (see nextTempId below) past whatever numeric
+// suffixes already exist in a reloaded draft's manualMeals - a fresh
+// component mount (e.g. a page reload) would otherwise restart the counter
+// at 0 and generate an id that collides with one already sitting in the
+// restored draft.
+function computeInitialIdCounter(meals: DraftMeal[]): number {
+  let max = -1
+  const idPattern = /-(\d+)$/
+  for (const meal of meals) {
+    const mealMatch = idPattern.exec(meal.id)
+    if (mealMatch) max = Math.max(max, parseInt(mealMatch[1], 10))
+    for (const food of meal.foods) {
+      const foodMatch = idPattern.exec(food.id)
+      if (foodMatch) max = Math.max(max, parseInt(foodMatch[1], 10))
+    }
+  }
+  return max + 1
+}
+
 function formatRate(target: NutritionTarget): string {
   if (target.targetWeeklyRatePercent === 0) return 'Aim for an approximately stable bodyweight'
   const direction = target.targetWeeklyRatePercent < 0 ? 'loss' : 'gain'
@@ -169,7 +216,8 @@ export default function OnboardingForm({
   initialProfile = null,
   initialGoal = null,
   initialRemindersEnabled = null,
-  initialMealReminders = null
+  initialMealReminders = null,
+  manualFoodOptions = []
 }: Props) {
   // Local copy of the server-fetched catalog so a custom food created via
   // FoodStep's "Add Custom Food" appears (and can be selected) immediately,
@@ -291,6 +339,64 @@ export default function OnboardingForm({
   const [selectedCarbs, setSelectedCarbs] = useState<string[]>(draft?.selectedCarbs ?? [])
   const [selectedFats, setSelectedFats] = useState<string[]>(draft?.selectedFats ?? [])
 
+  // Manual-path state (Nutrition Creation Choice onward). `path` is typed to
+  // also allow 'ai' purely so the old, permanently-unreachable AI-path JSX/
+  // handleNext branches below still type-check - NutritionCreationChoice's
+  // onChange can only ever produce 'manual'.
+  const [path, setPath] = useState<'manual' | 'ai' | null>(draft?.path ?? null)
+  const [manualMeals, setManualMeals] = useState<DraftMeal[]>(draft?.manualMeals ?? [])
+
+  // See BASE_STEP_LABELS/MANUAL_STEP_LABELS above - the manual path's own
+  // steps only ever get projected into the progress bar/step count once
+  // they're actually reachable (path === 'manual').
+  const STEP_LABELS = useMemo(
+    () => (path === 'manual' ? [...BASE_STEP_LABELS, ...MANUAL_STEP_LABELS] : BASE_STEP_LABELS),
+    [path]
+  )
+  const TOTAL_STEPS = STEP_LABELS.length
+
+  // Local copy of the server-fetched manual food library, kept in sync with
+  // any food created via the builder's "Add a new food" form this session -
+  // same pattern as `foodList`/`addFoodToList` above, for the manual path's
+  // own (separate) food set.
+  const [manualFoodOptionsList, setManualFoodOptionsList] = useState<ManualFoodOption[]>(manualFoodOptions)
+  const handleManualFoodCreated = (food: FoodOption) => {
+    setManualFoodOptionsList(prev => (prev.some(f => f.id === food.id) ? prev : [...prev, food as ManualFoodOption]))
+  }
+
+  // Shared, prefix-agnostic counter for every client-side temp id the
+  // manual builder creates (new meals, new foods) - seeded past whatever a
+  // reloaded draft already contains (see computeInitialIdCounter) so a page
+  // reload can never generate an id that collides with one already in the
+  // restored manualMeals.
+  const idCounterRef = useRef(computeInitialIdCounter(draft?.manualMeals ?? []))
+  const nextTempId = (prefix: string) => `${prefix}-${idCounterRef.current++}`
+
+  // Selecting "Create My Own Plan" seeds three empty default meals, exactly
+  // once - re-selecting after navigating back and forth must never wipe out
+  // meals the user already built.
+  const handleSelectManualPath = () => {
+    setPath('manual')
+    if (manualMeals.length === 0) {
+      setManualMeals([
+        { id: nextTempId('new-meal'), name: 'Breakfast', sortOrder: 0, foods: [] },
+        { id: nextTempId('new-meal'), name: 'Lunch', sortOrder: 1, foods: [] },
+        { id: nextTempId('new-meal'), name: 'Dinner', sortOrder: 2, foods: [] }
+      ])
+    }
+  }
+
+  // Populated once createManualDietPlan (step 8) succeeds - the plan is
+  // already fully saved at that point, and step 9 (Meal Reminders)
+  // configures reminders directly against these real, persisted meal ids
+  // (no name/position matching needed, unlike the AI path's `reminders`
+  // state above).
+  const [createdMeals, setCreatedMeals] = useState<CreatedMeal[]>(draft?.createdMeals ?? [])
+  const [manualReminders, setManualReminders] = useState<RemindersFormValue>(
+    draft?.manualReminders ?? { enabled: false, perMeal: [] }
+  )
+  const [savingReminders, setSavingReminders] = useState(false)
+
   // Persist the draft on every relevant change so a refresh/closed tab can
   // resume - but not while a generation attempt's result screen is showing
   // (phase !== 'idle'), and never once generation has actually succeeded
@@ -313,7 +419,11 @@ export default function OnboardingForm({
       trainingNutrition,
       selectedProteins,
       selectedCarbs,
-      selectedFats
+      selectedFats,
+      path,
+      manualMeals,
+      createdMeals,
+      manualReminders
     }
     try {
       window.localStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(toSave))
@@ -338,6 +448,10 @@ export default function OnboardingForm({
     selectedProteins,
     selectedCarbs,
     selectedFats,
+    path,
+    manualMeals,
+    createdMeals,
+    manualReminders,
     phase
   ])
 
@@ -455,8 +569,21 @@ export default function OnboardingForm({
     }
 
     if (step === 4) {
-      if (selectedProteins.length === 0) {
-        setError('Please select at least one protein source.')
+      // Dead code: path can never actually be 'ai' (see the path state
+      // comment) - preserved only so this branch still exists for the
+      // permanently-unreachable AI path per the "placeholder for future
+      // development" requirement.
+      if (path === 'ai') {
+        if (selectedProteins.length === 0) {
+          setError('Please select at least one protein source.')
+          return
+        }
+        setStep(5)
+        return
+      }
+      // Nutrition Creation Choice - only the manual path is selectable.
+      if (path !== 'manual') {
+        setError('Please choose how you want to build your plan.')
         return
       }
       setStep(5)
@@ -464,8 +591,17 @@ export default function OnboardingForm({
     }
 
     if (step === 5) {
-      if (selectedCarbs.length === 0) {
-        setError('Please select at least one carbohydrate source.')
+      if (path === 'ai') {
+        if (selectedCarbs.length === 0) {
+          setError('Please select at least one carbohydrate source.')
+          return
+        }
+        setStep(6)
+        return
+      }
+      // Training & Supplements (existing component/state, reused verbatim).
+      if (!isTrainingNutritionFormComplete(trainingNutrition)) {
+        setError('Please finish your training nutrition setup.')
         return
       }
       setStep(6)
@@ -473,20 +609,36 @@ export default function OnboardingForm({
     }
 
     if (step === 6) {
-      if (selectedFats.length === 0) {
-        setError('Please select at least one fat source.')
+      if (path === 'ai') {
+        if (selectedFats.length === 0) {
+          setError('Please select at least one fat source.')
+          return
+        }
+        setStep(7)
         return
       }
+      // Daily Targets recap - purely informational, no validation.
       setStep(7)
       return
     }
 
     if (step === 7) {
-      if (!isTrainingNutritionFormComplete(trainingNutrition)) {
-        setError('Please finish your training nutrition setup.')
+      if (path === 'ai') {
+        if (!isTrainingNutritionFormComplete(trainingNutrition)) {
+          setError('Please finish your training nutrition setup.')
+          return
+        }
+        setStep(8)
+        return
+      }
+      // Meal Builder - at least one food, anywhere, before Review.
+      const hasFood = manualMeals.some(m => m.foods.length > 0)
+      if (!hasFood) {
+        setError('Please add at least one food to your meal plan before continuing.')
         return
       }
       setStep(8)
+      return
     }
   }
 
@@ -577,6 +729,135 @@ export default function OnboardingForm({
     }
   }
 
+  const handleManualSubmit = async () => {
+    setError(null)
+    setAttempt(prev => prev + 1)
+    const hasFood = manualMeals.some(m => m.foods.length > 0)
+    if (!hasFood) {
+      setError('Please add at least one food to your meal plan before continuing.')
+      return
+    }
+
+    setPhase('generating')
+    try {
+      const payload: SaveDietPlanPayload = {
+        meals: manualMeals.map(meal => ({
+          name: meal.name,
+          foods: meal.foods.map(food => ({
+            foodDatabaseId: food.foodDatabaseId,
+            originalFoodId: food.foodDatabaseId ? null : food.id,
+            quantity: food.quantity,
+            unit: food.unit
+          }))
+        }))
+      }
+
+      const nutritionProfilePayload =
+        calculatorUsed && nutritionTarget
+          ? {
+              sex: profile.sex,
+              age: parseInt(profile.age),
+              weightKg: weightInKg(profile),
+              heightCm: heightInCm(profile),
+              activityLevel: profile.activityLevel,
+              trainingDaysPerWeek: parseInt(profile.trainingDaysPerWeek),
+              bodyFatPercent: profile.bodyFatPercent ? parseFloat(profile.bodyFatPercent) : null,
+              averageDailySteps: profile.averageDailySteps ? parseInt(profile.averageDailySteps) : null,
+              currentCalorieIntake: profile.currentCalorieIntake ? parseInt(profile.currentCalorieIntake) : null
+            }
+          : null
+
+      const nutritionTargetMetaPayload =
+        calculatorUsed && nutritionTarget
+          ? {
+              goal: nutritionTarget.goal,
+              targetsSource,
+              estimatedMaintenanceCalories: nutritionTarget.estimatedMaintenanceCalories,
+              calorieAdjustmentPercent: nutritionTarget.calorieAdjustmentPercent,
+              proteinGramsPerKg: nutritionTarget.proteinGramsPerKg,
+              fatGramsPerKg: nutritionTarget.fatGramsPerKg,
+              targetWeeklyRatePercent: nutritionTarget.targetWeeklyRatePercent,
+              calculationVersion: nutritionTarget.calculationVersion
+            }
+          : null
+
+      const result = await createManualDietPlan(payload, {
+        targets: {
+          calories: parseFloat(calories),
+          protein: parseFloat(protein),
+          carbs: parseFloat(carbs),
+          fat: parseFloat(fat)
+        },
+        nutritionProfile: nutritionProfilePayload,
+        nutritionTargetMeta: nutritionTargetMetaPayload,
+        trainingNutrition: {
+          trainingTime: trainingNutrition.trainingTime || null,
+          trainingTimeCustom: trainingNutrition.trainingTime === 'custom' ? trainingNutrition.trainingTimeCustom : null,
+          supplements: trainingNutrition.supplements
+        },
+        isNewPlanFlow
+      })
+
+      if ('error' in result) {
+        setError(result.error)
+        setPhase('error')
+        return
+      }
+
+      // The plan is fully saved at this point - only the (optional) Meal
+      // Reminders step remains. Draft persistence continues (see the
+      // effect above) so a refresh mid-step-9 doesn't strand the user.
+      setCreatedMeals(result.meals)
+      const defaults = defaultReminderTimes(result.meals.length)
+      setManualReminders({
+        enabled: initialRemindersEnabled ?? false,
+        perMeal: result.meals.map((_, i) => ({ time: defaults[i], enabled: true }))
+      })
+      setPhase('idle')
+      setStep(9)
+    } catch (err: unknown) {
+      setError((err instanceof Error && err.message) || 'Failed to save your meal plan.')
+      setPhase('error')
+    }
+  }
+
+  const handleFinishReminders = async () => {
+    setError(null)
+    setSavingReminders(true)
+    try {
+      const mealReminders = createdMeals.map((meal, i) => ({
+        mealId: meal.id,
+        time: manualReminders.perMeal[i]?.time ?? null,
+        enabled: manualReminders.perMeal[i]?.enabled ?? true
+      }))
+      const result = await saveMealReminders(
+        mealReminders,
+        manualReminders.enabled,
+        Intl.DateTimeFormat().resolvedOptions().timeZone
+      )
+      if ('error' in result) {
+        // The plan itself already saved successfully (step 8) - a reminder
+        // failure here is surfaced inline, never as the full-screen error
+        // state, so it can't read as "your plan didn't save".
+        setError(result.error)
+        setSavingReminders(false)
+        return
+      }
+      clearOnboardingDraft()
+      setSavingReminders(false)
+      setPhase('success')
+    } catch (err: unknown) {
+      setError((err instanceof Error && err.message) || 'Failed to save your reminders.')
+      setSavingReminders(false)
+    }
+  }
+
+  const handleSkipReminders = () => {
+    setError(null)
+    clearOnboardingDraft()
+    setPhase('success')
+  }
+
   const handleContinue = () => {
     router.push('/dashboard')
     router.refresh()
@@ -594,9 +875,10 @@ export default function OnboardingForm({
           key={attempt}
           status={phase}
           errorMessage={error}
-          onRetry={handleSubmit}
+          onRetry={path === 'manual' ? handleManualSubmit : handleSubmit}
           onGoBack={handleGoBack}
           onContinue={handleContinue}
+          mode={path === 'manual' ? 'manual' : 'ai'}
         />
       </div>
     )
@@ -774,8 +1056,8 @@ export default function OnboardingForm({
         </div>
       )}
 
-      {/* Step 4: Proteins */}
-      {step === 4 && (
+      {/* Step 4 (dead AI path): Proteins - path can never actually be 'ai' */}
+      {step === 4 && path === 'ai' && (
         <FoodStep
           title="Select Your Proteins"
           description="Choose the protein sources you prefer."
@@ -787,8 +1069,13 @@ export default function OnboardingForm({
         />
       )}
 
-      {/* Step 5: Carbs */}
-      {step === 5 && (
+      {/* Step 4: Nutrition Creation Choice */}
+      {step === 4 && path !== 'ai' && (
+        <NutritionCreationChoice value={path === 'manual' ? 'manual' : null} onChange={handleSelectManualPath} />
+      )}
+
+      {/* Step 5 (dead AI path): Carbs */}
+      {step === 5 && path === 'ai' && (
         <FoodStep
           title="Select Your Carbs"
           description="Choose the carbohydrate sources you prefer."
@@ -800,8 +1087,11 @@ export default function OnboardingForm({
         />
       )}
 
-      {/* Step 6: Fats */}
-      {step === 6 && (
+      {/* Step 5: Training & Supplements (existing component, reused verbatim) */}
+      {step === 5 && path === 'manual' && <TrainingNutritionStep value={trainingNutrition} onChange={setTrainingNutrition} />}
+
+      {/* Step 6 (dead AI path): Fats */}
+      {step === 6 && path === 'ai' && (
         <FoodStep
           title="Select Your Fats"
           description="Choose the fat sources you prefer."
@@ -813,27 +1103,88 @@ export default function OnboardingForm({
         />
       )}
 
-      {/* Step 7: Training Nutrition Setup */}
-      {step === 7 && <TrainingNutritionStep value={trainingNutrition} onChange={setTrainingNutrition} />}
+      {/* Step 6: Daily Targets recap */}
+      {step === 6 && path === 'manual' && (
+        <DailyTargetsStep
+          calories={parseFloat(calories) || 0}
+          protein={parseFloat(protein) || 0}
+          carbs={parseFloat(carbs) || 0}
+          fat={parseFloat(fat) || 0}
+        />
+      )}
 
-      {/* Step 8: Reminders */}
-      {step === 8 && <RemindersStep value={reminders} onChange={setReminders} />}
+      {/* Step 7 (dead AI path): Training Nutrition Setup */}
+      {step === 7 && path === 'ai' && <TrainingNutritionStep value={trainingNutrition} onChange={setTrainingNutrition} />}
+
+      {/* Step 7: Meal Builder */}
+      {step === 7 && path === 'manual' && (
+        <ManualMealBuilderStep
+          meals={manualMeals}
+          setMeals={setManualMeals}
+          foodOptions={manualFoodOptionsList}
+          targets={{
+            calories: parseFloat(calories) || 0,
+            protein: parseFloat(protein) || 0,
+            carbs: parseFloat(carbs) || 0,
+            fat: parseFloat(fat) || 0
+          }}
+          nextTempId={nextTempId}
+          onFoodCreated={handleManualFoodCreated}
+        />
+      )}
+
+      {/* Step 8 (dead AI path): Reminders - keeps its original position-matched behavior */}
+      {step === 8 && path === 'ai' && <RemindersStep value={reminders} onChange={setReminders} />}
+
+      {/* Step 8: Final Review */}
+      {step === 8 && path === 'manual' && (
+        <FinalReviewStep
+          meals={manualMeals}
+          targets={{
+            calories: parseFloat(calories) || 0,
+            protein: parseFloat(protein) || 0,
+            carbs: parseFloat(carbs) || 0,
+            fat: parseFloat(fat) || 0
+          }}
+          foodOptions={manualFoodOptionsList}
+        />
+      )}
+
+      {/* Step 9: Meal Reminders - only reachable after step 8's Create Plan
+          has already succeeded (createdMeals is populated by
+          handleManualSubmit), addressed by real meal id/name. */}
+      {step === 9 && path === 'manual' && (
+        <RemindersStep value={manualReminders} onChange={setManualReminders} mealNames={createdMeals.map(m => m.name)} />
+      )}
 
       {/* Actions */}
       <div className="flex gap-4 pt-6 border-t border-border">
-        {step > 1 && (
+        {step > 1 && !(path === 'manual' && step === 9) && (
           <Button variant="secondary" onClick={handleBack}>
             Back
           </Button>
         )}
 
-        {step < TOTAL_STEPS ? (
-          <Button variant="primary" onClick={handleNext} className="flex-1">
-            Continue
+        {path === 'manual' && step === 9 ? (
+          <div className="flex gap-4 flex-1">
+            <Button variant="secondary" onClick={handleSkipReminders} className="flex-1">
+              Skip for now
+            </Button>
+            <Button variant="primary" onClick={handleFinishReminders} loading={savingReminders} className="flex-1">
+              Finish
+            </Button>
+          </div>
+        ) : path === 'manual' && step === 8 ? (
+          <Button variant="primary" onClick={handleManualSubmit} className="flex-1">
+            Create Plan
           </Button>
-        ) : (
+        ) : path === 'ai' && step === TOTAL_STEPS ? (
           <Button variant="primary" onClick={handleSubmit} className="flex-1">
             Generate Meal Plan
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={handleNext} className="flex-1">
+            Continue
           </Button>
         )}
       </div>

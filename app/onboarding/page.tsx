@@ -41,6 +41,31 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   // protein_type set at all.
   const selectableFoods = (dbFoods || []).filter(f => f.protein_type !== 'supplement')
 
+  // The manual meal builder's own food library - unlike `selectableFoods`
+  // above (which exists only to feed the untouched, unreachable AI steps),
+  // this one DOES include supplement rows, so a configured whey/creatine
+  // supplement is directly searchable/addable as a regular food in the
+  // builder rather than needing separate injection logic. The `.or` mirrors
+  // the food_database SELECT RLS policy from
+  // supabase/migrations/0014_food_database_supplement_select_rls.sql exactly
+  // (is_active=true OR category='supplement') - manual-actions.ts's
+  // createManualDietPlan re-verifies every submitted food against the same
+  // filter server-side, so this is a read-time convenience, not a trust
+  // boundary.
+  const { data: manualFoodRows, error: manualFoodError } = await supabase
+    .from('food_database')
+    .select(
+      'id, name, category, protein_type, carb_type, serving_size, serving_unit, calories, protein, carbs, fat, display_unit, grams_per_display_unit'
+    )
+    .or('is_active.eq.true,category.eq.supplement')
+    .order('name')
+
+  if (manualFoodError) {
+    console.error('Failed to load manual meal builder food library:', manualFoodError)
+  }
+
+  const manualFoodOptions = manualFoodRows || []
+
   // Pre-fills the new Profile/Goal steps from whatever the user last saved,
   // so the regenerate-plan flow (?newPlan=true, "change goal later") opens
   // with real values instead of blank. Both are best-effort - a first-time
@@ -88,6 +113,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           initialGoal={activePlans?.[0]?.goal ?? null}
           initialRemindersEnabled={notificationPrefs?.reminders_enabled ?? null}
           initialMealReminders={initialMealReminders}
+          manualFoodOptions={manualFoodOptions}
         />
       </div>
     </main>
