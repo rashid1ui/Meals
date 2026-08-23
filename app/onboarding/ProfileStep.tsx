@@ -84,11 +84,13 @@ export function isProfileFormComplete(value: ProfileFormValue): boolean {
 // inputs redundant again). 'extremely_active' remains a valid ActivityLevel
 // for the engine/DB (untouched), it's just not offered as a choice here -
 // "Very Active" already covers a physical job + high daily movement.
+// Emoji are prepended to `label` only (display text) - `value` is the
+// stored ActivityLevel enum, unchanged and never touched by this decoration.
 const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string; hint: string }[] = [
-  { value: 'sedentary', label: 'Mostly Sedentary', hint: 'Desk job, little walking, mostly sitting' },
-  { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job + regular walking/movement during the day' },
-  { value: 'moderately_active', label: 'Moderately Active', hint: 'Active job or lots of walking throughout the day' },
-  { value: 'very_active', label: 'Very Active', hint: 'Physical job + high daily movement' }
+  { value: 'sedentary', label: '🪑 Mostly Sedentary', hint: 'Desk job, little walking, mostly sitting' },
+  { value: 'lightly_active', label: '🚶 Lightly Active', hint: 'Desk job + regular walking/movement during the day' },
+  { value: 'moderately_active', label: '🏃 Moderately Active', hint: 'Active job or lots of walking throughout the day' },
+  { value: 'very_active', label: '🔥 Very Active', hint: 'Physical job + high daily movement' }
 ]
 
 type Props = {

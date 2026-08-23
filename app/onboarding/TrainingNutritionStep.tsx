@@ -44,17 +44,22 @@ export function isTrainingNutritionFormComplete(value: TrainingNutritionFormValu
   return true
 }
 
+// Emoji are prepended to `label` only (display text) - `value` is the
+// stored TrainingTime enum, unchanged and never touched by this decoration.
 const TRAINING_TIME_OPTIONS: { value: TrainingTime; label: string; hint: string }[] = [
-  { value: 'morning', label: 'Morning', hint: 'Before midday' },
-  { value: 'afternoon', label: 'Afternoon', hint: 'Midday to evening' },
-  { value: 'evening', label: 'Evening', hint: 'After work, later in the day' },
-  { value: 'custom', label: 'Exact time', hint: "I'll enter my usual time" }
+  { value: 'morning', label: '🌅 Morning', hint: 'Before midday' },
+  { value: 'afternoon', label: '🌤️ Afternoon', hint: 'Midday to evening' },
+  { value: 'evening', label: '🌙 Evening', hint: 'After work, later in the day' },
+  { value: 'custom', label: '⏰ Exact time', hint: "I'll enter my usual time" }
 ]
 
+// Emoji are prepended to `label` only (display text) - `value` is the
+// stored SupplementSetup['type'] enum, unchanged and never touched by this
+// decoration.
 const SUPPLEMENT_OPTIONS: { value: SupplementSetup['type']; label: string }[] = [
-  { value: 'whey', label: 'Whey Protein' },
-  { value: 'creatine', label: 'Creatine' },
-  { value: 'other', label: 'Other' }
+  { value: 'whey', label: '🥤 Whey Protein' },
+  { value: 'creatine', label: '⚡ Creatine' },
+  { value: 'other', label: '💊 Other' }
 ]
 
 type Props = {
@@ -121,7 +126,7 @@ export default function TrainingNutritionStep({ value, onChange }: Props) {
                 : 'border-border text-foreground hover:bg-surface-elevated'
             }`}
           >
-            No
+            ❌ No
           </button>
           {SUPPLEMENT_OPTIONS.map(opt => {
             const isSelected = value.supplements.some(s => s.type === opt.value)

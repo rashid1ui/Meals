@@ -6,11 +6,13 @@ import type { Goal } from '@/lib/nutrition/engine'
 // weight to base one on, and the spec is explicit that a recommendation
 // must never be invented from a rule that wasn't given (Part 17). The user
 // picks directly from a short, honest description of each goal.
+// Emoji are prepended to `label` only (display text) - `value` is the
+// stored Goal enum, unchanged and never touched by this decoration.
 const GOAL_OPTIONS: { value: Goal; label: string; description: string }[] = [
-  { value: 'cut', label: 'Cut', description: 'Lose fat with a modest calorie deficit while preserving muscle.' },
-  { value: 'recomp', label: 'Recomp', description: 'Stay near maintenance, aiming to change body composition, not the scale.' },
-  { value: 'lean_bulk', label: 'Lean Bulk', description: 'Build muscle with a small calorie surplus, minimizing fat gain.' },
-  { value: 'maintain', label: 'Maintain', description: 'Keep your current weight and body composition stable.' }
+  { value: 'cut', label: '🔥 Cut', description: 'Lose fat with a modest calorie deficit while preserving muscle.' },
+  { value: 'recomp', label: '⚖️ Recomp', description: 'Stay near maintenance, aiming to change body composition, not the scale.' },
+  { value: 'lean_bulk', label: '💪 Lean Bulk', description: 'Build muscle with a small calorie surplus, minimizing fat gain.' },
+  { value: 'maintain', label: '🛡️ Maintain', description: 'Keep your current weight and body composition stable.' }
 ]
 
 type Props = {
