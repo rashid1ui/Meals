@@ -3,8 +3,21 @@
 import { useState } from 'react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
-import { ChevronDownIcon } from '@/components/ui/icons'
-import { lbToKg, kgToLb, isValidHeightCm, HEIGHT_CM_MIN, HEIGHT_CM_MAX, type Sex, type ActivityLevel } from '@/lib/nutrition/engine'
+import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
+import {
+  lbToKg,
+  kgToLb,
+  isValidHeightCm,
+  isValidWeightKg,
+  classifyBmiWarning,
+  classifyBodyFatWarning,
+  HEIGHT_CM_MIN,
+  HEIGHT_CM_MAX,
+  WEIGHT_KG_MIN,
+  WEIGHT_KG_MAX,
+  type Sex,
+  type ActivityLevel
+} from '@/lib/nutrition/engine'
 
 export interface ProfileFormValue {
   sex: Sex | ''
@@ -16,10 +29,25 @@ export interface ProfileFormValue {
   weightInput: string
   heightCm: string
   activityLevel: ActivityLevel | ''
+  // '' = unanswered (first-time user), 'yes'/'no' otherwise. Gates whether
+  // Training Days/Week is shown/required at all - see isProfileFormComplete
+  // and profileFormFromUserProfile (OnboardingForm.tsx), which derives this
+  // straight from the existing training_days_per_week column so no new DB
+  // field is needed.
+  doesTrain: 'yes' | 'no' | ''
   trainingDaysPerWeek: string
   bodyFatPercent: string
   averageDailySteps: string
   currentCalorieIntake: string
+  // True once the user has explicitly acknowledged an active BMI/body-fat
+  // soft warning. Recomputed as "active" every render from the current
+  // weight/height/bodyFat values (see bmiWarning/bodyFatWarning below) -
+  // this flag only records that acknowledgment happened at some point, so a
+  // stale ack for old numbers never silently carries over once those values
+  // change again (isProfileFormComplete re-checks the warning is still the
+  // one that was acknowledged is out of scope; instead callers clear this
+  // flag themselves whenever weight/height/bodyFat change - see `set`).
+  bmiWarningAcknowledged: boolean
 }
 
 export function emptyProfileFormValue(): ProfileFormValue {
@@ -30,17 +58,39 @@ export function emptyProfileFormValue(): ProfileFormValue {
     weightInput: '',
     heightCm: '',
     activityLevel: '',
+    doesTrain: '',
     trainingDaysPerWeek: '',
     bodyFatPercent: '',
     averageDailySteps: '',
-    currentCalorieIntake: ''
+    currentCalorieIntake: '',
+    bmiWarningAcknowledged: false
   }
 }
 
 export function weightInKg(value: ProfileFormValue): number | null {
   const raw = parseFloat(value.weightInput)
-  if (!raw || raw <= 0) return null
+  if (!raw || raw <= 0 || !isValidWeightKg(value.weightUnit === 'lb' ? lbToKg(raw) : raw)) return null
   return value.weightUnit === 'lb' ? lbToKg(raw) : raw
+}
+
+// Live, continuously-recomputed derived warning - not a one-time check on
+// submit. Only active once both weight and height are present; body-fat is
+// independent and optional.
+export function activeBmiOrBodyFatWarning(value: ProfileFormValue): string | null {
+  const weightKg = weightInKg(value)
+  const heightCm = heightInCm(value)
+  if (weightKg !== null && heightCm !== null) {
+    const bmiWarning = classifyBmiWarning(weightKg, heightCm)
+    if (bmiWarning) return bmiWarning
+  }
+  if (value.bodyFatPercent !== '') {
+    const bodyFat = parseFloat(value.bodyFatPercent)
+    if (Number.isFinite(bodyFat)) {
+      const bodyFatWarning = classifyBodyFatWarning(bodyFat)
+      if (bodyFatWarning) return bodyFatWarning
+    }
+  }
+  return null
 }
 
 // null for "not a valid height" - covers empty input, non-numeric input,
@@ -62,6 +112,15 @@ const MAX_TRAINING_DAYS_PER_WEEK = 7
 export function isProfileFormComplete(value: ProfileFormValue): boolean {
   const age = parseFloat(value.age)
   const trainingDays = parseFloat(value.trainingDaysPerWeek)
+  // 0 days while claiming "I train" doesn't make sense, so trainingDays is
+  // only validated in [1, MAX] when doesTrain === 'yes'; when 'no', it's
+  // implicitly 0 and not checked at all (cleared to '0' by the toggle below).
+  const trainingDaysValid =
+    value.doesTrain === 'no' ||
+    (value.trainingDaysPerWeek !== '' &&
+      Number.isFinite(trainingDays) &&
+      trainingDays >= 1 &&
+      trainingDays <= MAX_TRAINING_DAYS_PER_WEEK)
   return Boolean(
     value.sex &&
       value.age &&
@@ -71,10 +130,9 @@ export function isProfileFormComplete(value: ProfileFormValue): boolean {
       weightInKg(value) !== null &&
       heightInCm(value) !== null &&
       value.activityLevel &&
-      value.trainingDaysPerWeek !== '' &&
-      Number.isFinite(trainingDays) &&
-      trainingDays >= 0 &&
-      trainingDays <= MAX_TRAINING_DAYS_PER_WEEK
+      value.doesTrain &&
+      trainingDaysValid &&
+      (activeBmiOrBodyFatWarning(value) === null || value.bmiWarningAcknowledged)
   )
 }
 
@@ -102,8 +160,13 @@ type Props = {
 export default function ProfileStep({ value, onChange, onSkip }: Props) {
   const [showOptional, setShowOptional] = useState(false)
 
-  const set = <K extends keyof ProfileFormValue>(key: K, val: ProfileFormValue[K]) =>
-    onChange({ ...value, [key]: val })
+  const set = <K extends keyof ProfileFormValue>(key: K, val: ProfileFormValue[K]) => {
+    // Weight/height/body-fat feed the BMI/body-fat warning - a previously
+    // acknowledged warning must not silently carry over once the underlying
+    // numbers change again.
+    const clearsAcknowledgment = key === 'weightInput' || key === 'heightCm' || key === 'bodyFatPercent'
+    onChange({ ...value, [key]: val, ...(clearsAcknowledgment ? { bmiWarningAcknowledged: false } : {}) })
+  }
 
   const toggleWeightUnit = () => {
     const currentKg = weightInKg(value)
@@ -115,6 +178,19 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
     const nextValue = nextUnit === 'lb' ? kgToLb(currentKg) : currentKg
     onChange({ ...value, weightUnit: nextUnit, weightInput: nextValue.toFixed(1) })
   }
+
+  const setDoesTrain = (doesTrain: 'yes' | 'no') => {
+    onChange({
+      ...value,
+      doesTrain,
+      // "No" has a well-defined answer for training days (0); "yes" needs a
+      // real answer from the user, so a stale '0' from a previous "no" is
+      // cleared rather than left behind as a misleadingly-valid value.
+      trainingDaysPerWeek: doesTrain === 'no' ? '0' : value.trainingDaysPerWeek === '0' ? '' : value.trainingDaysPerWeek
+    })
+  }
+
+  const warning = activeBmiOrBodyFatWarning(value)
 
   return (
     <div className="space-y-6 animate-step-in">
@@ -173,7 +249,7 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
             label="Weight"
             type="number"
             numeric
-            min={0}
+            min={WEIGHT_KG_MIN}
             step="0.1"
             value={value.weightInput}
             onChange={e => set('weightInput', e.target.value)}
@@ -186,20 +262,66 @@ export default function ProfileStep({ value, onChange, onSkip }: Props) {
                 {value.weightUnit}
               </button>
             }
+            error={
+              value.weightInput !== '' && weightInKg(value) === null
+                ? `Weight must be between ${WEIGHT_KG_MIN} and ${WEIGHT_KG_MAX} kg.`
+                : undefined
+            }
           />
         </div>
+      </div>
+
+      {warning && (
+        <div className="flex items-start gap-2 p-4 text-sm text-warning bg-warning/10 border border-warning/30 rounded-control">
+          <AlertIcon size={18} className="shrink-0 mt-0.5" />
+          <div className="space-y-2 flex-1">
+            <span>{warning}</span>
+            <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={value.bmiWarningAcknowledged}
+                onChange={e => onChange({ ...value, bmiWarningAcknowledged: e.target.checked })}
+                className="h-4 w-4 rounded border-border accent-warning"
+              />
+              I&apos;ve double-checked this value and it&apos;s correct
+            </label>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground block">Do you train?</span>
+        <div className="grid grid-cols-2 gap-3">
+          {(['yes', 'no'] as const).map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setDoesTrain(opt)}
+              className={`min-h-[44px] rounded-control border px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer ${
+                value.doesTrain === opt
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-foreground hover:bg-surface-elevated'
+              }`}
+            >
+              {opt === 'yes' ? 'Yes' : 'No'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {value.doesTrain === 'yes' && (
         <Input
           label="Training Days / Week"
           type="number"
           numeric
-          min={0}
+          min={1}
           max={7}
           value={value.trainingDaysPerWeek}
           onChange={e => set('trainingDaysPerWeek', e.target.value)}
           trailing="days"
           helperText="How many days per week do you do planned workouts?"
         />
-      </div>
+      )}
 
       <div className="space-y-2">
         <label htmlFor="activity-level" className="text-sm font-semibold text-foreground block">

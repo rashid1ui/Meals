@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
-import { diffMeals, moveFood, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { diffMeals, moveFood, computeDailyTotals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
 import {
   getTodayTracking,
@@ -184,6 +184,8 @@ export default function DietEditor({
 
   const changes = useMemo(() => diffMeals(initialMeals, draft), [initialMeals, draft])
   const hasChanges = changes.length > 0
+
+  const dailyTotals = useMemo(() => computeDailyTotals(draft), [draft])
 
   // A ref-based counter (not Date.now()/Math.random()) so id generation stays
   // pure during render - these ids only need to be unique within this
@@ -395,6 +397,8 @@ export default function DietEditor({
               onMoveFood={(foodId, targetMealId) => handleMoveFood(meal.id, foodId, targetMealId)}
               otherMeals={draft.filter(m => m.id !== meal.id).map(m => ({ id: m.id, name: m.name }))}
               onFoodCreated={handleFoodCreated}
+              dailyTargets={targets}
+              dailyTotals={dailyTotals}
               completion={
                 isPersistedMealId(meal.id) && completionByMealId.get(meal.id)
                   ? {

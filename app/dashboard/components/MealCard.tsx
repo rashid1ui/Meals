@@ -1,12 +1,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal } from '@/lib/diet/diff'
+import { computeMealTotals, getFoodBadges, type ChangeEntry, type DraftMeal, type MacroTotals as DailyMacroTotals } from '@/lib/diet/diff'
 import { pctOf, type MacroTotals } from '@/lib/tracking/logic'
 import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import type { FoodTrackingState } from '../tracking-actions'
 import FoodRow from './FoodRow'
-import AddFoodPopover from './AddFoodPopover'
+import FoodPickerModal from '@/components/food/FoodPickerModal'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
@@ -53,6 +53,11 @@ type Props = {
   // True for the single next-up (first non-complete, persisted) meal -
   // gets stronger visual hierarchy. See DietEditor's `nextMeal`.
   isNext?: boolean
+  // Threaded down to FoodPickerModal's optional "Daily Progress" guidance
+  // strip - both undefined simply omits it (e.g. no caller-computed daily
+  // total available yet).
+  dailyTargets?: DailyMacroTotals
+  dailyTotals?: DailyMacroTotals
 }
 
 const STATUS_LABEL: Record<MealTrackingStatus, string> = {
@@ -72,7 +77,9 @@ export default function MealCard({
   otherMeals,
   onFoodCreated,
   completion,
-  isNext = false
+  isNext = false,
+  dailyTargets,
+  dailyTotals
 }: Props) {
   const [showAddFood, setShowAddFood] = useState(false)
   const target = computeMealTotals(meal)
@@ -198,7 +205,7 @@ export default function MealCard({
             Foods
           </span>
         )}
-        {meal.foods.length === 0 && !showAddFood ? (
+        {meal.foods.length === 0 ? (
           <div className="text-center py-6 px-4 rounded-control border border-dashed border-border">
             <p className="text-sm font-semibold text-foreground">No foods in this meal yet.</p>
             <p className="text-xs text-muted-foreground mt-1">Add a food to start building this meal.</p>
@@ -235,24 +242,25 @@ export default function MealCard({
         )}
       </div>
 
-      {showAddFood ? (
-        <AddFoodPopover
+      <button
+        onClick={() => setShowAddFood(true)}
+        className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control"
+      >
+        <PlusIcon size={14} />
+        Add food
+      </button>
+
+      {showAddFood && (
+        <FoodPickerModal
           foodOptions={foodOptions}
           onAdd={(foodDatabaseId, quantity) => {
             onAddFood(foodDatabaseId, quantity)
-            setShowAddFood(false)
           }}
           onClose={() => setShowAddFood(false)}
           onFoodCreated={onFoodCreated}
+          dailyTargets={dailyTargets}
+          dailyTotals={dailyTotals}
         />
-      ) : (
-        <button
-          onClick={() => setShowAddFood(true)}
-          className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control"
-        >
-          <PlusIcon size={14} />
-          Add food
-        </button>
       )}
     </Card>
   )

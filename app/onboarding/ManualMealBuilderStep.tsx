@@ -155,6 +155,8 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
             onMoveFood={(foodId, targetMealId) => handleMoveFood(meal.id, foodId, targetMealId)}
             otherMeals={meals.filter(m => m.id !== meal.id).map(m => ({ id: m.id, name: m.name }))}
             onFoodCreated={onFoodCreated}
+            dailyTargets={targets}
+            dailyTotals={dailyTotals}
           />
         ))}
       </div>

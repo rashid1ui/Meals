@@ -87,6 +87,52 @@ export function isValidHeightCm(heightCm: number): boolean {
   return Number.isInteger(heightCm) && heightCm >= HEIGHT_CM_MIN && heightCm <= HEIGHT_CM_MAX
 }
 
+// Valid bodyweight bounds - same rationale as HEIGHT_CM_MIN/MAX above:
+// weight was previously only checked for `> 0`, so a typo like "5" or "500"
+// kg was silently accepted and corrupted every downstream BMR/TDEE number.
+// Wide enough to include legitimate outliers (a 300kg strongman-competitor
+// entry is implausible but not impossible) while still catching obvious
+// data-entry mistakes.
+export const WEIGHT_KG_MIN = 20
+export const WEIGHT_KG_MAX = 300
+
+export function isValidWeightKg(weightKg: number): boolean {
+  return isFiniteNumber(weightKg) && weightKg >= WEIGHT_KG_MIN && weightKg <= WEIGHT_KG_MAX
+}
+
+export function calculateBMI(weightKg: number, heightCm: number): number {
+  const heightM = heightCm / 100
+  return weightKg / (heightM * heightM)
+}
+
+// Soft-warning thresholds, deliberately generous - these flag "please
+// double-check this" combinations (e.g. 47kg/175cm -> BMI 15.3), not hard
+// medical cutoffs. BMI_HIGH_WARNING is wide enough to avoid flagging
+// legitimately heavy/muscular users.
+export const BMI_LOW_WARNING = 16
+export const BMI_HIGH_WARNING = 40
+
+export function classifyBmiWarning(weightKg: number, heightCm: number): string | null {
+  const bmi = calculateBMI(weightKg, heightCm)
+  if (bmi < BMI_LOW_WARNING) {
+    return `Please double-check your weight and height - this combination gives a BMI of ${bmi.toFixed(1)}, which is unusually low.`
+  }
+  if (bmi > BMI_HIGH_WARNING) {
+    return `Please double-check your weight and height - this combination gives a BMI of ${bmi.toFixed(1)}, which is unusually high.`
+  }
+  return null
+}
+
+export const BODY_FAT_PERCENT_LOW_WARNING = 3
+export const BODY_FAT_PERCENT_HIGH_WARNING = 60
+
+export function classifyBodyFatWarning(bodyFatPercent: number): string | null {
+  if (bodyFatPercent < BODY_FAT_PERCENT_LOW_WARNING || bodyFatPercent > BODY_FAT_PERCENT_HIGH_WARNING) {
+    return `Please double-check your body fat percentage - ${bodyFatPercent}% is unusually ${bodyFatPercent < BODY_FAT_PERCENT_LOW_WARNING ? 'low' : 'high'}.`
+  }
+  return null
+}
+
 export interface NutritionProfileInput {
   sex: Sex
   age: number
@@ -132,8 +178,57 @@ export function calculateBMR(sex: Sex, weightKg: number, heightCm: number, age: 
   return sex === 'male' ? base + 5 : base - 161
 }
 
-export function calculateTDEE(bmr: number, activityLevel: ActivityLevel): number {
-  return bmr * ACTIVITY_FACTORS[activityLevel]
+// Jeff Nippard's published activity-multiplier ranges for people training
+// 3-6x/week (The Ultimate Guide to Body Recomposition). Only the 3-day and
+// 6-day values below are his actual published endpoints; 4 and 5 days are
+// this app's own linear interpolation between them (see
+// getActivityMultiplier) - not numbers Jeff himself published.
+// extremely_active is intentionally omitted: Jeff publishes no fifth tier,
+// and it isn't offered in ProfileStep's UI (legacy/edge-case stored value
+// only) - see getActivityMultiplier's fallback rather than inventing an
+// unpublished range for it.
+const JEFF_TRAINING_RANGE: Partial<Record<ActivityLevel, [number, number]>> = {
+  sedentary: [1.20, 1.50],
+  lightly_active: [1.50, 1.80],
+  moderately_active: [1.80, 2.00],
+  very_active: [2.00, 2.20]
+}
+
+/**
+ * Combines Activity Level ("Daily Activity Outside Training") and Training
+ * Days/Week into a single TDEE multiplier, per Jeff Nippard's published
+ * table above. Activity Level continues to represent movement OUTSIDE
+ * structured training exactly as before (ACTIVITY_FACTORS is untouched) -
+ * training days are folded into the same multiplier rather than added as a
+ * second, separate factor, so there's no double counting.
+ */
+export function getActivityMultiplier(activityLevel: ActivityLevel, trainingDaysPerWeek: number): number {
+  const baseline = ACTIVITY_FACTORS[activityLevel]
+  const range = JEFF_TRAINING_RANGE[activityLevel]
+  if (!range) return baseline // extremely_active: no published tier, always activity-level-only
+
+  // 0 days: no structured training at all - identical to today's
+  // activity-level-only TDEE. 1-2 days: Jeff's table starts at 3x/week;
+  // there is no published or otherwise evidence-based mapping below that,
+  // so - deliberately conservative - these also fall back to the
+  // activity-level-only baseline rather than guessing an intermediate
+  // value. This is what prevents 1-2 training days from jumping straight
+  // to a 5-6-day-caliber multiplier.
+  if (trainingDaysPerWeek <= 2) return baseline
+
+  // 7 days: Jeff's table tops out at 6x/week - capped at the 6-day value
+  // rather than extrapolated beyond the published range.
+  const days = Math.min(trainingDaysPerWeek, 6)
+
+  // Linear interpolation across Jeff's published 3x/6x-week endpoints for
+  // this lifestyle category (see the table above) - 4 and 5 days are this
+  // app's interpolation, not values Jeff himself published.
+  const [low, high] = range
+  return low + (high - low) * ((days - 3) / 3)
+}
+
+export function calculateTDEE(bmr: number, activityLevel: ActivityLevel, trainingDaysPerWeek: number = 0): number {
+  return bmr * getActivityMultiplier(activityLevel, trainingDaysPerWeek)
 }
 
 /**
@@ -177,10 +272,10 @@ function isFiniteNumber(n: number): boolean {
  * (Part 8) instead of each independently rounding away from the total.
  */
 export function buildNutritionTarget(input: NutritionProfileInput): NutritionTarget {
-  const { sex, age, weightKg, heightCm, activityLevel, goal } = input
+  const { sex, age, weightKg, heightCm, activityLevel, trainingDaysPerWeek, goal } = input
 
   const bmr = calculateBMR(sex, weightKg, heightCm, age)
-  const tdee = calculateTDEE(bmr, activityLevel)
+  const tdee = calculateTDEE(bmr, activityLevel, trainingDaysPerWeek)
 
   const calorieMultiplier = GOAL_CALORIE_MULTIPLIER[goal]
   const rawCalorieTarget = tdee * calorieMultiplier

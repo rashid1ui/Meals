@@ -153,6 +153,10 @@ function profileFormFromUserProfile(p?: Partial<UserProfile> | null): ProfileFor
     weightInput: p.weight_kg != null ? String(p.weight_kg) : '',
     heightCm: p.height_cm != null ? String(p.height_cm) : '',
     activityLevel: p.activity_level ?? '',
+    // Derived straight from the existing training_days_per_week column -
+    // 0 -> 'no', >0 -> 'yes', null/undefined -> '' (unanswered, exactly
+    // today's first-time-user state). No new DB field needed.
+    doesTrain: p.training_days_per_week == null ? '' : p.training_days_per_week > 0 ? 'yes' : 'no',
     trainingDaysPerWeek: p.training_days_per_week != null ? String(p.training_days_per_week) : '',
     bodyFatPercent: p.body_fat_percent != null ? String(p.body_fat_percent) : '',
     averageDailySteps: p.average_daily_steps != null ? String(p.average_daily_steps) : '',
