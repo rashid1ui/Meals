@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { DraftFood, DraftMeal, FoodBadge } from '@/lib/diet/diff'
 import type { FoodOption } from './DietEditor'
 import {
@@ -100,16 +100,26 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
   // checkbox toggle, or another tab) - never fires from the user's own
   // keystrokes here, since those don't change completion.consumedQuantity
   // until commitLoggedQuantity's own upstream round-trip completes.
-  useEffect(() => {
-    if (completion) setLogInputValue(String(consumedDisplay))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completion?.consumedQuantity])
+  //
+  // Adjusted during render (React's documented pattern for "reset state
+  // when a prop changes" - react.dev/learn/you-might-not-need-an-effect)
+  // instead of in a useEffect, so this doesn't cost an extra post-paint
+  // render pass. Same trigger condition as before: only reacts to a genuine
+  // change in completion.consumedQuantity, not to unitConfig/consumedDisplay
+  // incidentally changing.
+  const [prevConsumedQuantity, setPrevConsumedQuantity] = useState(completion?.consumedQuantity)
+  if (completion && completion.consumedQuantity !== prevConsumedQuantity) {
+    setPrevConsumedQuantity(completion.consumedQuantity)
+    setLogInputValue(String(consumedDisplay))
+  }
 
   // Sync planned input value if the underlying food quantity changes
-  // externally (e.g. undo/redo)
-  useEffect(() => {
+  // externally (e.g. undo/redo) - same render-time adjustment pattern as above.
+  const [prevDisplayQuantity, setPrevDisplayQuantity] = useState(displayQuantity)
+  if (displayQuantity !== prevDisplayQuantity) {
+    setPrevDisplayQuantity(displayQuantity)
     setPlannedInputValue(String(displayQuantity))
-  }, [displayQuantity])
+  }
 
   const commitLoggedQuantity = (displayValue: number) => {
     if (!completion || !isFinite(displayValue)) return

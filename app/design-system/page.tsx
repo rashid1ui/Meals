@@ -205,7 +205,7 @@ export default function DesignSystemPage() {
             Color, type, and components for Gym Meals
           </h1>
           <p className="mt-3 text-sm sm:text-base text-muted-foreground max-w-2xl">
-            Palette and shape are derived from mealtrack.com's live computed styles: deep forest green + lime,
+            Palette and shape are derived from mealtrack.com&apos;s live computed styles: deep forest green + lime,
             a single rounded geometric sans, and much larger corner radii. Light is still the default brand
             surface; dark is a full opt-in palette toggled with the switch above (also available from the
             account menu). Every swatch and control on this page renders from the same CSS variables the rest
@@ -267,7 +267,7 @@ export default function DesignSystemPage() {
             Body text never drops below <span className="font-mono">14px</span> (helper/caption) or{' '}
             <span className="font-mono">16px</span> (default body), and line-height stays at 1.5+ for paragraphs.
             Kept a monospace face for numerals since tabular alignment is a legibility need specific to a
-            nutrition dashboard, not a brand choice MealTrack's marketing site had to make.
+            nutrition dashboard, not a brand choice MealTrack&apos;s marketing site had to make.
           </div>
         </section>
 

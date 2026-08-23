@@ -1,14 +1,24 @@
+// Integration test - calls the real DeepSeek API (lib/diet/generate-diet.ts)
+// end to end. Deliberately NOT part of `npm test` (costs money, is
+// non-deterministic, and requires a live API key) - run it manually with
+// `npm run test:audit` after adding DEEPSEEK_API_KEY to .env.local.
 import test from 'node:test'
 import assert from 'node:assert'
-import { generateValidatedDiet, type FoodOption } from './lib/diet/generate-diet'
+import { generateValidatedDiet, type FoodOption } from '../../lib/diet/generate-diet'
 
 import { config } from 'dotenv'
 
 // Load environment variables (.env.local) for DEEPSEEK_API_KEY
 config({ path: '.env.local' })
 
+// Never falls back to a hardcoded/default key, and never logs its value -
+// only whether it's present. A missing key fails the whole file immediately
+// and loudly (before any test runs), rather than letting individual tests
+// fail confusingly later with an opaque "Server misconfiguration" error.
 if (!process.env.DEEPSEEK_API_KEY) {
-  assert.fail('DEEPSEEK_API_KEY is missing from environment variables.')
+  throw new Error(
+    'Missing DEEPSEEK_API_KEY. Add it to .env.local before running audit tests (npm run test:audit).'
+  )
 }
 
 const chicken: FoodOption = {
@@ -157,7 +167,7 @@ test('Scenario 3: User does not train + uses whey', async () => {
 })
 
 test('Scenario 4: Quantity editing math validation', async () => {
-  const { calculateFoodMacros } = await import('./lib/nutrition/calculator')
+  const { calculateFoodMacros } = await import('../../lib/nutrition/calculator')
   // Chicken Breast 100g -> 200g
   const initial = calculateFoodMacros(100, chicken)
   assert.strictEqual(Math.round(initial.calories), 120)
@@ -211,6 +221,82 @@ test('Scenario 6: Multiple Supplements (Whey + Creatine)', async () => {
     for (const food of meal.foods) {
       assert.notStrictEqual(food.food_id, 'whey-123', 'Whey protein was found in generated meals but should have been excluded')
       assert.notStrictEqual(food.food_id, 'crea-456', 'Creatine was found in generated meals but should have been excluded')
+    }
+  }
+})
+
+test('Scenario 7: Integration - Whey + Creatine macro math and appending', async () => {
+  // Simulate what actions.ts does
+  const originalProteinTarget = 150
+  
+  // Whey: 2 scoops, 25g protein each = 50g protein total
+  const wheySupp = {
+    food_id: 'whey-123',
+    name: 'Whey Protein',
+    quantity: 60, // 2 canonical scoops (30g each)
+    unit: 'grams',
+    calories: 200, // 50g * 4
+    protein: 50,
+    carbs: 0,
+    fat: 0
+  }
+
+  // Creatine: 1 scoop, 5g
+  const creatineSupp = {
+    food_id: 'crea-456',
+    name: 'Creatine',
+    quantity: 5,
+    unit: 'grams',
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0
+  }
+
+  const aiProteinTarget = originalProteinTarget - wheySupp.protein
+  assert.strictEqual(aiProteinTarget, 100, 'AI protein target should be reduced by exactly 50g')
+
+  const result = await generateValidatedDiet({
+    dbFoods,
+    calories: 2000 - wheySupp.calories,
+    protein: aiProteinTarget,
+    carbs: 200,
+    fat: 60,
+    mealsCount: 4,
+    supplementFoodIds: new Set([wheySupp.food_id, creatineSupp.food_id]),
+    trainingTime: 'morning'
+  })
+
+  if ('error' in result) {
+    assert.fail(`Generation failed: ${result.error}`)
+  }
+
+  const diet = result.diet
+  const postWorkoutMeal = diet.meals.find(m => m.name.includes('Post-Workout'))
+  assert.ok(postWorkoutMeal, 'Post-Workout Meal should exist')
+
+  // Append supplements exactly like actions.ts
+  if (postWorkoutMeal) {
+    postWorkoutMeal.foods.push(wheySupp, creatineSupp)
+    postWorkoutMeal.calories += wheySupp.calories + creatineSupp.calories
+    postWorkoutMeal.protein += wheySupp.protein + creatineSupp.protein
+  }
+
+  // Assertions
+  for (const meal of diet.meals) {
+    const hasWhey = meal.foods.some(f => f.food_id === wheySupp.food_id)
+    const hasCreatine = meal.foods.some(f => f.food_id === creatineSupp.food_id)
+    
+    if (meal.name.includes('Post-Workout')) {
+      assert.ok(hasWhey, 'Whey should appear once in Post-Workout')
+      assert.ok(hasCreatine, 'Creatine should appear once in Post-Workout')
+      
+      const creatineFood = meal.foods.find(f => f.food_id === creatineSupp.food_id)
+      assert.strictEqual(creatineFood?.calories, 0, 'Creatine contributes zero calories')
+      assert.strictEqual(creatineFood?.protein, 0, 'Creatine contributes zero protein')
+    } else {
+      assert.ok(!hasWhey, 'Whey should not appear in other meals')
+      assert.ok(!hasCreatine, 'Creatine should not appear in other meals')
     }
   }
 })
