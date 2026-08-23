@@ -23,13 +23,23 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
 
   const { data: dbFoods, error: dbError } = await supabase
     .from('food_database')
-    .select('id, name, category')
+    .select('id, name, category, protein_type')
     .eq('is_active', true)
     .order('name')
 
   if (dbError) {
     console.error('Failed to load food_database:', dbError)
   }
+
+  // Supplements (whey/creatine/other configured via the Training Nutrition
+  // Setup step, or any food a user tagged Protein Source = Supplement) only
+  // ever appear through the dedicated supplement flow - never the general
+  // food picker or AI candidate pool (app/onboarding/actions.ts already
+  // excludes protein_type='supplement' rows there too). Filtered in JS
+  // rather than a `.neq('protein_type', 'supplement')` query, since Postgres
+  // NULL semantics would make that filter also exclude every food with no
+  // protein_type set at all.
+  const selectableFoods = (dbFoods || []).filter(f => f.protein_type !== 'supplement')
 
   // Pre-fills the new Profile/Goal steps from whatever the user last saved,
   // so the regenerate-plan flow (?newPlan=true, "change goal later") opens
@@ -72,7 +82,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
       <div className="w-full py-12">
         <OnboardingForm
-          foods={dbFoods || []}
+          foods={selectableFoods}
           isNewPlanFlow={isNewPlanFlow}
           initialProfile={profile}
           initialGoal={activePlans?.[0]?.goal ?? null}

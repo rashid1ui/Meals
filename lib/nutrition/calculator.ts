@@ -53,6 +53,7 @@ export interface CalculatedFood {
   protein: number
   carbs: number
   fat: number
+  notes?: string | null
 }
 
 export interface CalculatedMeal {

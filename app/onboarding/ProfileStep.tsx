@@ -53,15 +53,28 @@ export function heightInCm(value: ProfileFormValue): number | null {
   return raw
 }
 
+// Bounds mirror the DB's own CHECK constraints (profiles.age,
+// profiles.training_days_per_week) - the client's <Input max=...> hints are
+// HTML attributes only and don't block a value typed past them.
+const MAX_VALID_AGE = 119
+const MAX_TRAINING_DAYS_PER_WEEK = 7
+
 export function isProfileFormComplete(value: ProfileFormValue): boolean {
+  const age = parseFloat(value.age)
+  const trainingDays = parseFloat(value.trainingDaysPerWeek)
   return Boolean(
     value.sex &&
       value.age &&
-      parseFloat(value.age) > 0 &&
+      Number.isFinite(age) &&
+      age > 0 &&
+      age <= MAX_VALID_AGE &&
       weightInKg(value) !== null &&
       heightInCm(value) !== null &&
       value.activityLevel &&
-      value.trainingDaysPerWeek !== ''
+      value.trainingDaysPerWeek !== '' &&
+      Number.isFinite(trainingDays) &&
+      trainingDays >= 0 &&
+      trainingDays <= MAX_TRAINING_DAYS_PER_WEEK
   )
 }
 

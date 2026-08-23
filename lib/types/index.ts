@@ -9,6 +9,15 @@ export interface NutritionValues {
   fat: number;
 }
 
+export interface SupplementSetup {
+  type: 'whey' | 'creatine' | 'other';
+  brand?: string;
+  serving_label: string; // e.g. "1 scoop"
+  amount_per_serving_g?: number; // mainly for whey/creatine
+  macros?: NutritionValues; // for custom "other" supplements
+  notes?: string;
+}
+
 export interface UserProfile {
   id: string; // UUID from Supabase Auth
   full_name?: string | null;
@@ -38,6 +47,7 @@ export interface UserProfile {
   protein_brand?: string | null;
   protein_serving_label?: string | null; // free text, e.g. "1 scoop"
   protein_per_serving_g?: number | null;
+  supplements?: SupplementSetup[] | null;
 }
 
 export interface Food {

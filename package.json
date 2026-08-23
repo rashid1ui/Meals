@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/tracking/logic.test.ts app/dashboard/actions.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts"
+    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/diet/supplements.test.ts lib/diet/generation-lock.test.ts lib/diet/generate-diet.test.ts lib/tracking/logic.test.ts app/dashboard/actions.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts",
+    "test:audit": "node --import tsx --test tests/integration/audit.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -24,6 +25,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",

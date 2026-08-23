@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitOnboarding } from './actions'
 import Card from '@/components/ui/Card'
@@ -24,9 +24,56 @@ import TrainingNutritionStep, {
 } from './TrainingNutritionStep'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
-import { buildNutritionTarget, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
+import { buildNutritionTarget, validateNutritionTarget, validateMacroValues, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
 import { defaultReminderTimes } from '@/lib/notifications/schedule'
 import type { UserProfile } from '@/lib/types'
+
+// Onboarding is 8 steps deep and collects real effort (biometrics, macro
+// targets, food selections, training setup) before the final "Generate Meal
+// Plan" submit - losing all of it to an accidental refresh or closed tab is
+// a real, previously-unmitigated data-loss risk. Persisted to localStorage
+// only (never sent anywhere), and only body-metric/preference data the user
+// is already actively typing into this form - nothing more sensitive is
+// added. Cleared the moment generation succeeds (see handleSubmit below).
+const ONBOARDING_DRAFT_KEY = 'gym-meals-onboarding-draft-v1'
+
+interface OnboardingDraft {
+  step: number
+  profile: ProfileFormValue
+  goal: Goal | ''
+  calculatorSkipped: boolean
+  nutritionTarget: NutritionTarget | null
+  targetsSource: 'recommended' | 'custom'
+  calories: string
+  protein: string
+  carbs: string
+  fat: string
+  meals: string
+  reminders: RemindersFormValue
+  trainingNutrition: TrainingNutritionFormValue
+  selectedProteins: string[]
+  selectedCarbs: string[]
+  selectedFats: string[]
+}
+
+function loadOnboardingDraft(): OnboardingDraft | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(ONBOARDING_DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as OnboardingDraft) : null
+  } catch {
+    return null
+  }
+}
+
+function clearOnboardingDraft() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(ONBOARDING_DRAFT_KEY)
+  } catch {
+    // Storage unavailable (private browsing, quota) - nothing to clean up.
+  }
+}
 
 type Food = {
   id: string
@@ -88,14 +135,25 @@ function profileFormFromUserProfile(p?: Partial<UserProfile> | null): ProfileFor
 function trainingNutritionFromUserProfile(p?: Partial<UserProfile> | null): TrainingNutritionFormValue {
   const base = emptyTrainingNutritionFormValue()
   if (!p) return base
+  
+  let initialSupplements = p.supplements || []
+  
+  // Backward compatibility: If no supplements array exists but legacy columns are set,
+  // migrate them into the initial state.
+  if (initialSupplements.length === 0 && p.uses_supplements && p.supplement_type) {
+    initialSupplements = [{
+      type: p.supplement_type,
+      brand: p.protein_brand || undefined,
+      serving_label: p.protein_serving_label || '',
+      amount_per_serving_g: p.protein_per_serving_g || undefined
+    }]
+  }
+
   return {
     ...base,
     trainingTime: p.training_time ?? '',
     trainingTimeCustom: p.training_time_custom ?? '',
-    supplement: p.uses_supplements ? (p.supplement_type ?? 'other') : 'none',
-    proteinBrand: p.protein_brand ?? '',
-    proteinServingLabel: p.protein_serving_label ?? '',
-    proteinPerServingG: p.protein_per_serving_g != null ? String(p.protein_per_serving_g) : ''
+    supplements: initialSupplements
   }
 }
 
@@ -119,6 +177,12 @@ export default function OnboardingForm({
   // (createFoodDatabaseEntry persists it for real) - this is purely a UI
   // mirror of that table, kept in sync on each creation.
   const [foodList, setFoodList] = useState<Food[]>(foods)
+
+  // Computed once, synchronously, on mount - a leftover draft from a
+  // previous incomplete session (refresh, closed tab) takes priority over
+  // the server-provided initial* props so the user resumes exactly where
+  // they left off.
+  const [draft] = useState<OnboardingDraft | null>(() => loadOnboardingDraft())
 
   const PROTEINS = useMemo(
     () => foodList.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim())),
@@ -151,7 +215,7 @@ export default function OnboardingForm({
   }
 
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(draft?.step ?? 1)
   // 'idle' is the wizard itself; the other three phases render
   // GeneratingPanel. Kept as one state machine (rather than separate
   // loading/generationFailed booleans) so "generating", "succeeded", and
@@ -168,19 +232,19 @@ export default function OnboardingForm({
   // who hits "Skip" on the Profile step never populates `nutritionTarget`,
   // and the Targets step renders exactly as it always has - the calculator
   // is purely additive on top of the existing manual-entry flow.
-  const [profile, setProfile] = useState<ProfileFormValue>(() => profileFormFromUserProfile(initialProfile))
-  const [goal, setGoal] = useState<Goal | ''>(initialGoal ?? '')
-  const [calculatorSkipped, setCalculatorSkipped] = useState(false)
-  const [nutritionTarget, setNutritionTarget] = useState<NutritionTarget | null>(null)
-  const [targetsSource, setTargetsSource] = useState<'recommended' | 'custom'>('custom')
+  const [profile, setProfile] = useState<ProfileFormValue>(() => draft?.profile ?? profileFormFromUserProfile(initialProfile))
+  const [goal, setGoal] = useState<Goal | ''>(draft?.goal ?? (initialGoal ?? ''))
+  const [calculatorSkipped, setCalculatorSkipped] = useState(draft?.calculatorSkipped ?? false)
+  const [nutritionTarget, setNutritionTarget] = useState<NutritionTarget | null>(draft?.nutritionTarget ?? null)
+  const [targetsSource, setTargetsSource] = useState<'recommended' | 'custom'>(draft?.targetsSource ?? 'custom')
   const calculatorUsed = !calculatorSkipped && nutritionTarget !== null
 
   // Form State
-  const [calories, setCalories] = useState('2250')
-  const [protein, setProtein] = useState('150')
-  const [carbs, setCarbs] = useState('250')
-  const [fat, setFat] = useState('70')
-  const [meals, setMeals] = useState('4')
+  const [calories, setCalories] = useState(draft?.calories ?? '2250')
+  const [protein, setProtein] = useState(draft?.protein ?? '150')
+  const [carbs, setCarbs] = useState(draft?.carbs ?? '250')
+  const [fat, setFat] = useState(draft?.fat ?? '70')
+  const [meals, setMeals] = useState(draft?.meals ?? '4')
 
   // Reminders step state - collected by POSITION (see RemindersStep's
   // comment) since the real meal names don't exist until after generation.
@@ -188,6 +252,7 @@ export default function OnboardingForm({
   // changing meal count never leaves this out of sync, preserving whatever
   // the user already configured for positions that still exist.
   const [reminders, setReminders] = useState<RemindersFormValue>(() => {
+    if (draft?.reminders) return draft.reminders
     const count = parseInt(meals) || 0
     const defaults = defaultReminderTimes(count)
     return {
@@ -219,12 +284,62 @@ export default function OnboardingForm({
   }
 
   const [trainingNutrition, setTrainingNutrition] = useState<TrainingNutritionFormValue>(() =>
-    trainingNutritionFromUserProfile(initialProfile)
+    draft?.trainingNutrition ?? trainingNutritionFromUserProfile(initialProfile)
   )
 
-  const [selectedProteins, setSelectedProteins] = useState<string[]>([])
-  const [selectedCarbs, setSelectedCarbs] = useState<string[]>([])
-  const [selectedFats, setSelectedFats] = useState<string[]>([])
+  const [selectedProteins, setSelectedProteins] = useState<string[]>(draft?.selectedProteins ?? [])
+  const [selectedCarbs, setSelectedCarbs] = useState<string[]>(draft?.selectedCarbs ?? [])
+  const [selectedFats, setSelectedFats] = useState<string[]>(draft?.selectedFats ?? [])
+
+  // Persist the draft on every relevant change so a refresh/closed tab can
+  // resume - but not while a generation attempt's result screen is showing
+  // (phase !== 'idle'), and never once generation has actually succeeded
+  // (cleared explicitly in handleSubmit's success branch below).
+  useEffect(() => {
+    if (phase !== 'idle') return
+    const toSave: OnboardingDraft = {
+      step,
+      profile,
+      goal,
+      calculatorSkipped,
+      nutritionTarget,
+      targetsSource,
+      calories,
+      protein,
+      carbs,
+      fat,
+      meals,
+      reminders,
+      trainingNutrition,
+      selectedProteins,
+      selectedCarbs,
+      selectedFats
+    }
+    try {
+      window.localStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(toSave))
+    } catch {
+      // Best-effort - storage unavailable or full. The user's current
+      // session is unaffected either way.
+    }
+  }, [
+    step,
+    profile,
+    goal,
+    calculatorSkipped,
+    nutritionTarget,
+    targetsSource,
+    calories,
+    protein,
+    carbs,
+    fat,
+    meals,
+    reminders,
+    trainingNutrition,
+    selectedProteins,
+    selectedCarbs,
+    selectedFats,
+    phase
+  ])
 
   const toggleSelection = (id: string, current: string[], setter: (val: string[]) => void) => {
     if (current.includes(id)) {
@@ -301,6 +416,14 @@ export default function OnboardingForm({
         averageDailySteps: profile.averageDailySteps ? parseInt(profile.averageDailySteps) : null,
         currentCalorieIntake: profile.currentCalorieIntake ? parseInt(profile.currentCalorieIntake) : null
       })
+      // Defensive backstop on the calculator's own output (should always
+      // reconcile given valid inputs - this exists to catch it if it ever
+      // doesn't, per the spec's "never silently generate an extreme diet").
+      const targetCheck = validateNutritionTarget(target)
+      if (!targetCheck.valid) {
+        setError(targetCheck.errors[0])
+        return
+      }
       setNutritionTarget(target)
       setTargetsSource('recommended')
       setCalories(String(target.calories))
@@ -312,8 +435,19 @@ export default function OnboardingForm({
     }
 
     if (step === 3) {
-      if (!calories || !protein || !carbs || !fat) {
-        setError('Please fill in all macro targets.')
+      // Was previously `if (!calories || !protein || !carbs || !fat)`, which
+      // a negative number passes (`!(-500)` is false in JS) - letting a
+      // negative target reach the server. validateMacroValues rejects
+      // non-finite values and enforces calories/protein > 0, carbs/fat >= 0,
+      // same rule the server independently re-checks in actions.ts.
+      const macroCheck = validateMacroValues({
+        calories: parseFloat(calories),
+        protein: parseFloat(protein),
+        carbs: parseFloat(carbs),
+        fat: parseFloat(fat)
+      })
+      if (!macroCheck.valid) {
+        setError(macroCheck.errors[0])
         return
       }
       setStep(4)
@@ -381,12 +515,7 @@ export default function OnboardingForm({
         JSON.stringify({
           trainingTime: trainingNutrition.trainingTime || null,
           trainingTimeCustom: trainingNutrition.trainingTime === 'custom' ? trainingNutrition.trainingTimeCustom : null,
-          supplementType: trainingNutrition.supplement === 'none' ? null : trainingNutrition.supplement,
-          proteinBrand: trainingNutrition.supplement === 'whey' ? trainingNutrition.proteinBrand || null : null,
-          proteinServingLabel:
-            trainingNutrition.supplement === 'whey' ? trainingNutrition.proteinServingLabel || null : null,
-          proteinPerServingG:
-            trainingNutrition.supplement === 'whey' ? parseFloat(trainingNutrition.proteinPerServingG) || null : null
+          supplements: trainingNutrition.supplements
         })
       )
       formData.append(
@@ -439,6 +568,7 @@ export default function OnboardingForm({
         setError(result.error)
         setPhase('error')
       } else {
+        clearOnboardingDraft()
         setPhase('success')
       }
     } catch (err: unknown) {

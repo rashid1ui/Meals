@@ -1,0 +1,22 @@
+-- ==============================================================================
+-- Migration: Backfill - Remove Pork Tenderloin from default foods
+-- ==============================================================================
+-- WHY THIS MIGRATION IS REQUIRED
+--
+-- This statement was already applied directly to the live database
+-- (recorded there as migration "remove_pork_tenderloin_from_default_foods",
+-- version 20260822074639) but was never committed to this migrations folder,
+-- so a fresh environment built from this repo's migrations + seed.sql alone
+-- would never remove it. Backfilled here, idempotent, so re-running it
+-- against an environment where it's already applied is a harmless no-op.
+-- ==============================================================================
+
+-- Remove Pork Tenderloin, Raw from the default/selectable food list.
+-- Soft-deleted (is_active=false) rather than hard-deleted: food_database
+-- rows are the shared, admin-curated catalog every food-selection UI reads
+-- from (all app queries and the "Authenticated users can view active foods"
+-- RLS policy already filter on is_active=true), so this fully removes it
+-- from selection without touching any historical diet_plans/meals/foods
+-- data (those store a point-in-time name/macro snapshot, not a foreign key
+-- to food_database).
+UPDATE public.food_database SET is_active = false WHERE name = 'Pork Tenderloin, Raw';

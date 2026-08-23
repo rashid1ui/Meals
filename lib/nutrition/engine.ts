@@ -225,20 +225,47 @@ export function buildNutritionTarget(input: NutritionProfileInput): NutritionTar
 // unavoidable result of protein/carbs/fat each being whole grams.
 const MACRO_RECONCILIATION_TOLERANCE_KCAL = 15
 
-export function validateNutritionTarget(target: NutritionTarget): { valid: boolean; errors: string[] } {
+export interface MacroValues {
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+/**
+ * Value-level sanity check shared by validateNutritionTarget (below, which
+ * additionally enforces calorie/macro reconciliation - appropriate for the
+ * Nutrition Engine's own internally-consistent output) and the onboarding
+ * server action's manual-entry target check (app/onboarding/actions.ts),
+ * which deliberately does NOT enforce reconciliation - a user is allowed to
+ * submit protein/carbs/fat that don't sum exactly to their calorie target
+ * (the UI surfaces this as a non-blocking warning, never a hard error).
+ * Extracted so both call sites reject the same non-finite/negative/zero
+ * values instead of maintaining two separate (and previously buggy, see
+ * `!calories`-style truthy checks) copies of this logic.
+ */
+export function validateMacroValues(values: MacroValues): { valid: boolean; errors: string[] } {
   const errors: string[] = []
 
-  const values = [target.calories, target.protein, target.carbs, target.fat]
-  if (values.some(v => !isFiniteNumber(v))) {
-    errors.push('Nutrition target contains a non-finite value (NaN or Infinity).')
+  const nums = [values.calories, values.protein, values.carbs, values.fat]
+  if (nums.some(v => !isFiniteNumber(v))) {
+    errors.push('Nutrition values must be valid, finite numbers.')
     return { valid: false, errors }
   }
 
-  if (target.calories <= 0) errors.push('Calories must be greater than 0.')
-  if (target.protein <= 0) errors.push('Protein must be greater than 0.')
-  if (target.carbs < 0) errors.push('Carbs cannot be negative.')
-  if (target.fat < 0) errors.push('Fat cannot be negative.')
+  if (values.calories <= 0) errors.push('Calories must be greater than 0.')
+  if (values.protein <= 0) errors.push('Protein must be greater than 0.')
+  if (values.carbs < 0) errors.push('Carbs cannot be negative.')
+  if (values.fat < 0) errors.push('Fat cannot be negative.')
 
+  return { valid: errors.length === 0, errors }
+}
+
+export function validateNutritionTarget(target: NutritionTarget): { valid: boolean; errors: string[] } {
+  const valueCheck = validateMacroValues(target)
+  if (!valueCheck.valid) return valueCheck
+
+  const errors: string[] = []
   const macroCalories = target.protein * 4 + target.carbs * 4 + target.fat * 9
   if (Math.abs(macroCalories - target.calories) > MACRO_RECONCILIATION_TOLERANCE_KCAL) {
     errors.push(

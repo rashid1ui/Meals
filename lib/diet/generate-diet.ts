@@ -36,6 +36,39 @@ interface ChatMessage {
   content: string
 }
 
+interface ParsedDietFood {
+  food_id: string
+  quantity?: number
+  unit?: string
+}
+
+interface ParsedDietMeal {
+  name?: string
+  foods?: ParsedDietFood[]
+}
+
+// The AI occasionally lists the same food_id twice within one meal (e.g. two
+// separate "Chicken Breast" entries instead of one at double the quantity).
+// The rest of the pipeline (foodOccurrences below) already tolerates this
+// mathematically - it splits the food's total solved quantity evenly across
+// every occurrence, so totals stay correct - but it looks broken in the UI
+// (two identical line items instead of one). Collapsing duplicates to a
+// single occurrence per meal, right after the AI response is parsed, fixes
+// the display without changing how legitimate cross-MEAL repetition (the
+// same food appearing in two different meals) is handled.
+export function dedupeMealFoods(meals: ParsedDietMeal[]): void {
+  for (const meal of meals) {
+    if (!Array.isArray(meal.foods)) continue
+    const seen = new Set<string>()
+    meal.foods = meal.foods.filter(food => {
+      if (!food.food_id) return true
+      if (seen.has(food.food_id)) return false
+      seen.add(food.food_id)
+      return true
+    })
+  }
+}
+
 export async function generateValidatedDiet(params: GenerateDietParams): Promise<GenerateDietResult> {
   const { dbFoods, calories, protein, carbs, fat, mealsCount, supplementFoodIds, trainingTime } = params
 
@@ -233,6 +266,8 @@ You MUST respond with valid JSON matching exactly this schema:
       attempt++
       continue
     }
+
+    dedupeMealFoods(parsedDiet.diet.meals)
 
     if (trainingTime) {
       const mealNames = parsedDiet.diet.meals.map((m: { name?: string }) => (m.name || '').toLowerCase())
