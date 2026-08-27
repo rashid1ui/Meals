@@ -3,16 +3,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
 import type { FoodMacro } from '@/lib/nutrition/calculator'
-import { isPlausibleToday } from '@/lib/tracking/date'
 import {
   validateMealsShape,
   resolveMeal,
-  computeFoodRelinkPairs,
+  nextPlanSourceOnEdit,
   type SaveDietPlanPayload,
   type ResolvedMeal,
   type OriginalFoodRecord,
-  type NamedMeal,
-  type NamedMealWithId
+  type PlanSource
 } from '@/lib/diet/save-plan'
 
 export type SaveDietPlanResult = { success: true } | { error: string }
@@ -23,11 +21,14 @@ export type SaveDietPlanResult = { success: true } | { error: string }
 // resolved new plan first, confirm it saved completely, and only then retire
 // the old one - so a failure at any point leaves the active plan untouched.
 //
-// `localDate` (the browser's today, same value used by tracking-actions.ts)
-// is optional only for caller-compatibility - when present and plausible, it
-// scopes the food_tracking id migration below to today's rows, which is the
-// only date with a live UI depending on food_id.
-export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: string): Promise<SaveDietPlanResult> {
+// The actual "retire old, activate new" swap (step 7 below) is delegated to
+// the finalize_plan_swap Postgres function (migration
+// 0020_finalize_plan_swap_function.sql) so it runs as ONE atomic
+// transaction - relinking EVERY historical food_tracking row (not just
+// today's, unlike the previous localDate-scoped implementation) by real
+// old-id -> new-id pairs (not ambiguous name matching), then retiring the
+// old plan and activating the new one, all-or-nothing.
+export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDietPlanResult> {
   try {
     const user = await getUser()
     if (!user) return { error: 'Not authenticated' }
@@ -72,17 +73,15 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
     // Meal ids churn on every save (this function always deletes+reinserts
     // meals - see step 6 below), so reminder_time/reminder_enabled would
     // otherwise be silently wiped on every unrelated diet edit (adding a
-    // food, changing a quantity, etc). Carried forward by NAME, the same
-    // reconciliation approach computeFoodRelinkPairs already uses below for
-    // food_tracking rows. A brand-new meal (no name match) simply gets no
-    // reminder configured, same as any freshly-added meal today.
-    const reminderByMealName = new Map(
-      (currentMeals || []).map(m => [m.name, { reminderTime: m.reminder_time, reminderEnabled: m.reminder_enabled }])
+    // food, changing a quantity, etc). Carried forward by the meal's own
+    // real id (SaveDietPlanMeal.currentId - the client's existing DraftMeal.id
+    // for an item it's editing) rather than by name, so two same-named
+    // meals never collide - a brand-new meal (no currentId, or a currentId
+    // that doesn't match any current meal) simply gets no reminder
+    // configured, same as any freshly-added meal today.
+    const reminderByMealId = new Map(
+      (currentMeals || []).map(m => [m.id, { reminderTime: m.reminder_time, reminderEnabled: m.reminder_enabled }])
     )
-    const oldMealsForRelink: NamedMeal[] = (currentMeals || []).map(m => ({
-      name: m.name,
-      foods: (m.foods || []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name }))
-    }))
 
     const originalFoodIds = Array.from(new Set(
       payload.meals.flatMap(m => m.foods.map(f => f.originalFoodId).filter((id): id is string => !!id))
@@ -148,11 +147,19 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
         carbs_target: currentPlan.carbs_target,
         fat_target: currentPlan.fat_target,
         is_active: false,
-        // The user just hand-edited this plan's foods - see migration
-        // 0015_diet_plans_plan_source.sql. Sticky once set: a plan already
-        // 'user_customized' stays that way through further edits (there's
-        // no 'ai_generated' plan to fall back to here).
-        plan_source: 'user_customized'
+        // Provenance rules (migrations 0015/0017_diet_plans_plan_source*.sql):
+        // editing an 'ai_generated' plan marks it 'user_customized' (it was
+        // AI-touched, then hand-edited) - but editing a 'user_created' plan
+        // (built entirely by hand via the Manual Meal Builder, never
+        // AI-touched) PRESERVES 'user_created' rather than downgrading it
+        // to 'user_customized', since that value's whole meaning is
+        // specifically "was AI, then edited" - collapsing every edit to
+        // 'user_customized' unconditionally (the previous behavior) would
+        // permanently and irreversibly erase whether AI was ever involved,
+        // for every manually-built plan the moment it was edited once.
+        // Already-'user_customized' plans simply stay that way (sticky,
+        // there's no 'ai_generated' plan to fall back to).
+        plan_source: nextPlanSourceOnEdit(currentPlan.plan_source as PlanSource)
       })
       .select()
       .single()
@@ -162,11 +169,18 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
     }
 
     const insertedMealIds: string[] = []
-    const newMealsForRelink: NamedMealWithId[] = []
+    // Old-id -> new-id pairs, built from the client's own currentId (the
+    // food/meal's real, pre-existing database id) rather than by matching
+    // names - a real id can never collide the way two same-named
+    // meals/foods can. Handed to finalize_plan_swap below so it can relink
+    // EVERY historical food_tracking row referencing the old ids, not just
+    // today's.
+    const mealIdPairs: { old_id: string; new_id: string }[] = []
+    const foodIdPairs: { old_id: string; new_id: string; new_meal_id: string }[] = []
     try {
       for (let i = 0; i < resolvedMeals.length; i++) {
         const meal = resolvedMeals[i]
-        const carriedReminder = reminderByMealName.get(meal.name)
+        const carriedReminder = meal.currentId ? reminderByMealId.get(meal.currentId) : undefined
         const { data: newMeal, error: insertMealError } = await supabase
           .from('meals')
           .insert({
@@ -180,76 +194,101 @@ export async function saveDietPlan(payload: SaveDietPlanPayload, localDate?: str
           .select()
           .single()
 
-        if (insertMealError || !newMeal) throw new Error('Meal insert failed')
+        if (insertMealError || !newMeal) {
+          console.error('saveDietPlan: meal insert failed:', insertMealError)
+          throw new Error('Meal insert failed')
+        }
         insertedMealIds.push(newMeal.id)
+        if (meal.currentId) mealIdPairs.push({ old_id: meal.currentId, new_id: newMeal.id })
 
-        if (meal.foods.length > 0) {
-          const foodsToInsert = meal.foods.map((food, idx) => ({
-            user_id: user.id,
-            meal_id: newMeal.id,
-            name: food.name,
-            quantity: food.quantity,
-            unit: food.unit,
-            protein: food.protein,
-            fat: food.fat,
-            carbs: food.carbs,
-            calories: food.calories,
-            sort_order: idx
-          }))
-
-          const { data: newFoods, error: insertFoodsError } = await supabase
+        // Inserted one row at a time (not a single bulk array insert) so
+        // each insert's own returned id is unambiguously paired with the
+        // food object it came from - a bulk insert's return order is not a
+        // guarantee this pairing can safely rely on, especially with
+        // duplicate-named foods in the same meal.
+        for (let idx = 0; idx < meal.foods.length; idx++) {
+          const food = meal.foods[idx]
+          const { data: newFood, error: insertFoodError } = await supabase
             .from('foods')
-            .insert(foodsToInsert)
-            .select('id, name')
-          if (insertFoodsError) throw new Error('Food insert failed')
-          newMealsForRelink.push({ id: newMeal.id, name: meal.name, foods: newFoods || [] })
-        } else {
-          newMealsForRelink.push({ id: newMeal.id, name: meal.name, foods: [] })
+            .insert({
+              user_id: user.id,
+              meal_id: newMeal.id,
+              name: food.name,
+              quantity: food.quantity,
+              unit: food.unit,
+              protein: food.protein,
+              fat: food.fat,
+              carbs: food.carbs,
+              calories: food.calories,
+              sort_order: idx
+            })
+            .select('id')
+            .single()
+
+          if (insertFoodError || !newFood) {
+            console.error('saveDietPlan: food insert failed:', insertFoodError)
+            throw new Error('Food insert failed')
+          }
+          if (food.currentId) {
+            foodIdPairs.push({ old_id: food.currentId, new_id: newFood.id, new_meal_id: newMeal.id })
+          }
         }
       }
-    } catch {
+    } catch (insertErr) {
       // Roll back only the new attempt, in dependency order. The user's
       // existing plan was never touched by this branch.
+      console.error('saveDietPlan: rolling back new plan attempt:', insertErr)
       if (insertedMealIds.length > 0) {
-        await supabase.from('foods').delete().in('meal_id', insertedMealIds)
-        await supabase.from('meals').delete().in('id', insertedMealIds)
+        const { error: rollbackFoodsError } = await supabase.from('foods').delete().in('meal_id', insertedMealIds)
+        if (rollbackFoodsError) console.error('saveDietPlan: rollback foods delete failed:', rollbackFoodsError)
+        const { error: rollbackMealsError } = await supabase.from('meals').delete().in('id', insertedMealIds)
+        if (rollbackMealsError) console.error('saveDietPlan: rollback meals delete failed:', rollbackMealsError)
       }
-      await supabase.from('diet_plans').delete().eq('id', newPlan.id)
+      const { error: rollbackPlanError } = await supabase.from('diet_plans').delete().eq('id', newPlan.id)
+      if (rollbackPlanError) console.error('saveDietPlan: rollback plan delete failed:', rollbackPlanError)
       return { error: 'Failed to save your changes. Your existing plan has not been changed.' }
     }
 
-    // 7. Activate: only now that the new plan is fully and successfully
-    // persisted do we retire the old one, in dependency order. Old is
-    // deactivated before new is activated so the two updates never violate
-    // the one-active-per-user unique index. Edits don't create history, so
-    // the old (now-inactive) row is deleted afterward, same as before.
-    await supabase.from('diet_plans').update({ is_active: false }).eq('id', currentPlan.id)
-    await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
+    // 7. Atomically relink EVERY historical food_tracking row referencing
+    // the old meal/food ids (every date, not just today), delete the old
+    // plan/meals, and activate the new plan - all in one Postgres
+    // transaction (finalize_plan_swap, migration
+    // 0020_finalize_plan_swap_function.sql), so a failure partway through
+    // can never leave the user with zero active plans: if this call fails,
+    // the old plan is still there and still active, exactly as if this
+    // request had never happened.
+    const { error: swapError } = await supabase.rpc('finalize_plan_swap', {
+      p_old_plan_id: currentPlan.id,
+      p_new_plan_id: newPlan.id,
+      p_meal_id_map: mealIdPairs,
+      p_food_id_map: foodIdPairs
+    })
 
-    // 7b. Re-point today's already-recorded food_tracking rows at their
-    // replacement food/meal ids before the old rows are deleted below - once
-    // deleted, food_tracking.food_id/meal_id go NULL via ON DELETE SET NULL
-    // and can no longer be matched. Must run before the deletes: matching
-    // requires the old food ids to still be the live value on these rows.
-    if (localDate && isPlausibleToday(localDate)) {
-      const relinkPairs = computeFoodRelinkPairs(oldMealsForRelink, newMealsForRelink)
-      for (const pair of relinkPairs) {
-        await supabase
-          .from('food_tracking')
-          .update({ food_id: pair.newFoodId, meal_id: pair.newMealId })
-          .eq('user_id', user.id)
-          .eq('tracking_date', localDate)
-          .eq('food_id', pair.oldFoodId)
-      }
+    if (swapError) {
+      console.error('saveDietPlan: finalize_plan_swap failed:', swapError)
+      // The new plan/meals/foods are fully persisted but never became
+      // active (the RPC's own transaction rolled back before reaching the
+      // activation step) - clean up this abandoned attempt so it doesn't
+      // linger as an orphaned inactive plan. The old plan was never
+      // touched and remains the active one.
+      const { error: cleanupFoodsError } = await supabase.from('foods').delete().in('meal_id', insertedMealIds)
+      if (cleanupFoodsError) console.error('saveDietPlan: post-swap-failure foods cleanup failed:', cleanupFoodsError)
+      const { error: cleanupMealsError } = await supabase.from('meals').delete().in('id', insertedMealIds)
+      if (cleanupMealsError) console.error('saveDietPlan: post-swap-failure meals cleanup failed:', cleanupMealsError)
+      const { error: cleanupPlanError } = await supabase.from('diet_plans').delete().eq('id', newPlan.id)
+      if (cleanupPlanError) console.error('saveDietPlan: post-swap-failure plan cleanup failed:', cleanupPlanError)
+      return { error: 'Failed to activate your changes. Your existing plan has not been changed.' }
     }
 
-    if (currentMealIds.length > 0) {
-      await supabase.from('foods').delete().in('meal_id', currentMealIds)
+    const { error: touchProfileError } = await supabase
+      .from('profiles')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', user.id)
+    if (touchProfileError) {
+      // Not fatal - the plan swap already succeeded and is the source of
+      // truth; this is a cosmetic timestamp bump only.
+      console.error('saveDietPlan: failed to touch profile updated_at:', touchProfileError)
     }
-    await supabase.from('meals').delete().eq('diet_plan_id', currentPlan.id)
-    await supabase.from('diet_plans').delete().eq('id', currentPlan.id)
-
-    await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', user.id)
 
     return { success: true }
   } catch (err) {

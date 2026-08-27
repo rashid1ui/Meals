@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { getMonthlyCalendar, type CalendarDay, type MonthlyCalendar } from '../tracking-actions'
 import { adherenceTier, pctOf, type AdherenceTier } from '@/lib/tracking/logic'
-import { getLocalDateString } from '@/lib/tracking/date'
+import { useLocalDate } from '@/lib/tracking/useLocalDate'
 import Card from '@/components/ui/Card'
 import { AlertIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/ui/icons'
 
@@ -126,7 +126,13 @@ function CalendarSkeleton() {
 }
 
 export default function DailyProgressCalendar() {
-  const todayLocal = useMemo(() => getLocalDateString(), [])
+  // Live (not frozen at mount) so the "today" highlight/future-day
+  // graying in the grid below stays correct across midnight; the
+  // viewYear/viewMonth/selectedDate state below is still only SEEDED once
+  // from this value (a useState initializer runs once regardless of later
+  // changes to the value passed in) - a session left open across midnight
+  // doesn't forcibly reset which month/day the user is currently browsing.
+  const todayLocal = useLocalDate()
   const initial = useMemo(() => {
     const [y, m] = todayLocal.split('-').map(Number)
     return { year: y, month: m }

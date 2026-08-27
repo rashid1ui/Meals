@@ -26,12 +26,12 @@ import NutritionCreationChoice from './NutritionCreationChoice'
 import DailyTargetsStep from './DailyTargetsStep'
 import ManualMealBuilderStep, { type ManualFoodOption } from './ManualMealBuilderStep'
 import FinalReviewStep from './FinalReviewStep'
-import { createManualDietPlan, saveMealReminders, type CreatedMeal } from './manual-actions'
+import { createManualDietPlan, saveMealReminders, ensureManualSupplementFoods, type CreatedMeal } from './manual-actions'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, validateNutritionTarget, validateMacroValues, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
 import { defaultReminderTimes } from '@/lib/notifications/schedule'
-import type { DraftMeal } from '@/lib/diet/diff'
+import { defaultMealNamesForCount, type DraftMeal } from '@/lib/diet/diff'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import type { UserProfile } from '@/lib/types'
 
@@ -382,11 +382,17 @@ export default function OnboardingForm({
   const handleSelectManualPath = () => {
     setPath('manual')
     if (manualMeals.length === 0) {
-      setManualMeals([
-        { id: nextTempId('new-meal'), name: 'Breakfast', sortOrder: 0, foods: [] },
-        { id: nextTempId('new-meal'), name: 'Lunch', sortOrder: 1, foods: [] },
-        { id: nextTempId('new-meal'), name: 'Dinner', sortOrder: 2, foods: [] }
-      ])
+      // Follows the "Meals Per Day" selector chosen back on the shared
+      // Daily Targets step (previously ignored entirely here - always 3
+      // fixed meals regardless of what was selected).
+      setManualMeals(
+        defaultMealNamesForCount(mealsCount).map((name, i) => ({
+          id: nextTempId('new-meal'),
+          name,
+          sortOrder: i,
+          foods: []
+        }))
+      )
     }
   }
 
@@ -400,6 +406,11 @@ export default function OnboardingForm({
     draft?.manualReminders ?? { enabled: false, perMeal: [] }
   )
   const [savingReminders, setSavingReminders] = useState(false)
+  const [savingSupplementFoods, setSavingSupplementFoods] = useState(false)
+  // Ref, not state - see handleManualSubmit's own comment for why a
+  // synchronous re-entrancy guard is needed instead of (or in addition to)
+  // the phase-based render swap.
+  const submittingManualPlanRef = useRef(false)
 
   // Persist the draft on every relevant change so a refresh/closed tab can
   // resume - but not while a generation attempt's result screen is showing
@@ -494,7 +505,7 @@ export default function OnboardingForm({
     setStep(prev => prev - 1)
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setError(null)
 
     if (step === 1) {
@@ -607,6 +618,22 @@ export default function OnboardingForm({
       if (!isTrainingNutritionFormComplete(trainingNutrition)) {
         setError('Please finish your training nutrition setup.')
         return
+      }
+      // Materializes a food_database row for each configured supplement
+      // (create-or-reuse, same identity logic the AI path uses) BEFORE
+      // advancing, so the Meal Builder step's food library already includes
+      // it - without this call, a manually configured whey/creatine was
+      // never turned into a usable food at all (see
+      // ensureManualSupplementFoods's own comment).
+      if (trainingNutrition.supplements.length > 0) {
+        setSavingSupplementFoods(true)
+        const result = await ensureManualSupplementFoods(trainingNutrition.supplements)
+        setSavingSupplementFoods(false)
+        if ('error' in result) {
+          setError(result.error)
+          return
+        }
+        for (const food of result.data) handleManualFoodCreated(food as unknown as FoodOption)
       }
       setStep(6)
       return
@@ -734,11 +761,23 @@ export default function OnboardingForm({
   }
 
   const handleManualSubmit = async () => {
+    // Synchronous, ref-based re-entrancy guard - checked/set before React's
+    // next render (which is what actually unmounts this button in favor of
+    // GeneratingPanel) can happen, so a double-click here OR on
+    // GeneratingPanel's "Try Again" retry button (which calls this same
+    // function) can never both reach the server. The server-side
+    // acquireManualPlanLock (lib/diet/manual-plan-lock.ts) is the real
+    // correctness backstop regardless - this only avoids firing a second,
+    // guaranteed-to-fail request and its confusing error message.
+    if (submittingManualPlanRef.current) return
+    submittingManualPlanRef.current = true
+
     setError(null)
     setAttempt(prev => prev + 1)
     const hasFood = manualMeals.some(m => m.foods.length > 0)
     if (!hasFood) {
       setError('Please add at least one food to your meal plan before continuing.')
+      submittingManualPlanRef.current = false
       return
     }
 
@@ -803,6 +842,7 @@ export default function OnboardingForm({
       })
 
       if ('error' in result) {
+        submittingManualPlanRef.current = false
         setError(result.error)
         setPhase('error')
         return
@@ -817,9 +857,11 @@ export default function OnboardingForm({
         enabled: initialRemindersEnabled ?? false,
         perMeal: result.meals.map((_, i) => ({ time: defaults[i], enabled: true }))
       })
+      submittingManualPlanRef.current = false
       setPhase('idle')
       setStep(9)
     } catch (err: unknown) {
+      submittingManualPlanRef.current = false
       setError((err instanceof Error && err.message) || 'Failed to save your meal plan.')
       setPhase('error')
     }
@@ -1179,6 +1221,11 @@ export default function OnboardingForm({
             </Button>
           </div>
         ) : path === 'manual' && step === 8 ? (
+          // handleManualSubmit itself guards re-entrancy via
+          // submittingManualPlanRef (a ref, not state - checked/set
+          // synchronously, before React's next render can even unmount this
+          // button) so a double-click here or on GeneratingPanel's "Try
+          // Again" retry button can never both reach the server.
           <Button variant="primary" onClick={handleManualSubmit} className="flex-1">
             Create Plan
           </Button>
@@ -1187,7 +1234,7 @@ export default function OnboardingForm({
             Generate Meal Plan
           </Button>
         ) : (
-          <Button variant="primary" onClick={handleNext} className="flex-1">
+          <Button variant="primary" onClick={handleNext} loading={savingSupplementFoods} className="flex-1">
             Continue
           </Button>
         )}

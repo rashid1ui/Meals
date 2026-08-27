@@ -8,8 +8,29 @@ import 'server-only'
 import webpush from 'web-push'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyPushError } from './pushErrors'
+import { validateVapidConfig, type VapidConfigValidation } from './vapid'
 
 let configured = false
+
+function readVapidConfigFromEnv() {
+  return {
+    publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    privateKey: process.env.VAPID_PRIVATE_KEY,
+    email: process.env.VAPID_EMAIL
+  }
+}
+
+// Exported so callers that need to fail closed BEFORE doing any per-user
+// work (app/api/cron/notifications/route.ts's up-front check) can detect a
+// malformed key pair once, with a specific and actionable message, instead
+// of letting ensureVapidConfigured's throw surface deep inside the first
+// user's send - which previously crashed the ENTIRE sweep with a generic
+// "Vapid public key should be 65 bytes long when decoded" for every user on
+// every affected tick (the real production incident this module now guards
+// against).
+export function checkVapidConfig(): VapidConfigValidation {
+  return validateVapidConfig(readVapidConfigFromEnv())
+}
 
 // Lazy, not module-top-level: throwing at import time would break every
 // route that merely imports this file (even ones that never send a push),
@@ -17,17 +38,15 @@ let configured = false
 function ensureVapidConfigured() {
   if (configured) return
 
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const privateKey = process.env.VAPID_PRIVATE_KEY
-  const email = process.env.VAPID_EMAIL
-
-  if (!publicKey || !privateKey || !email) {
+  const validation = checkVapidConfig()
+  if (!validation.valid) {
     throw new Error(
-      'Configuration Error: NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_EMAIL must be defined in the environment. Generate a keypair with `npx web-push generate-vapid-keys`.'
+      `VAPID configuration is invalid, push notifications cannot be sent: ${validation.errors.join('; ')}. Regenerate a keypair with \`npx web-push generate-vapid-keys\` and set NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_EMAIL in the environment.`
     )
   }
 
-  webpush.setVapidDetails(`mailto:${email}`, publicKey, privateKey)
+  const { publicKey, privateKey, email } = readVapidConfigFromEnv()
+  webpush.setVapidDetails(`mailto:${email}`, publicKey!, privateKey!)
   configured = true
 }
 
@@ -87,8 +106,12 @@ export async function sendPushToUser(
       sent++
     } catch (err) {
       if (classifyPushError(err) === 'remove') {
-        await admin.from('push_subscriptions').delete().eq('id', row.id)
-        removed++
+        const { error: deleteError } = await admin.from('push_subscriptions').delete().eq('id', row.id)
+        if (deleteError) {
+          console.error(`[notifications/push] failed to remove dead subscription ${row.id}:`, deleteError)
+        } else {
+          removed++
+        }
       } else {
         console.error(`[notifications/push] send failed for subscription ${row.id}:`, err)
       }

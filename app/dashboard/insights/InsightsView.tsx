@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getTodayTracking, getWeeklyTracking, getMonthlyTracking, type PeriodTrackingSummary, type DailyTrackingSummary } from '../tracking-actions'
-import { getLocalDateString } from '@/lib/tracking/date'
+import { useLocalDate } from '@/lib/tracking/useLocalDate'
 import type { TrainingTime } from '@/lib/nutrition/workoutMeals'
 import type { Goal } from '@/lib/nutrition/engine'
 import Card from '@/components/ui/Card'
@@ -162,7 +162,10 @@ function SectionHeader({ title, description, icon }: SectionHeaderProps) {
 // were moved here from DietEditor. Same data source (getTodayTracking),
 // same calculation pattern - just a different rendering location.
 function TodayNutritionAnalytics({ targets, trainingTime, trainingTimeCustom, goal }: Props) {
-  const [localDate] = useState<string>(() => getLocalDateString())
+  // useLocalDate (not a frozen useState lazy initializer) - stays correct
+  // across a session left open past midnight; the effect below already
+  // re-fetches whenever this value changes.
+  const localDate = useLocalDate()
   const [dailyTracking, setDailyTracking] = useState<DailyTrackingSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

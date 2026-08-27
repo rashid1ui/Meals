@@ -188,6 +188,56 @@ export function moveFood(meals: DraftMeal[], sourceMealId: string, foodId: strin
   )
 }
 
+// Auto-generates a distinct meal name when the requested one already exists
+// among the current meals (case-insensitive - "breakfast" and "Breakfast"
+// are the same collision), instead of silently allowing two meals with the
+// exact same name. Duplicate meal names are no longer a data-corruption
+// risk (see SaveDietPlanMeal.currentId - meal identity for persistence/
+// tracking-relink purposes is now the meal's own database id, never its
+// name), but two identically-named meals are still confusing on their own
+// merits (which "Breakfast" is which?), so this keeps names distinct at
+// the point of creation. Appends " (2)", " (3)", etc. - the first available
+// suffix - rather than rejecting the add outright, so "Add Meal" never
+// requires a retry/error round trip for the common case of re-adding a
+// default meal type.
+export function uniqueMealName(existingNames: string[], desiredName: string): string {
+  const trimmed = desiredName.trim()
+  const existingLower = new Set(existingNames.map(n => n.trim().toLowerCase()))
+  if (!existingLower.has(trimmed.toLowerCase())) return trimmed
+
+  let suffix = 2
+  while (existingLower.has(`${trimmed.toLowerCase()} (${suffix})`)) {
+    suffix++
+  }
+  return `${trimmed} (${suffix})`
+}
+
+// Sensible default meal names for the Manual Meal Builder's initial seed,
+// keyed by the "Meals Per Day" count chosen on the shared Daily Targets
+// step (3/4/5/6 - the only options that step's <select> offers). Previously
+// handleSelectManualPath (app/onboarding/OnboardingForm.tsx) ignored this
+// count entirely and always seeded exactly 3 fixed meals - a user could
+// select "6 Meals" and still land on 3, with the selector having had zero
+// effect on the one path it's actually reachable through (AI generation,
+// which WOULD have used it, is "Coming Soon"). Falls back to "Meal N" for
+// any count outside the offered options rather than guessing a spacing
+// pattern.
+const DEFAULT_MEAL_NAME_PATTERNS: Record<number, string[]> = {
+  1: ['Meal 1'],
+  2: ['Breakfast', 'Dinner'],
+  3: ['Breakfast', 'Lunch', 'Dinner'],
+  4: ['Breakfast', 'Lunch', 'Dinner', 'Snack'],
+  5: ['Breakfast', 'Morning Snack', 'Lunch', 'Afternoon Snack', 'Dinner'],
+  6: ['Breakfast', 'Morning Snack', 'Lunch', 'Afternoon Snack', 'Dinner', 'Evening Snack']
+}
+
+export function defaultMealNamesForCount(count: number): string[] {
+  const safeCount = Math.max(1, Math.round(count))
+  const pattern = DEFAULT_MEAL_NAME_PATTERNS[safeCount]
+  if (pattern) return pattern
+  return Array.from({ length: safeCount }, (_, i) => `Meal ${i + 1}`)
+}
+
 export type FoodBadge = 'added' | 'increased' | 'decreased' | 'moved'
 
 // Which badges (if any) apply to a single rendered food row. A food can be

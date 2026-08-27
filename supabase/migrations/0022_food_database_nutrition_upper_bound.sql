@@ -1,0 +1,45 @@
+-- ==============================================================================
+-- Migration: food_database nutrition upper-bound CHECK constraint
+-- ==============================================================================
+-- WHY THIS MIGRATION IS REQUIRED
+--
+-- food_database's INSERT RLS policy ("Authenticated users can add foods")
+-- has WITH CHECK (true) - any authenticated user can insert a row into
+-- this shared, unscoped catalog with no restriction at the RLS layer at
+-- all. This is intentional for the actual feature (any signed-in user
+-- legitimately adding a custom food that becomes visible to everyone, via
+-- app/dashboard/food-actions.ts's createFoodDatabaseEntry and
+-- lib/diet/supplement-catalog.ts's ensureSupplementCatalogRow) - there is
+-- no per-user ownership model for this table by design, so an
+-- ownership-based RLS restriction isn't the right fix here.
+--
+-- What WAS missing is a database-level upper bound on nutrition values.
+-- food_database_nutrition_nonnegative (an existing CHECK constraint)
+-- already blocks negative values, but nothing at the database level
+-- blocked an absurdly large one (e.g. calories = 999999999 per 100g) -
+-- only application code (food-actions.ts's MAX_NUTRITION_PER_100 = 2000,
+-- lib/diet/supplements.ts's OTHER_SUPPLEMENT_MACRO_MAX = 2000) enforced
+-- this, which a request that bypasses the app entirely (e.g. a direct
+-- PostgREST call with a valid session token) could skip - the RLS INSERT
+-- policy's own WITH CHECK (true) does not enforce it either. This adds the
+-- SAME bound the app already enforces as an actual CHECK constraint, so
+-- every insert path (the app, or any other authenticated caller) is
+-- bounded consistently, with no legitimate real-world food's macros ever
+-- realistically needing to exceed 2000 per 100g/100ml.
+--
+-- SAFETY / BACKWARD COMPATIBILITY
+--
+-- - NOT VALID + a separate VALIDATE step would be the standard safe
+--   pattern for a large/uncertain existing table, but this table is small
+--   (see the audit's own row count) and every current row's nutrition
+--   values are already well under 2000 (verified before writing this
+--   migration) - a plain CHECK constraint validates existing data
+--   immediately and safely.
+-- - Purely additive: no existing row is modified, no existing column is
+--   altered, no application code needs to change (it already stays within
+--   this bound).
+-- ==============================================================================
+
+ALTER TABLE public.food_database
+  ADD CONSTRAINT food_database_nutrition_upper_bound
+  CHECK (calories <= 2000 AND protein <= 2000 AND carbs <= 2000 AND fat <= 2000);

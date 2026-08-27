@@ -4,9 +4,22 @@ import {
   validateMealsShape,
   resolveMeal,
   computeFoodRelinkPairs,
+  nextPlanSourceOnEdit,
   type OriginalFoodRecord
 } from '@/lib/diet/save-plan'
 import type { FoodMacro } from '@/lib/nutrition/calculator'
+
+test('nextPlanSourceOnEdit - editing an AI-generated plan marks it user_customized', () => {
+  assert.strictEqual(nextPlanSourceOnEdit('ai_generated'), 'user_customized')
+})
+
+test('nextPlanSourceOnEdit - editing a manually-created plan PRESERVES user_created, never silently downgrading it', () => {
+  assert.strictEqual(nextPlanSourceOnEdit('user_created'), 'user_created')
+})
+
+test('nextPlanSourceOnEdit - editing an already-customized plan stays user_customized (sticky)', () => {
+  assert.strictEqual(nextPlanSourceOnEdit('user_customized'), 'user_customized')
+})
 
 const chickenDbRow: FoodMacro = {
   id: 'db-chicken',

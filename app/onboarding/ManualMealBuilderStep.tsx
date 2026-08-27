@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { calculateFoodMacros } from '@/lib/nutrition/calculator'
-import { computeDailyTotals, moveFood, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { computeDailyTotals, moveFood, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import MealCard from '@/app/dashboard/components/MealCard'
 import AddMealModal from '@/app/dashboard/components/AddMealModal'
@@ -119,7 +119,7 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
-      name,
+      name: uniqueMealName(meals.map(m => m.name), name),
       sortOrder: meals.length,
       foods: []
     }

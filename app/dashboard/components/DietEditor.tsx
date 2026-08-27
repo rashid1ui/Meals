@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
-import { diffMeals, moveFood, computeDailyTotals, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { diffMeals, moveFood, computeDailyTotals, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
 import {
   getTodayTracking,
@@ -13,7 +13,7 @@ import {
   type DailyTrackingSummary,
   type FoodTrackingState
 } from '../tracking-actions'
-import { getLocalDateString } from '@/lib/tracking/date'
+import { useLocalDate } from '@/lib/tracking/useLocalDate'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
@@ -82,10 +82,10 @@ export default function DietEditor({
   // from the planning draft above. Toggling a meal never touches
   // draft/history/hasChanges; it's a "did I eat this" event persisted
   // through its own server action, not a planned-content edit.
-  // Lazy initializer (not an effect) - runs once on the client during first
-  // render, so there's no synchronous setState-in-effect to trigger extra
-  // renders.
-  const [localDate] = useState<string>(() => getLocalDateString())
+  // useLocalDate (not a frozen useState lazy initializer) - stays correct
+  // across a session left open past midnight; the effect below already
+  // re-fetches whenever this value changes.
+  const localDate = useLocalDate()
   const [dailyTracking, setDailyTracking] = useState<DailyTrackingSummary | null>(null)
   const [trackingLoading, setTrackingLoading] = useState(true)
   const [trackingError, setTrackingError] = useState<string | null>(null)
@@ -137,6 +137,11 @@ export default function DietEditor({
   }, [dailyTracking])
 
   const isPersistedMealId = (id: string) => initialMeals.some(m => m.id === id)
+  // Same idea, for foods - a food's id is only "real" (safe to send back to
+  // the server as SaveDietPlanFood.currentId, for finalize_plan_swap's
+  // relink mapping) if it already existed in the last-loaded/last-saved
+  // tree; a client-only "new-food-*" placeholder id never is.
+  const isPersistedFoodId = (id: string) => initialMeals.some(m => m.foods.some(f => f.id === id))
 
   // "Next meal" = the first persisted meal (in plan order) that isn't fully
   // eaten yet. Deliberately order-based rather than clock-based: meal times
@@ -268,7 +273,7 @@ export default function DietEditor({
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
-      name,
+      name: uniqueMealName(draft.map(m => m.name), name),
       sortOrder: draft.length,
       foods: []
     }
@@ -298,17 +303,22 @@ export default function DietEditor({
     const payload: SaveDietPlanPayload = {
       meals: draft.map(meal => ({
         name: meal.name,
+        currentId: isPersistedMealId(meal.id) ? meal.id : null,
         foods: meal.foods.map(food => ({
           foodDatabaseId: food.foodDatabaseId,
           originalFoodId: food.foodDatabaseId ? null : food.id,
           quantity: food.quantity,
-          unit: food.unit
+          unit: food.unit,
+          // A locked item's id (no foodDatabaseId) is always the real,
+          // already-persisted foods.id - only an editable item can be a
+          // brand-new, not-yet-saved client placeholder.
+          currentId: food.foodDatabaseId ? (isPersistedFoodId(food.id) ? food.id : null) : food.id
         }))
       }))
     }
 
     try {
-      const result = await saveDietPlan(payload, localDate)
+      const result = await saveDietPlan(payload)
       if ('error' in result) {
         setSaveError(result.error)
         setSaving(false)

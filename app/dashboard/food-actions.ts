@@ -97,19 +97,60 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
   const supabase = await createClient()
 
   // food_database is a single shared, unscoped catalog (see comment above) -
-  // reuse an existing active row with the same name (case-insensitive)
+  // reuse an existing ACTIVE row with the same name (case-insensitive)
   // instead of forking the catalog. This is what makes repeat "Add Custom
   // Food" submissions of the same food idempotent instead of piling up
   // duplicates the AI would have to disambiguate between.
-  const { data: existing } = await supabase
+  //
+  // is_active=true is required here (not just a name match) - a
+  // soft-deleted row (e.g. a deprecated/removed default food, or a
+  // system-generated supplement row hidden by design) must never be
+  // silently reused/resurrected just because its name collides with what
+  // the user is trying to (re)create. Every reuse path below (this lookup,
+  // the explicit inactive-name check, and the insert-race fallback) is
+  // scoped to is_active=true for the same reason.
+  const { data: existingActive, error: existingActiveError } = await supabase
     .from('food_database')
     .select(FOOD_OPTION_COLUMNS)
     .ilike('name', escapeForIlike(name))
+    .eq('is_active', true)
     .limit(1)
     .maybeSingle()
 
-  if (existing) {
-    return { data: existing as FoodOption }
+  if (existingActiveError) {
+    console.error('[food-actions] createFoodDatabaseEntry: active-food lookup failed:', existingActiveError)
+    return { error: 'Failed to check for an existing food. Please try again.' }
+  }
+
+  if (existingActive) {
+    return { data: existingActive as FoodOption }
+  }
+
+  // A soft-deleted row can still collide on the unique food_database.name
+  // index even though it didn't match above (is_active has no exception in
+  // that index) - detect this BEFORE attempting the insert, with a clear,
+  // specific, actionable message, instead of either a generic insert
+  // failure or - the actual bug being fixed here - silently resurrecting
+  // the inactive row as if it were a normal, valid food. This is also what
+  // stops the failure from surfacing only much later, at final "Create
+  // Plan" validation, with no indication of which food caused it.
+  const { data: existingInactive, error: existingInactiveError } = await supabase
+    .from('food_database')
+    .select('id')
+    .ilike('name', escapeForIlike(name))
+    .eq('is_active', false)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingInactiveError) {
+    console.error('[food-actions] createFoodDatabaseEntry: inactive-food lookup failed:', existingInactiveError)
+    return { error: 'Failed to check for an existing food. Please try again.' }
+  }
+
+  if (existingInactive) {
+    return {
+      error: `"${name}" already exists in the catalog but is no longer active, so it can't be reused automatically. Please choose a different, more specific name (e.g. add a brand or serving size) to create a distinct food.`
+    }
   }
 
   const { data, error } = await supabase
@@ -133,15 +174,22 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
 
   if (error || !data) {
     // Unique-constraint race: another request inserted the exact same name
-    // between our lookup above and this insert. Fetch and return that row
-    // instead of failing the user's request.
+    // between our lookups above and this insert. Fetch and return that row
+    // ONLY if it's active - if the race winner was somehow an inactive row
+    // (the same class of edge case the checks above exist to catch), fall
+    // back to the same clear "choose a different name" message rather than
+    // ever returning an inactive row to the caller.
     if (error?.code === '23505') {
       const { data: raceWinner } = await supabase
         .from('food_database')
         .select(FOOD_OPTION_COLUMNS)
         .ilike('name', escapeForIlike(name))
+        .eq('is_active', true)
         .maybeSingle()
       if (raceWinner) return { data: raceWinner as FoodOption }
+      return {
+        error: `"${name}" already exists in the catalog but is no longer active, so it can't be reused automatically. Please choose a different, more specific name (e.g. add a brand or serving size) to create a distinct food.`
+      }
     }
     console.error('[food-actions] createFoodDatabaseEntry insert failed:', error)
     return { error: 'Failed to save the new food. Please try again.' }

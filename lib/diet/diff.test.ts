@@ -7,6 +7,8 @@ import {
   classifyTarget,
   getFoodBadges,
   moveFood,
+  uniqueMealName,
+  defaultMealNamesForCount,
   type DraftMeal
 } from './diff'
 
@@ -249,4 +251,42 @@ test('classifyTarget - on target / slightly over / over thresholds', () => {
   assert.strictEqual(classifyTarget(2100, 2250).status, 'slightly-under') // -6.7%
   assert.strictEqual(classifyTarget(2700, 2250).status, 'over') // +20%
   assert.strictEqual(classifyTarget(1800, 2250).status, 'under') // -20%
+})
+
+test('uniqueMealName - a genuinely new name is returned unchanged', () => {
+  assert.strictEqual(uniqueMealName(['Breakfast', 'Lunch'], 'Dinner'), 'Dinner')
+})
+
+test('uniqueMealName - a duplicate name gets a " (2)" suffix, never silently allowed as-is', () => {
+  assert.strictEqual(uniqueMealName(['Breakfast', 'Lunch'], 'Breakfast'), 'Breakfast (2)')
+})
+
+test('uniqueMealName - the collision check is case-insensitive', () => {
+  assert.strictEqual(uniqueMealName(['breakfast'], 'Breakfast'), 'Breakfast (2)')
+})
+
+test('uniqueMealName - finds the first free suffix when several numbered duplicates already exist', () => {
+  assert.strictEqual(uniqueMealName(['Snack', 'Snack (2)', 'Snack (3)'], 'Snack'), 'Snack (4)')
+})
+
+test('uniqueMealName - trims whitespace before comparing and before returning', () => {
+  assert.strictEqual(uniqueMealName(['Breakfast'], '  Breakfast  '), 'Breakfast (2)')
+})
+
+test('defaultMealNamesForCount - the "Meals Per Day" selector actually determines how many meals are seeded', () => {
+  assert.strictEqual(defaultMealNamesForCount(3).length, 3)
+  assert.strictEqual(defaultMealNamesForCount(4).length, 4)
+  assert.strictEqual(defaultMealNamesForCount(5).length, 5)
+  assert.strictEqual(defaultMealNamesForCount(6).length, 6)
+})
+
+test('defaultMealNamesForCount - every returned name is distinct, no accidental duplicates', () => {
+  for (const count of [3, 4, 5, 6]) {
+    const names = defaultMealNamesForCount(count)
+    assert.strictEqual(new Set(names).size, names.length, `count=${count} produced duplicate names: ${names.join(', ')}`)
+  }
+})
+
+test('defaultMealNamesForCount - falls back to numbered names for a count outside the offered 3-6 options', () => {
+  assert.deepStrictEqual(defaultMealNamesForCount(8), ['Meal 1', 'Meal 2', 'Meal 3', 'Meal 4', 'Meal 5', 'Meal 6', 'Meal 7', 'Meal 8'])
 })

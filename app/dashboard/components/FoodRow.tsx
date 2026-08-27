@@ -11,6 +11,7 @@ import {
   unitLabel,
   type UnitConfig
 } from '@/lib/nutrition/units'
+import { isValidQuantity } from '@/lib/nutrition/calculator'
 import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
@@ -148,13 +149,30 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
     commitLoggedQuantity(next)
   }
 
+  const [plannedQuantityError, setPlannedQuantityError] = useState<string | null>(null)
+
   const commitPlannedQuantity = (displayValue: number) => {
     if (!onUpdateQuantity || !isFinite(displayValue) || displayValue <= 0) {
       setPlannedInputValue(String(displayQuantity)) // revert on invalid
+      setPlannedQuantityError(null)
       return
     }
+    // Same bound the server enforces (lib/nutrition/calculator.ts's
+    // isValidQuantity, via lib/diet/save-plan.ts's resolveMeal) - grams and
+    // ml share the identical 1000 cap there, and every editable food's
+    // canonical unit is always one of those two, so 'grams' is a safe,
+    // always-correct stand-in without needing this row's own food_database
+    // serving_unit. Checked here so an out-of-range edit is caught the
+    // moment it's made, not only much later at Save.
+    const canonical = toCanonicalGrams(displayValue, unitConfig)
+    if (!isValidQuantity(canonical, 'grams')) {
+      setPlannedInputValue(String(displayValue))
+      setPlannedQuantityError('That quantity is outside the allowed range. Please enter a smaller amount.')
+      return
+    }
+    setPlannedQuantityError(null)
     setPlannedInputValue(String(displayValue))
-    onUpdateQuantity(toCanonicalGrams(displayValue, unitConfig))
+    onUpdateQuantity(canonical)
   }
 
   const plannedStep = (delta: number) => {
@@ -348,6 +366,11 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
                   {unit}
                 </span>
               </div>
+              {plannedQuantityError && (
+                <p className="text-xs text-error" role="alert">
+                  {plannedQuantityError}
+                </p>
+              )}
             </div>
           )}
 

@@ -72,29 +72,46 @@ export async function getReminderMealsForUser(
   userId: string,
   localDate: string
 ): Promise<ReminderMealWithStatus[]> {
-  const { data: activePlans } = await admin
+  const { data: activePlans, error: activePlanError } = await admin
     .from('diet_plans')
     .select('id')
     .eq('user_id', userId)
     .eq('is_active', true)
     .limit(1)
 
+  if (activePlanError) {
+    console.error(`[notifications/admin] getReminderMealsForUser: failed to load active plan for user ${userId}:`, activePlanError)
+    return []
+  }
+
   const activePlanId = activePlans?.[0]?.id as string | undefined
   if (!activePlanId) return []
 
-  const { data: mealRows } = await admin
+  const { data: mealRows, error: mealsError } = await admin
     .from('meals')
     .select('id, name, reminder_time, reminder_enabled, foods(id, quantity)')
     .eq('diet_plan_id', activePlanId)
     .order('sort_order')
 
+  if (mealsError) {
+    console.error(`[notifications/admin] getReminderMealsForUser: failed to load meals for user ${userId}:`, mealsError)
+    return []
+  }
+
   const meals = (mealRows as MealRow[] | null) || []
 
-  const { data: trackedFoods } = await admin
+  const { data: trackedFoods, error: trackedFoodsError } = await admin
     .from('food_tracking')
     .select('food_id, completed, quantity')
     .eq('user_id', userId)
     .eq('tracking_date', localDate)
+
+  if (trackedFoodsError) {
+    console.error(`[notifications/admin] getReminderMealsForUser: failed to load today's tracking for user ${userId}:`, trackedFoodsError)
+    // Not fatal to the whole lookup - fall through with an empty tracked-set
+    // so meals still report (as "none eaten yet") rather than being dropped
+    // entirely; the error is still surfaced above, not swallowed.
+  }
 
   const trackedByFoodId = new Map<string, TrackedFoodRow>()
   for (const t of (trackedFoods as TrackedFoodRow[] | null) || []) {
@@ -133,22 +150,33 @@ export async function getDailyProgressForUser(
   userId: string,
   localDate: string
 ): Promise<DailyProgressForUser | null> {
-  const { data: activePlans } = await admin
+  const { data: activePlans, error: activePlanError } = await admin
     .from('diet_plans')
     .select('calories_target, protein_target')
     .eq('user_id', userId)
     .eq('is_active', true)
     .limit(1)
 
+  if (activePlanError) {
+    console.error(`[notifications/admin] getDailyProgressForUser: failed to load active plan for user ${userId}:`, activePlanError)
+    return null
+  }
+
   const activePlan = activePlans?.[0]
   if (!activePlan) return null
 
-  const { data: dailyRows } = await admin
+  const { data: dailyRows, error: dailyError } = await admin
     .from('daily_tracking')
     .select('calories, protein')
     .eq('user_id', userId)
     .eq('tracking_date', localDate)
     .limit(1)
+
+  if (dailyError) {
+    console.error(`[notifications/admin] getDailyProgressForUser: failed to load daily tracking for user ${userId}:`, dailyError)
+    // Not fatal - fall through treating the day as "nothing logged yet"
+    // (consumed=0), same as a brand-new day with no daily_tracking row.
+  }
 
   const daily = dailyRows?.[0]
 
@@ -184,4 +212,32 @@ export async function claimNotificationEventForUser(
   if (error.code === '23505') return { claimed: false }
   console.error('[notifications/admin] claimNotificationEventForUser failed:', error)
   return { error: 'Failed to record notification event.' }
+}
+
+// Compensating action for claimNotificationEventForUser: deletes a claim
+// that turned out to be undeliverable (the push threw, or reached zero
+// subscriptions) so the SAME (user_id, local_date, event_key) can be
+// claimed again on a later tick instead of being permanently stuck "sent"
+// with nothing ever actually delivered. Never called for a claim that was
+// successfully delivered - see app/api/cron/notifications/route.ts's
+// processMealReminder/processMilestones, which only call this on a failed
+// or zero-delivery send.
+export async function releaseNotificationEventClaim(
+  admin: SupabaseClient,
+  userId: string,
+  localDate: string,
+  eventKey: string
+): Promise<{ released: boolean } | { error: string }> {
+  const { error } = await admin
+    .from('notification_events')
+    .delete()
+    .eq('user_id', userId)
+    .eq('local_date', localDate)
+    .eq('event_key', eventKey)
+
+  if (error) {
+    console.error('[notifications/admin] releaseNotificationEventClaim failed:', error)
+    return { error: 'Failed to release notification claim for retry.' }
+  }
+  return { released: true }
 }

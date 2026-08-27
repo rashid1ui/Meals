@@ -1,0 +1,44 @@
+name: CI
+
+# Runs the same checks a human is expected to run before merging (lint,
+# tests, typecheck, build) on every push and pull request, so a broken
+# build/type error/failing test is caught automatically instead of relying
+# on someone remembering to run these locally. Previously there was no CI
+# workflow at all - only the unrelated notifications-cron.yml existed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        # Placeholder values only - never real secrets. This build step only
+        # needs the app to compile/statically analyze successfully, not to
+        # actually connect to Supabase; real secrets stay in Vercel's own
+        # environment configuration for actual deployments.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: placeholder-key
+        run: npm run build

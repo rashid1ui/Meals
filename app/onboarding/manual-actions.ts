@@ -14,6 +14,8 @@ import {
 import { isValidHeightCm, HEIGHT_CM_MIN, HEIGHT_CM_MAX, validateMacroValues, type Goal } from '@/lib/nutrition/engine'
 import { isValidReminderTime } from '@/lib/notifications/schedule'
 import { validateSupplementSetup, findDuplicateSupplementType } from '@/lib/diet/supplements'
+import { ensureSupplementCatalogRow, type EnsuredSupplementFood } from '@/lib/diet/supplement-catalog'
+import { acquireManualPlanLock, releaseManualPlanLock } from '@/lib/diet/manual-plan-lock'
 import type { SupplementSetup } from '@/lib/types'
 
 const VALID_TRAINING_TIMES = ['morning', 'afternoon', 'evening', 'custom'] as const
@@ -94,6 +96,32 @@ export async function createManualDietPlan(
 
   const supabase = await createClient()
 
+  // Dedicated manual-plan lock (never the AI generation lock - see
+  // lib/diet/manual-plan-lock.ts's own comment on why they're separate).
+  // Held for the ENTIRE rest of this function so a rapid double-click, two
+  // open tabs, or a retried request racing its own earlier attempt can
+  // never both pass the idempotency check below and both attempt an insert -
+  // the loser gets a clear "already being processed" error instead of a
+  // confusing generic failure from the diet_plans_one_active_per_user
+  // unique-index race that guard alone used to leave as the only backstop.
+  const lock = await acquireManualPlanLock(supabase, user.id)
+  if (!lock.ok) return { error: lock.error }
+
+  try {
+    return await createManualDietPlanLocked(supabase, user.id, payload, meta)
+  } finally {
+    await releaseManualPlanLock(supabase, user.id)
+  }
+}
+
+async function createManualDietPlanLocked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  payload: SaveDietPlanPayload,
+  meta: CreateManualDietPlanMeta
+): Promise<CreateManualDietPlanResult> {
+  const user = { id: userId }
+
   // Idempotency guard, identical to submitOnboarding's Check 1: never
   // silently overwrite/duplicate an existing active plan outside an explicit
   // regenerate flow.
@@ -107,14 +135,21 @@ export async function createManualDietPlan(
   const previousPlanId = existingPlans?.[0]?.id ?? null
 
   if (previousPlanId && !meta.isNewPlanFlow) {
-    const cookieStore = await cookies()
-    cookieStore.set('gym_meals_onboarded', 'true', { path: '/' })
-    // No new meals were created on this short-circuit path - the caller
-    // (OnboardingForm's step 9) only ever reaches this branch by resubmitting
-    // after a plan already exists, which the normal UI flow doesn't allow
-    // (step 9 has no "back" to step 8). Returned empty rather than omitted so
-    // the success shape stays uniform for every caller.
-    return { success: true, meals: [] }
+    // The normal UI flow can't reach this (step 9 has no "back" to step 8),
+    // so this only fires from a genuinely stale session - e.g. the user
+    // already completed onboarding in another tab, or navigated back to
+    // /onboarding without the ?newPlan=true flag while already having an
+    // active plan. Previously this silently returned {success:true,
+    // meals:[]} - the caller then walked the user through an empty,
+    // meal-less Reminders screen and declared "success" with no
+    // indication that nothing new was actually created. Now it fails
+    // loudly with a specific, actionable message instead, so the user
+    // knows exactly what happened and how to actually replace their plan
+    // if that's what they meant to do.
+    return {
+      error:
+        'You already have an active meal plan. Refresh the page to go to your Dashboard, or use Settings > Generate New Plan if you want to replace it.'
+    }
   }
 
   const shapeError = validateMealsShape(payload.meals)
@@ -140,12 +175,13 @@ export async function createManualDietPlan(
   }
 
   // Sanitize the training/supplement payload before it's ever written to
-  // profiles - same validation submitOnboarding applies. Unlike
-  // submitOnboarding, supplements here are never turned into their own
-  // food_database rows or injected into a meal: the manual builder's food
-  // library already includes every supplement row directly (see
-  // app/onboarding/page.tsx's manualFoodOptions), so a user adds a
-  // supplement as a regular food item, exactly like anything else.
+  // profiles - same validation submitOnboarding applies. The food_database
+  // row for each configured supplement is materialized earlier, by
+  // ensureManualSupplementFoods below (called when the user finishes the
+  // Training & Supplements step, before they ever reach the Meal Builder) -
+  // by the time this function runs, the user has already added those rows
+  // to their meals as regular food items via the manual builder's food
+  // library, exactly like anything else.
   let trainingNutrition = meta.trainingNutrition
   if (trainingNutrition?.trainingTime && !VALID_TRAINING_TIMES.includes(trainingNutrition.trainingTime)) {
     trainingNutrition = { ...trainingNutrition, trainingTime: null }
@@ -297,17 +333,19 @@ export async function createManualDietPlan(
 
   // Activate: only once the new plan is fully and successfully persisted.
   // The previous plan is kept as plan history (is_active=false), same as
-  // submitOnboarding - deactivated before the new one is activated so
-  // neither update ever violates the one-active-per-user unique index.
+  // submitOnboarding. Both updates now run as ONE atomic transaction
+  // (activate_plan_history_swap, migration
+  // 0021_activate_plan_history_swap_function.sql) instead of two separate
+  // calls, so a crash/timeout between them can never leave the user with
+  // zero active plans - if the swap fails, the previous plan is still
+  // active, exactly as before this call.
   if (previousPlanId) {
-    const { error: deactivateError } = await supabase.from('diet_plans').update({ is_active: false }).eq('id', previousPlanId)
-    if (deactivateError) {
-      console.error('[manual-onboarding] failed to deactivate previous plan:', deactivateError)
-      return { error: 'Your new meal plan was created, but we could not switch you over to it. Please try again from Settings.' }
-    }
-    const { error: activateError } = await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
-    if (activateError) {
-      console.error('[manual-onboarding] failed to activate new plan:', activateError)
+    const { error: swapError } = await supabase.rpc('activate_plan_history_swap', {
+      p_old_plan_id: previousPlanId,
+      p_new_plan_id: newPlan.id
+    })
+    if (swapError) {
+      console.error('[manual-onboarding] failed to activate new plan:', swapError)
       return { error: 'Your new meal plan was created, but we could not switch you over to it. Please try again from Settings.' }
     }
   }
@@ -422,4 +460,83 @@ export async function saveMealReminders(
   }
 
   return { success: true }
+}
+
+export interface EnsuredSupplementFoodOption {
+  id: string
+  name: string
+  category: 'supplement'
+  serving_size: number
+  serving_unit: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  protein_type: 'supplement'
+  carb_type: null
+  display_unit: 'serving'
+  grams_per_display_unit: number
+}
+
+export type EnsureManualSupplementFoodsResult = { data: EnsuredSupplementFoodOption[] } | { error: string }
+
+// Called when the user finishes the Training & Supplements step of the
+// Manual Meal Builder path (before they reach the Meal Builder step itself),
+// so their configured whey/creatine/other supplement immediately appears in
+// the Manual Meal Builder's food library's Supplements tab - without this,
+// the food_database row was never created for the manual path at all (see
+// migration 0018_food_database_expand_catalog.sql's own comment: "That left
+// the user's own real whey/creatine invisible to the manual food picker"),
+// so a user had no way to log their configured supplement without manually
+// re-entering the exact same brand/serving data a second time via "Add a
+// new food."
+//
+// Shares the exact same create-or-reuse catalog logic the AI path uses
+// (lib/diet/supplement-catalog.ts's ensureSupplementCatalogRow) - a manually
+// configured supplement resolves to the same catalog row an equivalent
+// AI-path configuration would, and this is idempotent: calling it again
+// with the same configuration (e.g. the user navigates back and forth
+// between onboarding steps) returns the same food_database row rather than
+// creating duplicates.
+export async function ensureManualSupplementFoods(
+  supplements: SupplementSetup[]
+): Promise<EnsureManualSupplementFoodsResult> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const filtered = supplements.filter(s => ['whey', 'creatine', 'other'].includes(s.type) && s.serving_label?.trim())
+
+  const duplicateType = findDuplicateSupplementType(filtered)
+  if (duplicateType) {
+    return { error: `You can only configure one ${duplicateType} supplement. Please remove the duplicate and try again.` }
+  }
+  for (const supp of filtered) {
+    const validationError = validateSupplementSetup(supp)
+    if (validationError) return { error: validationError }
+  }
+
+  const supabase = await createClient()
+  const results: EnsuredSupplementFoodOption[] = []
+
+  for (const supp of filtered) {
+    const ensured: { data: EnsuredSupplementFood } | { error: string } = await ensureSupplementCatalogRow(supabase, supp)
+    if ('error' in ensured) return { error: ensured.error }
+    results.push({
+      id: ensured.data.foodId,
+      name: ensured.data.name,
+      category: ensured.data.category,
+      serving_size: ensured.data.serving_size,
+      serving_unit: ensured.data.serving_unit,
+      calories: ensured.data.calories,
+      protein: ensured.data.protein,
+      carbs: ensured.data.carbs,
+      fat: ensured.data.fat,
+      protein_type: ensured.data.protein_type,
+      carb_type: null,
+      display_unit: ensured.data.display_unit,
+      grams_per_display_unit: ensured.data.grams_per_display_unit
+    })
+  }
+
+  return { data: results }
 }

@@ -91,7 +91,18 @@ export default async function SettingsPage() {
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <div className="text-sm font-semibold text-foreground">{activePlan.name}</div>
                   <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground px-1.5 py-0.5 rounded bg-surface-elevated border border-border">
-                    {activePlan.plan_source === 'user_customized' ? 'Customized by you' : 'AI Generated'}
+                    {/* Exhaustive over all three plan_source values (see
+                        migration 0017_diet_plans_plan_source_user_created.sql) -
+                        the previous binary ternary treated anything that
+                        wasn't literally 'user_customized' as "AI Generated",
+                        which mislabeled every 'user_created' (Manual Meal
+                        Builder) plan - the only reachable plan-creation path
+                        today, since AI generation is "Coming Soon". */}
+                    {activePlan.plan_source === 'user_customized'
+                      ? 'Customized by you'
+                      : activePlan.plan_source === 'user_created'
+                        ? 'Created by you'
+                        : 'AI Generated'}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-3 font-mono tabular-nums text-center text-sm">

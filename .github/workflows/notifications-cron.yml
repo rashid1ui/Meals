@@ -5,10 +5,35 @@ name: Notification cron
 # /api/cron/notifications endpoint on that cadence instead - the route
 # already accepts any caller that sends the CRON_SECRET bearer header
 # (see the isAuthorized comment in app/api/cron/notifications/route.ts).
+# KNOWN LIMITATION (confirmed via live run history during a production
+# audit): GitHub Actions schedules run on a best-effort basis, not exactly
+# every 15 minutes. Across the 100 most recent runs at audit time, the
+# average gap between runs was ~40 minutes (vs. the configured 15), with a
+# max observed gap of 98 minutes and 71% of gaps exceeding the app's own
+# 30-minute reminder catch-up window (MAX_CATCHUP_MINUTES in
+# lib/notifications/schedule.ts). This is a hard ceiling of "GitHub Actions
+# schedule as a cron substitute" that cannot be fixed from this workflow file
+# alone - a reminder whose window is missed by more than that catch-up
+# window is deliberately NOT fired late (see schedule.ts's own comment: this
+# is intentional to avoid bursting every overdue meal at once), so on a slow
+# tick it is silently skipped for that day rather than sent hours late. If
+# tighter timing is required, the practical fix is an external always-on
+# scheduler (e.g. a small always-on cron host, or Vercel's own cron on a
+# paid plan) calling this same endpoint - not a change to this file.
 on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch: {}
+
+# Prevents two overlapping runs (a slow run bumping into the next scheduled
+# tick, or a manual workflow_dispatch overlapping a scheduled one) from
+# both hitting the sweep endpoint concurrently. Not required for
+# correctness - the notification_events unique constraint already makes a
+# concurrent double-claim impossible at the database level - but avoids
+# wasted compute and duplicate log noise from two sweeps running at once.
+concurrency:
+  group: notifications-cron
+  cancel-in-progress: false
 
 jobs:
   trigger:

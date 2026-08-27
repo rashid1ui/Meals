@@ -5,7 +5,7 @@ import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import CreateFoodForm from '@/components/food/CreateFoodForm'
-import { calculateFoodMacros } from '@/lib/nutrition/calculator'
+import { calculateFoodMacros, isValidQuantity } from '@/lib/nutrition/calculator'
 import { toCanonicalGrams, requiresGramsPerUnit, unitLabel, type UnitConfig } from '@/lib/nutrition/units'
 import { servingDisplayFor } from '@/lib/food/servingDisplay'
 import { searchFoods } from '@/lib/food/search'
@@ -108,7 +108,14 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
   const unitConfig = selected ? unitConfigFor(selected) : null
   const canonicalGrams =
     unitConfig && isFinite(parsedQuantity) && parsedQuantity > 0 ? toCanonicalGrams(parsedQuantity, unitConfig) : null
-  const preview = selected && canonicalGrams !== null ? calculateFoodMacros(canonicalGrams, selected) : null
+  // Same bound the server enforces (lib/nutrition/calculator.ts's
+  // isValidQuantity, via lib/diet/save-plan.ts's resolveMeal) - checked
+  // here too so an out-of-range quantity is caught immediately, with the
+  // specific food named, instead of only failing much later at final
+  // "Create Plan"/"Save" with a generic error unattributed to any one item.
+  const quantityOutOfRange =
+    selected !== null && canonicalGrams !== null && !isValidQuantity(canonicalGrams, selected.serving_unit)
+  const preview = selected && canonicalGrams !== null && !quantityOutOfRange ? calculateFoodMacros(canonicalGrams, selected) : null
 
   const selectFood = (food: FoodOption) => {
     setSelected(food)
@@ -271,6 +278,12 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
               {unitLabel(selected.display_unit || 'g', parsedQuantity || 0)}
             </span>
           </div>
+
+          {quantityOutOfRange && (
+            <p className="text-xs text-error" role="alert">
+              That quantity is outside the allowed range for {selected.name}. Please enter a smaller amount.
+            </p>
+          )}
 
           {preview && (
             <div className="flex flex-wrap gap-4 font-mono tabular-nums text-sm font-semibold">

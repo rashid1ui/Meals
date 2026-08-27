@@ -1,5 +1,19 @@
 import { calculateFoodMacros, isValidQuantity, type FoodMacro } from '@/lib/nutrition/calculator'
 
+export type PlanSource = 'ai_generated' | 'user_created' | 'user_customized'
+
+// Provenance rule for editing an existing plan (app/dashboard/actions.ts's
+// saveDietPlan): editing an 'ai_generated' plan marks it 'user_customized'
+// (it was AI-touched, then hand-edited) - but editing a 'user_created' plan
+// (built entirely by hand via the Manual Meal Builder, never AI-touched)
+// PRESERVES 'user_created' rather than downgrading it to 'user_customized',
+// since that value's whole meaning is specifically "was AI, then edited".
+// An already-'user_customized' plan simply stays that way (sticky - there's
+// no 'ai_generated' plan to fall back to).
+export function nextPlanSourceOnEdit(currentPlanSource: PlanSource): PlanSource {
+  return currentPlanSource === 'user_created' ? 'user_created' : 'user_customized'
+}
+
 // Every food the client sends is one of:
 //  - an "editable" item: foodDatabaseId is set (either an existing item the
 //    client resolved to a food_database match, or a newly-added item from
@@ -16,11 +30,24 @@ export interface SaveDietPlanFood {
   originalFoodId: string | null
   quantity: number
   unit: string
+  // The food's OWN current `foods.id` when it's an existing, already-
+  // persisted item the client is editing/moving/resizing (the same id the
+  // client's own draft state already tracks as that food's identity - see
+  // lib/diet/diff.ts's DraftFood.id) - null/omitted for a brand-new item
+  // that has never been saved. Used to build an old-id -> new-id relink
+  // mapping for finalize_plan_swap (see app/dashboard/actions.ts), instead
+  // of the ambiguous name-based matching computeFoodRelinkPairs used
+  // before - a real database id can never collide the way two same-named
+  // foods can.
+  currentId?: string | null
 }
 
 export interface SaveDietPlanMeal {
   name: string
   foods: SaveDietPlanFood[]
+  // Same idea as SaveDietPlanFood.currentId, for the meal itself (the
+  // client's own current `meals.id`) - null/omitted for a brand-new meal.
+  currentId?: string | null
 }
 
 export interface SaveDietPlanPayload {
@@ -35,11 +62,16 @@ export interface ResolvedFood {
   protein: number
   carbs: number
   fat: number
+  // Carried straight through from SaveDietPlanFood.currentId - null for a
+  // brand-new food, otherwise the real, pre-existing `foods.id` this row
+  // replaces.
+  currentId: string | null
 }
 
 export interface ResolvedMeal {
   name: string
   foods: ResolvedFood[]
+  currentId: string | null
 }
 
 export interface OriginalFoodRecord {
@@ -166,7 +198,8 @@ export function resolveMeal(
         calories: calculated.calories,
         protein: calculated.protein,
         carbs: calculated.carbs,
-        fat: calculated.fat
+        fat: calculated.fat,
+        currentId: food.currentId ?? null
       })
     } else if (food.originalFoodId) {
       const orig = originalFoodsById.get(food.originalFoodId)
@@ -180,12 +213,15 @@ export function resolveMeal(
         calories: orig.calories,
         protein: orig.protein,
         carbs: orig.carbs,
-        fat: orig.fat
+        fat: orig.fat,
+        // A locked item's own id (food.originalFoodId) IS the current id -
+        // it was already looked up by that exact id above.
+        currentId: food.originalFoodId
       })
     } else {
       return { error: 'Invalid food entry in the plan.' }
     }
   }
 
-  return { meal: { name: meal.name.trim(), foods: resolvedFoods } }
+  return { meal: { name: meal.name.trim(), foods: resolvedFoods, currentId: meal.currentId ?? null } }
 }

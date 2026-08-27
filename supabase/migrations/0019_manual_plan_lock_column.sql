@@ -1,0 +1,35 @@
+-- ==============================================================================
+-- Migration: Manual plan creation lock column
+-- ==============================================================================
+-- WHY THIS MIGRATION IS REQUIRED
+--
+-- createManualDietPlan (app/onboarding/manual-actions.ts) previously had no
+-- lock at all - only a read-then-insert idempotency check for an existing
+-- active plan. A rapid double-click on "Create Plan", two open tabs, or a
+-- retried request racing its own earlier attempt could both pass that
+-- check before either had written its row. The DB's own
+-- diet_plans_one_active_per_user unique index already prevented two ACTIVE
+-- plans from ever existing, but the loser of that race got a confusing
+-- generic "Failed to save diet plan" error instead of a clear, expected
+-- "already being processed" message, and there was no backstop against
+-- other duplicate-submission side effects (e.g. two full meal/food trees
+-- both being inserted, with only one ever reachable as active - orphaned
+-- but real rows).
+--
+-- A dedicated column (mirroring generation_lock_at's exact pattern - see
+-- 0013_diet_generation_lock.sql - but deliberately NOT that same column)
+-- lets lib/diet/manual-plan-lock.ts hold a real lock for the whole manual
+-- plan creation window. Kept separate from generation_lock_at on purpose:
+-- that lock's 90s TTL is sized around a ~50s AI call manual plan creation
+-- never makes, so sharing it would let a stuck AI generation block a
+-- user's manual plan creation (or vice versa) for up to 90s for no reason
+-- connecting the two paths.
+--
+-- SAFETY / BACKWARD COMPATIBILITY
+--
+-- - Purely additive, nullable, no default needed (NULL = unlocked).
+-- - No other column or code path is touched.
+-- ==============================================================================
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS manual_plan_lock_at timestamptz;

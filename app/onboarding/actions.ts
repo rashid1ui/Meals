@@ -12,13 +12,12 @@ import {
   computeSupplementMacros,
   validateSupplementSetup,
   findDuplicateSupplementType,
-  buildSupplementCatalogName,
-  classifySupplementInsertError,
   subtractSupplementsFromTarget,
   appendSupplementsToDiet,
   type ConfiguredSupplement,
   type OtherDbSupplement
 } from '@/lib/diet/supplements'
+import { ensureSupplementCatalogRow } from '@/lib/diet/supplement-catalog'
 import type { SupplementSetup } from '@/lib/types'
 
 interface RemindersSubmission {
@@ -47,10 +46,6 @@ const MIN_TRAINING_DAYS = 0
 const MAX_TRAINING_DAYS = 7
 const MIN_MEALS_COUNT = 1
 const MAX_MEALS_COUNT = 10
-
-function escapeForIlike(value: string): string {
-  return value.replace(/[%_\\]/g, ch => `\\${ch}`)
-}
 
 export type SubmitOnboardingResult = { error: string } | { success: true }
 
@@ -238,79 +233,21 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
       if (!supp.serving_label.trim()) continue
 
       const computed = computeSupplementMacros(supp)
-      // Encodes brand + type + the actual serving numbers, not just
-      // type+brand - two users configuring "generic Whey Protein" with
-      // different protein-per-scoop amounts get distinct catalog rows
-      // instead of silently colliding on (and inheriting) each other's macros.
-      const suppName = buildSupplementCatalogName(supp, computed)
 
       totalSupplementCalories += computed.calories
       totalSupplementProtein += computed.protein
       totalSupplementCarbs += computed.carbs
       totalSupplementFat += computed.fat
 
-      const proteinPer100 = computed.quantity > 0 ? (computed.protein / computed.quantity) * 100 : 0
-      const caloriesPer100 = computed.quantity > 0 ? (computed.calories / computed.quantity) * 100 : 0
-      const carbsPer100 = computed.quantity > 0 ? (computed.carbs / computed.quantity) * 100 : 0
-      const fatPer100 = computed.quantity > 0 ? (computed.fat / computed.quantity) * 100 : 0
-
-      // Idempotent create-or-reuse. System-generated supplement rows are
-      // always category='supplement' and is_active=false - hidden from the
-      // normal food picker (app/onboarding/page.tsx) and the AI's candidate
-      // pool (supplementFoodIds below AND generate-diet.ts's own filter) -
-      // supplements only ever appear through this dedicated flow.
-      const { data: existingSupp } = await supabase
-        .from('food_database')
-        .select('id')
-        .ilike('name', escapeForIlike(suppName))
-        .limit(1)
-        .maybeSingle()
-
-      let suppFoodId: string | null = existingSupp?.id ?? null
-      if (!suppFoodId) {
-        const { data: newSupp, error: insertError } = await supabase
-          .from('food_database')
-          .insert({
-            name: suppName,
-            category: 'supplement',
-            protein_type: 'supplement',
-            serving_size: 100,
-            serving_unit: 'grams',
-            calories: caloriesPer100,
-            protein: proteinPer100,
-            carbs: carbsPer100,
-            fat: fatPer100,
-            display_unit: 'serving',
-            grams_per_display_unit: computed.quantity,
-            is_active: false
-          })
-          .select('id')
-          .single()
-
-        const errorClass = classifySupplementInsertError(insertError)
-        if (errorClass === 'unique_violation') {
-          const { data: raceWinner } = await supabase
-            .from('food_database')
-            .select('id')
-            .ilike('name', escapeForIlike(suppName))
-            .maybeSingle()
-          suppFoodId = raceWinner?.id ?? null
-        } else if (errorClass === 'fatal') {
-          // Never silently continue past a real database failure (e.g. a
-          // CHECK-constraint violation) - the previous implementation only
-          // special-cased 23505 and fell through to a null foodId otherwise,
-          // silently dropping the supplement while still returning success.
-          console.error('[onboarding] supplement food_database insert failed:', insertError)
-          return { error: `Failed to save your ${supp.type} supplement. Please try again.` }
-        } else {
-          suppFoodId = newSupp?.id ?? null
-        }
-
-        if (!suppFoodId) {
-          console.error('[onboarding] supplement food_database insert returned no id and no error')
-          return { error: `Failed to save your ${supp.type} supplement. Please try again.` }
-        }
-      }
+      // Idempotent create-or-reuse of the food_database row for this exact
+      // configuration - shared with the Manual Meal Builder path
+      // (manual-actions.ts's ensureManualSupplementFoods) via
+      // lib/diet/supplement-catalog.ts, so both paths resolve an equivalent
+      // configuration to the same catalog row.
+      const ensured = await ensureSupplementCatalogRow(supabase, supp)
+      if ('error' in ensured) return { error: ensured.error }
+      const suppFoodId = ensured.data.foodId
+      const suppName = ensured.data.name
 
       supplementFoodIds.add(suppFoodId)
       configuredSupplements.push({
