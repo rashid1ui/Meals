@@ -14,7 +14,13 @@ const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
+// Falls back to a placeholder origin when NEXT_PUBLIC_SITE_URL isn't set
+// (e.g. local dev) - Next.js needs *some* metadataBase to resolve relative
+// canonical/openGraph URLs (app/page.tsx's alternates.canonical: '/') into
+// absolute ones; set NEXT_PUBLIC_SITE_URL to the real production domain
+// before relying on these URLs being correct there.
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://gymmeals.app"),
   title: "Gym Meals | Pro Diet Tracker",
   description: "Track your diet and meals with Gym Meals",
 };

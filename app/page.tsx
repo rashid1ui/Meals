@@ -1,13 +1,42 @@
+import type { Metadata } from 'next'
 import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import LandingPage from './marketing/LandingPage'
+
+export const metadata: Metadata = {
+  title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+  description:
+    'Gym Meals helps you build, customize, and track your nutrition plan around your goals, foods, training, and daily routine. Manual meal planning, personalized targets, and nutrition insights - free to start.',
+  alternates: {
+    canonical: '/'
+  },
+  openGraph: {
+    title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+    description:
+      'A flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible.',
+    url: '/',
+    siteName: 'Gym Meals',
+    type: 'website'
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+    description:
+      'A flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible.'
+  }
+}
 
 export default async function HomePage() {
   const user = await getUser()
 
+  // Logged-out visitors land on the marketing page instead of being bounced
+  // straight to /login - everything below this (existing plan lookup,
+  // cookie fast-path, dashboard/onboarding redirect) is unchanged for an
+  // authenticated user.
   if (!user) {
-    redirect('/login')
+    return <LandingPage />
   }
 
   const supabase = await createClient()

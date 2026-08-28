@@ -194,6 +194,53 @@ export function SunIcon(props: IconProps) {
   )
 }
 
+export function TargetIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function ScaleIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 3v18M7 21h10" />
+      <path d="M5 7h14" />
+      <path d="M5 7 2 13a3 3 0 0 0 6 0L5 7ZM19 7l-3 6a3 3 0 0 0 6 0l-3-6Z" />
+    </svg>
+  )
+}
+
+export function DumbbellIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 9v6M2 10.5v3M7 7v10M17 7v10M20 10.5v3M22 9v6" />
+      <path d="M7 12h10" />
+    </svg>
+  )
+}
+
+export function PillIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="9" width="18" height="8" rx="4" transform="rotate(-45 12 13)" />
+      <path d="m9.5 15.5 5-5" />
+    </svg>
+  )
+}
+
+export function TrendingUpIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m3 17 6-6 4 4 8-8" />
+      <path d="M15 7h6v6" />
+    </svg>
+  )
+}
+
 export function HomeIcon(props: IconProps) {
   return (
     <svg {...base(props)}>
