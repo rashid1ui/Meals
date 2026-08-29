@@ -213,3 +213,23 @@ body {
 .animate-indeterminate-bar {
   animation: indeterminate-bar 1.6s ease-in-out infinite;
 }
+
+/*
+ * Landing-page hero motion. A single one-time fade+rise that runs on load,
+ * gated behind `prefers-reduced-motion: no-preference`. No scroll listeners,
+ * no observer, no scroll-driven timeline - section rhythm on the landing page
+ * comes from whitespace, alternating surfaces, and gradients, not JS motion.
+ */
+@keyframes hero-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-rise {
+    animation: hero-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero-rise-delay-1 { animation-delay: 90ms; }
+  .hero-rise-delay-2 { animation-delay: 180ms; }
+  .hero-rise-delay-3 { animation-delay: 270ms; }
+}

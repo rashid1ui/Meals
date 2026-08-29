@@ -8,6 +8,12 @@
 // so sharing one component would mean threading optional props through a
 // pile of conditionals rather than two nav bars that are each simple on
 // their own.
+//
+// The mobile dropdown is a SIBLING of <nav>, not a child: <nav> carries a
+// `backdrop-blur` filter, and an absolutely-positioned popover that spills
+// outside a backdrop-filtered ancestor composites unreliably (it can render
+// semi-transparent). Keeping the menu in the plain `relative` wrapper
+// instead avoids that entirely.
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import LinkButton from '@/components/ui/LinkButton'
@@ -55,53 +61,55 @@ export default function LandingNav() {
   }, [menuOpen])
 
   return (
-    <div className="sticky top-0 z-40 px-3 sm:px-4 pt-3">
-      <nav
-        aria-label="Main"
-        className="relative max-w-6xl mx-auto flex items-center justify-between gap-3 rounded-pill border border-border bg-surface/95 backdrop-blur-xl px-4 sm:px-5 py-2.5"
-      >
-        <Link
-          href="/"
-          className="flex items-center gap-2 sm:gap-3 min-h-[44px] rounded-pill shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    <div className="sticky top-0 z-40 px-3 sm:px-4 pt-3 sm:pt-4">
+      <div className="relative max-w-5xl mx-auto">
+        <nav
+          aria-label="Main"
+          className="relative flex items-center justify-between gap-3 rounded-pill border border-border/70 bg-surface/80 backdrop-blur-xl shadow-[var(--shadow-panel)] px-4 sm:px-5 py-2.5"
         >
-          <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0">
-            GM
+          <Link
+            href="/"
+            className="flex items-center gap-2 sm:gap-3 min-h-[44px] rounded-pill shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0">
+              GM
+            </div>
+            <span className="font-display font-semibold text-lg tracking-tight text-foreground">Gym Meals</span>
+          </Link>
+
+          <div className="hidden lg:flex items-center gap-1">
+            {NAV_LINKS.map(link => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="inline-flex items-center min-h-[40px] px-3.5 rounded-pill text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {link.label}
+              </a>
+            ))}
           </div>
-          <span className="font-display font-semibold text-lg tracking-tight text-foreground">Gym Meals</span>
-        </Link>
 
-        <div className="hidden lg:flex items-center gap-1">
-          {NAV_LINKS.map(link => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="inline-flex items-center min-h-[40px] px-3.5 rounded-pill text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              {link.label}
-            </a>
-          ))}
-        </div>
+          <div className="hidden lg:flex items-center gap-2 shrink-0">
+            <LinkButton href="/login" variant="ghost" size="sm">
+              Log In
+            </LinkButton>
+            <LinkButton href="/login" variant="primary" size="sm">
+              Get Started
+            </LinkButton>
+          </div>
 
-        <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <LinkButton href="/login" variant="ghost" size="sm">
-            Log In
-          </LinkButton>
-          <LinkButton href="/login" variant="primary" size="sm">
-            Get Started
-          </LinkButton>
-        </div>
-
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setMenuOpen(o => !o)}
-          aria-expanded={menuOpen}
-          aria-controls="landing-mobile-menu"
-          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          className="lg:hidden w-11 h-11 flex items-center justify-center rounded-full border border-border text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          {menuOpen ? <CloseIcon size={20} /> : <MenuIcon size={20} />}
-        </button>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-expanded={menuOpen}
+            aria-controls="landing-mobile-menu"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            className="lg:hidden w-11 h-11 flex items-center justify-center rounded-full border border-border text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {menuOpen ? <CloseIcon size={20} /> : <MenuIcon size={20} />}
+          </button>
+        </nav>
 
         {menuOpen && (
           <div
@@ -109,7 +117,7 @@ export default function LandingNav() {
             ref={menuRef}
             role="menu"
             aria-label="Main"
-            className="lg:hidden absolute right-2 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] bg-surface-elevated border border-border rounded-panel shadow-[var(--shadow-modal)] p-2 z-50 animate-step-in"
+            className="lg:hidden absolute right-2 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-panel shadow-[var(--shadow-modal)] p-2 z-50 animate-step-in"
           >
             {NAV_LINKS.map(link => (
               <a
@@ -117,7 +125,7 @@ export default function LandingNav() {
                 href={link.href}
                 role="menuitem"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center min-h-[44px] px-3 rounded-pill text-sm font-semibold text-foreground hover:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex items-center min-h-[44px] px-3 rounded-pill text-sm font-semibold text-foreground hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {link.label}
               </a>
@@ -133,7 +141,7 @@ export default function LandingNav() {
             </div>
           </div>
         )}
-      </nav>
+      </div>
     </div>
   )
 }

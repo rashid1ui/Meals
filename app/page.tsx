@@ -6,25 +6,34 @@ import { cookies } from 'next/headers'
 import LandingPage from './marketing/LandingPage'
 
 export const metadata: Metadata = {
-  title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+  title: 'Gym Meals — Build Your Diet. Track Your Progress.',
   description:
-    'Gym Meals helps you build, customize, and track your nutrition plan around your goals, foods, training, and daily routine. Manual meal planning, personalized targets, and nutrition insights - free to start.',
+    'Gym Meals gives you the tools to build, customize, and track a nutrition plan that fits your goals, food preferences, training, and lifestyle. Manual meal planning, personalized targets, and nutrition insights — free to start.',
+  keywords: [
+    'meal planning',
+    'nutrition tracking',
+    'macro tracker',
+    'calorie targets',
+    'workout nutrition',
+    'supplement tracking',
+    'diet plan builder'
+  ],
   alternates: {
     canonical: '/'
   },
   openGraph: {
-    title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+    title: 'Gym Meals — Build Your Diet. Track Your Progress.',
     description:
-      'A flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible.',
+      'A flexible nutrition planning and tracking system that gives you control over every meal while keeping your calorie and macro targets in view.',
     url: '/',
     siteName: 'Gym Meals',
     type: 'website'
   },
   twitter: {
     card: 'summary',
-    title: 'Gym Meals - Build Your Diet. Track Your Progress. Stay on Target.',
+    title: 'Gym Meals — Build Your Diet. Track Your Progress.',
     description:
-      'A flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible.'
+      'A flexible nutrition planning and tracking system that gives you control over every meal while keeping your calorie and macro targets in view.'
   }
 }
 

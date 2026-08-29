@@ -2,16 +2,22 @@
 // visitors only (an authenticated user hitting "/" still gets the existing
 // redirect to /dashboard or /onboarding, unchanged). A Server Component -
 // the only client-side piece on the whole page is LandingNav's mobile menu
-// toggle; every product "screenshot" below is a static recreation built
+// toggle. Every product "screenshot" below is a static recreation built
 // from the same primitives (Card, Badge, design tokens) the real dashboard
 // uses, not an imported dashboard component (those are wired to live
 // Supabase data/callbacks and can't render for an anonymous visitor).
 // Food photography (images.ts) is real, individually-verified,
-// Unsplash-licensed photography - not stock-illustration filler and not
-// copied from mealtrack.com.
+// Unsplash-licensed photography.
+//
+// This pass is an Apple-inspired restyle: larger type, much more
+// whitespace, fewer/bigger editorial sections, a cinematic photo hero, and
+// CSS-only reveal motion (see .reveal / .hero-rise in globals.css). The
+// green brand tokens, component library, routes, and copy claims are
+// unchanged - manual planning is "available now", AI is "coming soon", and
+// nothing implies pre/post-workout meals replace main meals or that photos
+// measure body composition.
 import type { ReactNode } from 'react'
 import Image from 'next/image'
-import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import LinkButton from '@/components/ui/LinkButton'
 import LandingNav from './LandingNav'
@@ -24,40 +30,49 @@ import {
 } from './images'
 import {
   PlusIcon,
-  TargetIcon,
-  SearchIcon,
-  ScaleIcon,
   SwapIcon,
+  CloseIcon,
+  CheckIcon,
   DumbbellIcon,
-  PillIcon,
+  ClockIcon,
   ChartIcon,
   TrendingUpIcon,
-  CheckIcon,
-  CloseIcon,
+  TargetIcon,
+  SearchIcon,
   type IconProps
 } from '@/components/ui/icons'
+
+// ---------------------------------------------------------------------------
+// Layout primitives
+// ---------------------------------------------------------------------------
 
 function Section({
   id,
   children,
   className = '',
-  ariaLabel
+  ariaLabel,
+  width = 'max-w-6xl'
 }: {
   id?: string
   children: ReactNode
   className?: string
   ariaLabel?: string
+  width?: string
 }) {
   return (
-    <section id={id} aria-label={ariaLabel} className={`scroll-mt-24 py-16 sm:py-24 ${className}`}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">{children}</div>
+    <section id={id} aria-label={ariaLabel} className={`scroll-mt-28 py-20 sm:py-28 lg:py-32 ${className}`}>
+      <div className={`${width} mx-auto px-5 sm:px-8`}>{children}</div>
     </section>
   )
 }
 
-function Eyebrow({ children }: { children: ReactNode }) {
+function Eyebrow({ children, tone = 'brand' }: { children: ReactNode; tone?: 'brand' | 'light' }) {
   return (
-    <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-pill border bg-primary/15 text-primary border-primary/30">
+    <p
+      className={`text-xs font-bold uppercase tracking-[0.16em] ${
+        tone === 'light' ? 'text-white/75' : 'text-primary'
+      }`}
+    >
       {children}
     </p>
   )
@@ -66,152 +81,287 @@ function Eyebrow({ children }: { children: ReactNode }) {
 function SectionHeading({
   eyebrow,
   title,
-  description,
-  className = 'max-w-2xl mb-10 sm:mb-14'
+  lead,
+  align = 'left',
+  className = ''
 }: {
   eyebrow?: string
-  title: string
-  description?: string
+  title: ReactNode
+  lead?: ReactNode
+  align?: 'left' | 'center'
   className?: string
 }) {
   return (
-    <div className={className}>
-      {eyebrow && (
-        <div className="mb-3">
-          <Eyebrow>{eyebrow}</Eyebrow>
-        </div>
-      )}
-      <h2 className="font-display font-medium text-3xl sm:text-4xl tracking-tight text-foreground text-balance">
+    <div className={`${align === 'center' ? 'mx-auto text-center max-w-3xl' : 'max-w-2xl'} ${className}`}>
+      {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+      <h2 className="mt-4 font-display font-medium text-[2rem] leading-[1.1] sm:text-4xl lg:text-5xl tracking-[-0.02em] text-foreground text-balance">
         {title}
       </h2>
-      {description && <p className="mt-4 text-base text-muted-foreground">{description}</p>}
+      {lead && (
+        <p
+          className={`mt-5 text-lg leading-relaxed text-muted-foreground text-pretty ${
+            align === 'center' ? 'mx-auto max-w-2xl' : 'max-w-xl'
+          }`}
+        >
+          {lead}
+        </p>
+      )}
     </div>
   )
 }
 
-// ---- Hero product visual - static recreation of DailyProgress.tsx's exact
-// classes/structure (CalorieHero + macro tiles), illustrative numbers only.
-function HeroProductPreview() {
+function CheckList({ items, className = '' }: { items: string[]; className?: string }) {
   return (
-    <Card elevated className="p-5 sm:p-6 w-full max-w-md space-y-4" aria-hidden="true">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Today&apos;s Progress
-        </span>
-        <Badge variant="success">On Target</Badge>
-      </div>
-      <div>
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="font-mono tabular-nums text-4xl font-bold text-calories">1,840</span>
-          <span className="text-muted-foreground">/ 2,400 kcal</span>
-        </div>
-        <div className="h-2.5 rounded-full bg-surface-elevated border border-border overflow-hidden mt-3">
-          <div className="h-full rounded-full bg-calories" style={{ width: '77%' }} />
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-2.5">
-        {[
-          { label: 'Protein', value: 142, target: 180, valueClass: 'text-protein', barClass: 'bg-protein', pct: 79 },
-          { label: 'Carbs', value: 165, target: 230, valueClass: 'text-carbs', barClass: 'bg-carbs', pct: 72 },
-          { label: 'Fat', value: 48, target: 70, valueClass: 'text-fat', barClass: 'bg-fat', pct: 69 }
-        ].map(m => (
-          <div key={m.label} className="p-3 rounded-card border border-border bg-surface space-y-1.5">
-            <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {m.label}
-            </span>
-            <div className={`font-mono tabular-nums text-base font-bold ${m.valueClass}`}>
-              {m.value}
-              <span className="text-muted-foreground text-xs font-normal">/{m.target}g</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-surface-elevated border border-border overflow-hidden">
-              <div className={`h-full rounded-full ${m.barClass}`} style={{ width: `${m.pct}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-center text-[11px] text-muted-foreground">Illustrative preview of your daily dashboard</p>
-    </Card>
+    <ul className={`space-y-3.5 ${className}`}>
+      {items.map(item => (
+        <li key={item} className="flex items-start gap-3 text-[15px] font-semibold text-foreground">
+          <span className="mt-0.5 w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
+            <CheckIcon size={12} />
+          </span>
+          {item}
+        </li>
+      ))}
+    </ul>
   )
 }
 
-// ---- Feature grid
-type Feature = { Icon: (props: IconProps) => ReactNode; title: string; description: string }
+// ---------------------------------------------------------------------------
+// Static product recreations (decorative - aria-hidden)
+// ---------------------------------------------------------------------------
 
-const FEATURES: Feature[] = [
-  {
-    Icon: PlusIcon,
-    title: 'Build Your Own Meal Plan',
-    description: 'Create meals manually and choose exactly what you eat, food by food.'
-  },
-  {
-    Icon: TargetIcon,
-    title: 'Personalized Nutrition Targets',
-    description: 'Calorie, protein, carb, and fat targets calculated from your profile and goal.'
-  },
-  {
-    Icon: SearchIcon,
-    title: 'Complete Food Library',
-    description: 'Browse protein, carbohydrate, fat, vegetable, fruit, and supplement sources.'
-  },
-  {
-    Icon: ScaleIcon,
-    title: 'Flexible Portions',
-    description: 'Change planned quantities whenever you want - nothing is locked in.'
-  },
-  {
-    Icon: SwapIcon,
-    title: 'Move Foods Between Meals',
-    description: 'Move foods between breakfast, lunch, dinner, pre-workout, and post-workout.'
-  },
-  {
-    Icon: DumbbellIcon,
-    title: 'Workout Nutrition',
-    description: 'Pre- and post-workout nutrition, kept separate from your main meals.'
-  },
-  {
-    Icon: PillIcon,
-    title: 'Supplement Tracking',
-    description: 'Whey, creatine, and other supplements, with the correct macro behavior for each.'
-  },
-  {
-    Icon: ChartIcon,
-    title: 'Nutrition Insights',
-    description: 'See animal vs. plant protein, macro trends, calories, and workout nutrition at a glance.'
-  },
-  {
-    Icon: TrendingUpIcon,
-    title: 'Progress Tracking',
-    description: 'Weight, measurements, and progress photos - built for the check-ins ahead.'
-  }
-]
+// Meal builder - mirrors the real manual planner's meal/food-row structure.
+function MealBuilderMock() {
+  const foods = [
+    { name: 'Grilled Chicken Breast', qty: '180 g', kcal: 297, macro: '56 g protein' },
+    { name: 'Jasmine Rice', qty: '150 g', kcal: 195, macro: '43 g carbs' },
+    { name: 'Broccoli', qty: '100 g', kcal: 34, macro: '3 g protein' },
+    { name: 'Olive Oil', qty: '10 g', kcal: 88, macro: '10 g fat' }
+  ]
+  return (
+    <div className="relative" aria-hidden="true">
+      {/* soft brand glow behind the panel for depth (inset kept < mobile
+          gutter so it never causes horizontal overflow) */}
+      <div className="absolute -inset-3 sm:-inset-6 -z-10 rounded-[2.5rem] bg-primary/10 blur-3xl" />
 
-// ---- How it works
+      <div className="relative rounded-panel border border-border bg-surface shadow-[var(--shadow-modal)] overflow-hidden">
+        <div className="relative aspect-[16/10]">
+          <Image
+            src={MEAL_PLANNER_IMAGE.src}
+            alt=""
+            fill
+            loading="lazy"
+            sizes="(min-width: 1024px) 46vw, 92vw"
+            className="object-cover"
+          />
+        </div>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-display font-medium text-lg text-foreground">Lunch</h3>
+            <span className="font-mono tabular-nums text-xs font-bold text-muted-foreground">614 kcal</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {foods.map(food => (
+              <div
+                key={food.name}
+                className="flex items-center justify-between gap-3 rounded-control border border-border bg-surface-elevated px-3.5 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{food.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {food.qty} &middot; {food.macro}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 text-muted-foreground">
+                  <span className="font-mono tabular-nums text-xs">{food.kcal}</span>
+                  <SwapIcon size={15} />
+                  <CloseIcon size={15} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-pill border border-dashed border-border px-3.5 py-2 text-sm font-semibold text-muted-foreground">
+            <PlusIcon size={15} />
+            Add food
+          </div>
+        </div>
+      </div>
+
+      {/* floating macro-total chip */}
+      <div className="absolute -bottom-6 -right-2 sm:-right-6 w-44 rounded-card border border-border bg-surface shadow-[var(--shadow-modal)] p-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Day total</p>
+        <p className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-calories">1,980</p>
+        <div className="mt-2 flex gap-3 text-[11px] font-semibold">
+          <span className="text-protein">P 172</span>
+          <span className="text-carbs">C 190</span>
+          <span className="text-fat">F 58</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Nutrition targets - big calorie readout + three macro rings.
+function Ring({
+  label,
+  value,
+  target,
+  unit,
+  pct,
+  colorVar
+}: {
+  label: string
+  value: number
+  target: number
+  unit: string
+  pct: number
+  colorVar: string
+}) {
+  const r = 34
+  const c = 2 * Math.PI * r
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className="relative w-24 h-24">
+        <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90" aria-hidden="true">
+          <circle cx="40" cy="40" r={r} fill="none" stroke="var(--border)" strokeWidth="7" />
+          <circle
+            cx="40"
+            cy="40"
+            r={r}
+            fill="none"
+            stroke={colorVar}
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c - (c * pct) / 100}
+          />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center font-mono tabular-nums text-sm font-bold text-foreground">
+          {pct}%
+        </span>
+      </div>
+      <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <p className="mt-1 font-mono tabular-nums text-sm font-semibold text-foreground whitespace-nowrap">
+        {value}
+        <span className="text-muted-foreground font-normal"> / {target}{unit}</span>
+      </p>
+    </div>
+  )
+}
+
+function TargetsPanel() {
+  return (
+    <div
+      className="rounded-panel border border-border bg-surface shadow-[var(--shadow-panel)] p-6 sm:p-9"
+      aria-hidden="true"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Daily target</span>
+        <Badge variant="success">On track</Badge>
+      </div>
+      <div className="mt-4 flex items-baseline gap-2 flex-wrap">
+        <span className="font-mono tabular-nums text-5xl sm:text-6xl font-bold text-calories">2,400</span>
+        <span className="text-muted-foreground text-lg">kcal / day</span>
+      </div>
+      <div className="mt-4 h-2.5 rounded-full bg-surface-elevated border border-border overflow-hidden">
+        <div className="h-full rounded-full bg-calories" style={{ width: '77%' }} />
+      </div>
+      <div className="mt-8 grid grid-cols-3 gap-4">
+        <Ring label="Protein" value={142} target={180} unit="g" pct={79} colorVar="var(--protein)" />
+        <Ring label="Carbs" value={165} target={230} unit="g" pct={72} colorVar="var(--carbs)" />
+        <Ring label="Fat" value={48} target={70} unit="g" pct={69} colorVar="var(--fat)" />
+      </div>
+    </div>
+  )
+}
+
+// Insights - analytics panel with protein sourcing + a 7-day calorie chart.
+function InsightsPanel() {
+  const days = [
+    { label: 'M', pct: 62, cls: 'bg-tier-good' },
+    { label: 'T', pct: 94, cls: 'bg-tier-excellent' },
+    { label: 'W', pct: 88, cls: 'bg-tier-excellent' },
+    { label: 'T', pct: 45, cls: 'bg-tier-partial' },
+    { label: 'F', pct: 96, cls: 'bg-tier-excellent' },
+    { label: 'S', pct: 71, cls: 'bg-tier-good' },
+    { label: 'S', pct: 90, cls: 'bg-tier-excellent' }
+  ]
+  return (
+    <div
+      className="rounded-panel border border-border bg-surface shadow-[var(--shadow-panel)] p-6 sm:p-9 space-y-8"
+      aria-hidden="true"
+    >
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Protein by source</p>
+        <div className="mt-3 h-3.5 rounded-full overflow-hidden flex border border-border">
+          <div className="bg-protein" style={{ width: '64%' }} />
+          <div className="bg-protein/55" style={{ width: '28%' }} />
+          <div className="bg-protein/30" style={{ width: '8%' }} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs font-semibold text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-protein" /> Animal 64%
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-protein/55" /> Plant 28%
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-protein/30" /> Supplement 8%
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+          Calorie adherence, last 7 days
+        </p>
+        <div className="mt-4 flex items-end gap-2">
+          {days.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center">
+              <div className="w-full h-28 flex items-end rounded-t-chip bg-surface-elevated border border-border overflow-hidden">
+                <div className={`w-full ${d.cls}`} style={{ height: `${d.pct}%` }} />
+              </div>
+              <span className="mt-2 text-[10px] font-semibold text-muted-foreground">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Content
+// ---------------------------------------------------------------------------
+
+const HERO_SUPPORT =
+  'Gym Meals gives you the tools to build, customize, and track a nutrition plan that fits your goals, food preferences, training, and lifestyle.'
+
 const STEPS = [
   {
     title: 'Tell us about yourself',
     description: 'Age, weight, height, activity level, and goal - the same profile the rest of the app runs on.'
   },
   {
-    title: 'Set your nutrition targets',
-    description: 'Your calorie and macro targets are calculated from that profile - no separate spreadsheet or app.'
+    title: 'Get your nutrition targets',
+    description: 'Calorie and macro targets are calculated from that profile - no separate spreadsheet or app.'
   },
   {
     title: 'Build your meal plan',
     description: 'Pick real foods and real portions, organized into the meals your day actually looks like.'
   },
   {
-    title: 'Track, adjust, and improve',
+    title: 'Track, adjust, improve',
     description: 'Log what you actually eat, compare it to plan, and change anything whenever you want.'
   }
 ]
 
-// ---- Trust section
-const TRUST_POINTS = [
-  { title: 'Transparent nutrition calculations', description: 'Targets and totals are computed from values you can see, never a black box.' },
-  { title: 'Editable meal plans', description: 'Nothing about a saved plan is permanent - foods, portions, and meals stay editable.' },
-  { title: 'Separate planned vs. eaten tracking', description: 'What you planned and what you actually logged are always kept distinct.' },
-  { title: 'Secure, user-specific data', description: 'Your nutrition data is tied to your own account and only accessible to you.' },
-  { title: 'Flexible nutrition workflows', description: 'Main meals, workout nutrition, and supplements each work the way they actually behave.' }
+const CAPABILITIES: { Icon: (props: IconProps) => ReactNode; title: string; description: string }[] = [
+  { Icon: PlusIcon, title: 'Manual meal builder', description: 'Add foods, set portions, and arrange meals exactly how you eat.' },
+  { Icon: TargetIcon, title: 'Personalized targets', description: 'Calories, protein, carbs, and fat from your profile and goal.' },
+  { Icon: SearchIcon, title: 'Full food library', description: 'Protein, carb, fat, vegetable, fruit, and supplement sources.' },
+  { Icon: DumbbellIcon, title: 'Workout nutrition', description: 'Pre- and post-workout nutrition kept separate from main meals.' },
+  { Icon: ChartIcon, title: 'Nutrition insights', description: 'Animal vs. plant protein, macro trends, and adherence at a glance.' },
+  { Icon: TrendingUpIcon, title: 'Progress tracking', description: 'Weight, measurements, and progress photos, built for check-ins ahead.' }
 ]
 
 const FAQ_ITEMS = [
@@ -222,7 +372,8 @@ const FAQ_ITEMS = [
   },
   {
     question: 'Can I change my plan after I create it?',
-    answer: 'Yes. Add, remove, or move foods and meals, and adjust portions any time - nothing is locked once your plan is saved.'
+    answer:
+      'Yes. Add, remove, or move foods and meals, and adjust portions any time - nothing is locked once your plan is saved.'
   },
   {
     question: 'How are my calorie and macro targets calculated?',
@@ -233,11 +384,12 @@ const FAQ_ITEMS = [
     answer:
       'Yes - supplements are tracked with the correct macro behavior. Whey counts toward your protein and calories; creatine never does.'
   },
-  {
-    question: 'Is my data private?',
-    answer: 'Your nutrition data is tied to your own account and only accessible to you.'
-  }
+  { question: 'Is my data private?', answer: 'Your nutrition data is tied to your own account and only accessible to you.' }
 ]
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function LandingPage() {
   return (
@@ -252,431 +404,387 @@ export default function LandingPage() {
       <LandingNav />
 
       <main id="main-content" className="bg-background text-foreground">
-        {/* Hero - full-bleed food photo background. Text is forced white/
-            near-white here (not the theme's text-foreground token) because
-            it sits on a photo, not the page surface - the same reason any
-            photo hero uses fixed light text regardless of site theme. Two
-            stacked overlays: a uniform dark floor (keeps text readable
-            everywhere, including once content stacks full-width on mobile)
-            plus an extra left-to-right gradient that deepens specifically
-            behind the text column on desktop, so the food stays visible on
-            the right without fighting the headline on the left. */}
-        <section className="relative overflow-hidden">
+        {/* ---- HERO -------------------------------------------------------- */}
+        <section className="relative overflow-hidden" aria-label="Introduction">
           <div className="absolute inset-0">
             <Image
               src={HERO_IMAGE.src}
               alt={HERO_IMAGE.alt}
               fill
-              priority
+              preload
               sizes="100vw"
-              className="object-cover"
+              className="object-cover object-center"
             />
-            <div className="absolute inset-0 bg-black/45" />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+            <div className="absolute inset-0 bg-black/35" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/45 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/25" />
           </div>
-          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-24 sm:py-32 lg:py-40">
-            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-              <div>
-                <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-pill border bg-white/10 backdrop-blur-sm text-white border-white/25">
-                  Manual meal planning - available now
-                </p>
-                <h1 className="mt-4 font-display font-medium text-4xl sm:text-5xl lg:text-[3.25rem] leading-[1.08] tracking-tight text-white text-balance">
-                  Build Your Diet. Track Your Progress. Stay on Target.
-                </h1>
-                <p className="mt-5 text-lg text-white/85 max-w-xl">
-                  Gym Meals helps you build, customize, and track your nutrition plan around your goals, foods,
-                  training, and daily routine.
-                </p>
-                <div className="mt-8 flex flex-wrap items-center gap-3">
-                  <LinkButton href="/login" variant="primary">
-                    Get Started
-                  </LinkButton>
-                  <LinkButton href="/login" variant="secondary">
-                    Log In
-                  </LinkButton>
-                </div>
-                <p className="mt-4 text-xs text-white/70">
-                  Free to start. A flexible nutrition planning and tracking system, not a generic calorie counter.
-                </p>
+
+          <div className="relative max-w-6xl mx-auto px-5 sm:px-8 py-32 sm:py-44 lg:py-52">
+            <div className="max-w-3xl">
+              <div className="hero-rise">
+                <Eyebrow tone="light">Personalized nutrition, your way</Eyebrow>
               </div>
-              <div className="flex justify-center lg:justify-end">
-                <HeroProductPreview />
+              <h1 className="hero-rise hero-rise-delay-1 mt-6 font-display font-medium text-[2rem] leading-[1.08] sm:text-6xl sm:leading-[1.05] lg:text-7xl tracking-[-0.03em] text-white text-balance">
+                <span className="block">Build Your Diet.</span>
+                <span className="block">Track Your Progress.</span>
+                <span className="block">Stay on Target.</span>
+              </h1>
+              <p className="hero-rise hero-rise-delay-2 mt-7 text-lg sm:text-xl leading-relaxed text-white/85 max-w-xl text-pretty">
+                {HERO_SUPPORT}
+              </p>
+              <div className="hero-rise hero-rise-delay-3 mt-9 flex flex-wrap items-center gap-3">
+                <LinkButton
+                  href="/login"
+                  variant="primary"
+                  className="text-base px-7 min-h-[52px] transition-all hover:-translate-y-0.5"
+                >
+                  Get Started
+                </LinkButton>
+                <LinkButton
+                  href="/login"
+                  variant="secondary"
+                  className="text-base px-7 min-h-[52px] bg-white/10 border-white/30 text-white backdrop-blur-sm hover:bg-white/20 transition-all hover:-translate-y-0.5"
+                >
+                  Log In
+                </LinkButton>
               </div>
+              <p className="hero-rise hero-rise-delay-3 mt-5 text-sm text-white/65">
+                Free to start. A flexible nutrition planning and tracking system, not a generic calorie counter.
+              </p>
             </div>
           </div>
         </section>
 
-        {/* Core value proposition */}
-        <Section className="border-t border-border">
-          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center">
-            <div>
+        {/* ---- STATEMENT ------------------------------------------------- */}
+        <Section width="max-w-4xl">
+          <div className="reveal text-center">
+            <h2 className="font-display font-medium text-3xl sm:text-4xl lg:text-5xl tracking-[-0.02em] text-foreground text-balance">
+              Your diet should fit your life &mdash; not the other way around.
+            </h2>
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-2xl mx-auto text-pretty">
+              Gym Meals is a planning and tracking system you actually control. Real foods, real portions, and your
+              targets always in view.
+            </p>
+          </div>
+        </Section>
+
+        {/* ---- BUILD YOUR PLAN / MEAL BUILDER (features anchor) --------- */}
+        <Section id="features" className="bg-surface border-y border-border" ariaLabel="Meal builder">
+          <div className="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+            <div className="reveal">
+              <Eyebrow>Build your plan</Eyebrow>
+              <h2 className="mt-4 font-display font-medium text-[2rem] leading-[1.1] sm:text-4xl lg:text-5xl tracking-[-0.02em] text-foreground text-balance">
+                Your plan. Your rules.
+              </h2>
+              <p className="mt-5 text-lg leading-relaxed text-muted-foreground max-w-xl text-pretty">
+                The manual meal builder is where your plan actually gets made. Build meals exactly how you want them and
+                watch your macros update as you go.
+              </p>
+              <CheckList
+                className="mt-8"
+                items={[
+                  'Add foods',
+                  'Adjust portions',
+                  'Move foods between meals',
+                  'Add or remove meals',
+                  'Track macro totals live',
+                  'Save your own plan'
+                ]}
+              />
+              <p className="mt-8 font-display font-medium text-lg text-primary">
+                Nothing is locked in. Change it whenever you want.
+              </p>
+            </div>
+            <div className="reveal lg:pr-6">
+              <MealBuilderMock />
+            </div>
+          </div>
+        </Section>
+
+        {/* ---- NUTRITION TARGETS --------------------------------------- */}
+        <Section ariaLabel="Nutrition targets">
+          <div className="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+            <div className="reveal order-2 lg:order-1">
+              <TargetsPanel />
+            </div>
+            <div className="reveal order-1 lg:order-2">
               <SectionHeading
-                eyebrow="Why Gym Meals"
-                title="Your nutrition. Your plan. Your control."
-                description="Gym Meals is a flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible - not a black-box calorie counter."
+                eyebrow="Nutrition targets"
+                title="Know exactly what your body needs."
+                lead="Your calorie and macro targets are calculated from the profile and goal you set - then every meal you build is measured against them."
               />
-              <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
-                {[
-                  'Personalized calorie and macro targets',
-                  'Manual meal planning',
-                  'Food library',
-                  'Portion control',
-                  'Planned vs. eaten tracking',
-                  'Workout nutrition',
-                  'Supplement tracking',
-                  'Nutrition insights',
-                  'Progress tracking'
-                ].map(item => (
-                  <div key={item} className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                      <CheckIcon size={14} />
-                    </span>
-                    <span className="text-sm font-semibold text-foreground">{item}</span>
-                  </div>
-                ))}
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-surface-elevated text-muted-foreground flex items-center justify-center shrink-0 border border-border">
-                    <CheckIcon size={14} />
-                  </span>
-                  <span className="text-sm font-semibold text-muted-foreground">
-                    Future AI coaching <Badge variant="neutral" className="ml-1 align-middle">Coming soon</Badge>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
-              <Image
-                src={FOOD_LIBRARY_IMAGE.src}
-                alt={FOOD_LIBRARY_IMAGE.alt}
-                fill
-                loading="lazy"
-                sizes="(min-width: 1024px) 40vw, 90vw"
-                className="object-cover"
+              <CheckList
+                className="mt-8"
+                items={[
+                  'Calorie target for your goal',
+                  'Protein, carbs, and fat split',
+                  'Planned vs. eaten, side by side',
+                  'Transparent math you can see'
+                ]}
               />
             </div>
           </div>
         </Section>
 
-        {/* Features */}
-        <Section id="features" className="border-t border-border" ariaLabel="Features">
-          <SectionHeading
-            eyebrow="Features"
-            title="Everything a real meal plan needs"
-            description="Built around how people actually eat and train, not a single daily calorie number."
+        {/* ---- FULL-BLEED FOOD (rhythm break) ------------------------- */}
+        <section className="relative h-[60vh] min-h-[420px] overflow-hidden" aria-label="Whole foods">
+          <Image
+            src={FOOD_LIBRARY_IMAGE.src}
+            alt={FOOD_LIBRARY_IMAGE.alt}
+            fill
+            loading="lazy"
+            sizes="100vw"
+            className="object-cover"
           />
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {FEATURES.map(({ Icon, title, description }) => (
-              <Card key={title} className="p-5">
-                <div className="w-10 h-10 rounded-control bg-primary/15 text-primary flex items-center justify-center mb-4">
-                  <Icon size={20} />
-                </div>
-                <h3 className="font-display font-medium text-lg text-foreground">{title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
-              </Card>
-            ))}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/40" />
+          <div className="relative h-full max-w-6xl mx-auto px-5 sm:px-8 flex items-end pb-14 sm:pb-20">
+            <div className="reveal max-w-xl">
+              <h2 className="font-display font-medium text-3xl sm:text-4xl lg:text-5xl tracking-[-0.02em] text-white text-balance">
+                Real food. Real portions. No guesswork.
+              </h2>
+              <p className="mt-4 text-lg text-white/80 text-pretty">
+                Chicken, eggs, oats, rice, vegetables, fruit, healthy fats, and protein shakes &mdash; planned to the
+                gram.
+              </p>
+            </div>
           </div>
-        </Section>
+        </section>
 
-        {/* How it works */}
-        <Section id="how-it-works" className="border-t border-border" ariaLabel="How it works">
-          <SectionHeading eyebrow="How it works" title="From profile to plan in four steps" />
-          <ol className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* ---- HOW IT WORKS ----------------------------------------- */}
+        <Section id="how-it-works" className="bg-surface border-y border-border" ariaLabel="How it works">
+          <div className="reveal">
+            <SectionHeading eyebrow="How it works" title="From profile to plan in four steps." align="center" />
+          </div>
+          <ol className="reveal mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10">
             {STEPS.map((step, i) => (
-              <li key={step.title}>
-                <Card className="p-5 h-full">
-                  <span className="font-mono tabular-nums text-sm font-bold text-primary">
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
-                  <h3 className="mt-3 font-display font-medium text-lg text-foreground">{step.title}</h3>
-                  <p className="mt-1.5 text-sm text-muted-foreground">{step.description}</p>
-                </Card>
+              <li key={step.title} className="relative">
+                <span className="font-mono tabular-nums text-3xl font-bold text-primary/30">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <h3 className="mt-3 font-display font-medium text-lg text-foreground">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
               </li>
             ))}
           </ol>
         </Section>
 
-        {/* Manual meal planner spotlight */}
-        <Section className="border-t border-border">
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            <div>
-              <Eyebrow>The active product today</Eyebrow>
-              <h2 className="mt-4 font-display font-medium text-3xl sm:text-4xl tracking-tight text-foreground text-balance">
-                Build your plan your way.
-              </h2>
-              <p className="mt-4 text-base text-muted-foreground">
-                The manual meal builder is where your plan actually gets made. Add foods, change grams, move things
-                between meals, add or remove entire meals, and watch your macros update as you go.
-              </p>
-              <ul className="mt-6 space-y-3">
-                {['Add foods', 'Change grams', 'Move foods between meals', 'Add or remove meals', 'Review macros live', 'Save your own plan'].map(
-                  item => (
-                    <li key={item} className="flex items-center gap-3 text-sm font-semibold text-foreground">
-                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                        <CheckIcon size={12} />
-                      </span>
-                      {item}
-                    </li>
-                  )
-                )}
-              </ul>
-              <p className="mt-6 font-display font-medium text-lg text-primary">
-                The plan is yours. Change it whenever you want.
-              </p>
-            </div>
-
-            <Card elevated className="p-5 sm:p-6 overflow-hidden" aria-hidden="true">
-              <div className="relative -mx-5 sm:-mx-6 -mt-5 sm:-mt-6 mb-4 sm:mb-5 aspect-[16/9]">
-                <Image
-                  src={MEAL_PLANNER_IMAGE.src}
-                  alt={MEAL_PLANNER_IMAGE.alt}
-                  fill
-                  loading="lazy"
-                  sizes="(min-width: 1024px) 45vw, 90vw"
-                  className="object-cover"
-                />
+        {/* ---- CAPABILITIES (quiet overview) ----------------------- */}
+        <Section ariaLabel="Capabilities">
+          <div className="reveal">
+            <SectionHeading
+              eyebrow="Everything in one place"
+              title="Built around how people actually eat and train."
+              align="center"
+            />
+          </div>
+          <div className="reveal mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-10">
+            {CAPABILITIES.map(({ Icon, title, description }) => (
+              <div key={title}>
+                <span className="w-11 h-11 rounded-control bg-primary/12 text-primary flex items-center justify-center">
+                  <Icon size={20} />
+                </span>
+                <h3 className="mt-4 font-display font-medium text-lg text-foreground">{title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
               </div>
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h3 className="font-display font-medium text-lg text-foreground">Lunch</h3>
-                <span className="font-mono tabular-nums text-xs font-bold text-muted-foreground">526 kcal</span>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { name: 'Grilled Chicken Breast', qty: '180g', kcal: 297, macro: '56g protein' },
-                  { name: 'Jasmine Rice', qty: '150g', kcal: 195, macro: '43g carbs' },
-                  { name: 'Broccoli', qty: '100g', kcal: 34, macro: '3g protein' }
-                ].map(food => (
-                  <div
-                    key={food.name}
-                    className="flex items-center justify-between gap-3 p-3 rounded-control border border-border bg-surface"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{food.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {food.qty} &middot; {food.macro}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono tabular-nums text-xs text-muted-foreground">{food.kcal} kcal</span>
-                      <SwapIcon size={15} className="text-muted-foreground" />
-                      <CloseIcon size={15} className="text-muted-foreground" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                disabled
-                aria-hidden="true"
-                tabIndex={-1}
-                className="mt-3 w-full inline-flex items-center justify-center gap-2 min-h-[40px] rounded-control border border-dashed border-border text-sm font-semibold text-muted-foreground"
-              >
-                <PlusIcon size={16} />
-                Add food
-              </button>
-            </Card>
+            ))}
           </div>
         </Section>
 
-        {/* Training + workout nutrition */}
-        <Section className="border-t border-border">
-          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center mb-10 sm:mb-14">
-            <SectionHeading
-              eyebrow="Training"
-              title="Nutrition built around training, not just meals"
-              description="Gym Meals doesn't treat pre- and post-workout nutrition as ordinary meals - they're kept separate, so your training days look different from your rest days without extra bookkeeping."
-              className="mb-0"
-            />
-            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
+        {/* ---- WORKOUT NUTRITION ----------------------------------- */}
+        <Section className="bg-surface border-y border-border" ariaLabel="Workout nutrition">
+          <div className="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+            <div className="reveal">
+              <SectionHeading
+                eyebrow="Training days"
+                title="Nutrition built around your training."
+                lead="Pre- and post-workout nutrition sit alongside your main meals, tracked separately - so training days look different from rest days without extra bookkeeping."
+              />
+              <p className="mt-6 text-sm text-muted-foreground max-w-lg">
+                Pre- and post-workout nutrition are in addition to your main meals, not a replacement for them. Use them
+                every session, only on training days, or not at all.
+              </p>
+            </div>
+            <div className="reveal relative aspect-[4/3] rounded-panel overflow-hidden border border-border shadow-[var(--shadow-panel)]">
               <Image
                 src={WORKOUT_NUTRITION_IMAGE.src}
                 alt={WORKOUT_NUTRITION_IMAGE.alt}
                 fill
                 loading="lazy"
-                sizes="(min-width: 1024px) 40vw, 90vw"
+                sizes="(min-width: 1024px) 46vw, 92vw"
                 className="object-cover"
               />
             </div>
           </div>
-          <div className="grid sm:grid-cols-3 gap-4 items-stretch">
+
+          <div className="reveal mt-14 grid sm:grid-cols-3 gap-4">
             {[
-              { label: 'Main Meals', description: 'Breakfast, lunch, dinner - your everyday nutrition foundation.' },
-              { label: 'Pre-Workout', description: 'Fuel timed around training, tracked on its own.' },
-              { label: 'Post-Workout', description: 'Recovery nutrition, separate from your regular meals.' }
-            ].map((block, i) => (
-              <div key={block.label} className="flex items-center gap-4">
-                <Card className="p-5 flex-1 h-full">
-                  <span className="w-9 h-9 rounded-control bg-primary/15 text-primary flex items-center justify-center mb-3">
-                    <DumbbellIcon size={18} />
+              { Icon: ClockIcon, label: 'Pre-workout', description: 'Fuel timed before training, tracked on its own.' },
+              { Icon: DumbbellIcon, label: 'Main meals', description: 'Breakfast, lunch, dinner - your everyday foundation.' },
+              { Icon: TrendingUpIcon, label: 'Post-workout', description: 'Recovery nutrition, separate from regular meals.' }
+            ].map(({ Icon, label, description }, i) => (
+              <div key={label} className="relative flex items-center gap-4">
+                <div className="flex-1 rounded-card border border-border bg-background p-5 h-full transition-all hover:-translate-y-1">
+                  <span className="w-9 h-9 rounded-control bg-primary/12 text-primary flex items-center justify-center">
+                    <Icon size={18} />
                   </span>
-                  <h3 className="font-display font-medium text-base text-foreground">{block.label}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{block.description}</p>
-                </Card>
+                  <h3 className="mt-3 font-display font-medium text-base text-foreground">{label}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+                </div>
                 {i < 2 && (
-                  <span aria-hidden="true" className="hidden sm:flex text-muted-foreground text-xl font-bold">
+                  <span
+                    aria-hidden="true"
+                    className="hidden sm:block absolute -right-3 text-muted-foreground text-lg font-bold"
+                  >
                     +
                   </span>
                 )}
               </div>
             ))}
           </div>
-          <p className="mt-6 text-sm text-muted-foreground max-w-2xl">
-            You choose how workout nutrition fits into your routine - use it every session, only on training days, or
-            not at all.
-          </p>
         </Section>
 
-        {/* Supplements */}
-        <Section className="border-t border-border">
-          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center mb-10 sm:mb-14">
-            <SectionHeading eyebrow="Supplements" title="Supplements, tracked correctly" className="mb-0" />
-            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
+        {/* ---- SUPPLEMENTS ---------------------------------------- */}
+        <Section ariaLabel="Supplements">
+          <div className="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+            <div className="reveal relative aspect-[4/3] rounded-panel overflow-hidden border border-border shadow-[var(--shadow-panel)] order-2 lg:order-1">
               <Image
                 src={SUPPLEMENTS_IMAGE.src}
                 alt={SUPPLEMENTS_IMAGE.alt}
                 fill
                 loading="lazy"
-                sizes="(min-width: 1024px) 40vw, 90vw"
+                sizes="(min-width: 1024px) 46vw, 92vw"
                 className="object-cover"
               />
             </div>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl">
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-display font-medium text-lg text-foreground">Whey Protein</h3>
-                <Badge variant="protein">Counts toward targets</Badge>
+            <div className="reveal order-1 lg:order-2">
+              <SectionHeading
+                eyebrow="Supplements"
+                title="Supplements, counted correctly."
+                lead="Each supplement is tracked with the macro behavior that matches it - so your daily totals stay honest."
+              />
+              <div className="mt-8 grid sm:grid-cols-3 gap-4">
+                <div className="rounded-card border border-border bg-surface p-5">
+                  <h3 className="font-display font-medium text-base text-foreground">Whey</h3>
+                  <p className="mt-2 font-mono tabular-nums text-2xl font-bold text-protein">25 g</p>
+                  <p className="text-xs text-muted-foreground">protein / serving</p>
+                </div>
+                <div className="rounded-card border border-border bg-surface p-5">
+                  <h3 className="font-display font-medium text-base text-foreground">Creatine</h3>
+                  <p className="mt-2 font-mono tabular-nums text-2xl font-bold text-foreground">5 g</p>
+                  <p className="text-xs text-muted-foreground">/ serving</p>
+                </div>
+                <div className="rounded-card border border-border bg-surface p-5">
+                  <h3 className="font-display font-medium text-base text-foreground">Other</h3>
+                  <p className="mt-2 font-mono tabular-nums text-2xl font-bold text-foreground">&mdash;</p>
+                  <p className="text-xs text-muted-foreground">macros as listed</p>
+                </div>
               </div>
-              <p className="mt-3 font-mono tabular-nums text-2xl font-bold text-protein">25g</p>
-              <p className="text-sm text-muted-foreground">protein per serving</p>
-            </Card>
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-display font-medium text-lg text-foreground">Creatine</h3>
-                <Badge variant="neutral">Doesn&apos;t affect targets</Badge>
-              </div>
-              <p className="mt-3 font-mono tabular-nums text-2xl font-bold text-foreground">5g</p>
-              <p className="text-sm text-muted-foreground">per serving</p>
-            </Card>
-          </div>
-          <p className="mt-6 text-sm text-muted-foreground max-w-2xl">
-            Creatine has no meaningful calories or protein, so it&apos;s tracked without ever distorting your daily
-            calorie or protein targets.
-          </p>
-        </Section>
-
-        {/* Insights */}
-        <Section id="insights" className="border-t border-border" ariaLabel="Insights">
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            <div>
-              <Eyebrow>Insights</Eyebrow>
-              <h2 className="mt-4 font-display font-medium text-3xl sm:text-4xl tracking-tight text-foreground text-balance">
-                See your nutrition, not just your calories.
-              </h2>
-              <ul className="mt-6 space-y-3">
-                {['Protein breakdown', 'Animal vs. plant protein', 'Daily nutrition', 'Workout nutrition', 'Progress trends'].map(
-                  item => (
-                    <li key={item} className="flex items-center gap-3 text-sm font-semibold text-foreground">
-                      <span className="w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                        <CheckIcon size={12} />
-                      </span>
-                      {item}
-                    </li>
-                  )
-                )}
-              </ul>
+              <p className="mt-6 text-sm text-muted-foreground max-w-lg">
+                Creatine has no meaningful calories or protein, so it&apos;s tracked without ever distorting your daily
+                targets.
+              </p>
             </div>
+          </div>
+        </Section>
 
-            <Card elevated className="p-5 sm:p-6" aria-hidden="true">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                Protein Breakdown
-              </p>
-              <div className="h-3 rounded-full overflow-hidden flex border border-border">
-                <div className="bg-protein" style={{ width: '68%' }} />
-                <div className="bg-protein/60" style={{ width: '24%' }} />
-                <div className="bg-protein/35" style={{ width: '8%' }} />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-protein" /> Animal 68%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-protein/60" /> Plant 24%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-protein/35" /> Supplement 8%
-                </span>
-              </div>
+        {/* ---- INSIGHTS ---------------------------------------- */}
+        <Section id="insights" className="bg-surface border-y border-border" ariaLabel="Insights">
+          <div className="grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+            <div className="reveal">
+              <SectionHeading
+                eyebrow="Insights"
+                title="See your nutrition, not just a number."
+                lead="Gym Meals turns what you log into a clearer picture - protein sourcing, macro trends, calories, and how closely you stuck to plan."
+              />
+              <CheckList
+                className="mt-8"
+                items={[
+                  'Protein breakdown',
+                  'Animal vs. plant protein',
+                  'Daily calories and macros',
+                  'Workout nutrition',
+                  'Adherence trends'
+                ]}
+              />
+            </div>
+            <div className="reveal">
+              <InsightsPanel />
+            </div>
+          </div>
+        </Section>
 
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-6 mb-3">
-                Adherence, last 7 days
-              </p>
-              <div className="flex items-end gap-1.5 h-16">
-                {['bg-tier-good', 'bg-tier-excellent', 'bg-tier-excellent', 'bg-tier-partial', 'bg-tier-excellent', 'bg-tier-good', 'bg-tier-excellent'].map(
-                  (cls, i) => (
-                    <div key={i} className="flex-1 rounded-t-chip bg-surface-elevated border border-border overflow-hidden self-end h-full flex items-end">
-                      <div className={`w-full ${cls}`} style={{ height: `${[62, 92, 88, 45, 96, 70, 90][i]}%` }} />
-                    </div>
-                  )
+        {/* ---- PROGRESS ---------------------------------------- */}
+        <Section ariaLabel="Progress tracking">
+          <div className="reveal">
+            <SectionHeading
+              eyebrow="Progress"
+              title="Progress you can actually see."
+              lead="Track the same numbers over weeks and months, so a plan that's working - or one that needs adjusting - is obvious."
+              align="center"
+            />
+          </div>
+          <div className="reveal mt-14 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { week: 'Week 1', note: 'Weight and measurements logged' },
+              { week: 'Week 2', note: 'First adherence trend' },
+              { week: 'Week 4', note: 'Measurements re-checked' },
+              { week: 'Week 8', note: 'Progress photos compared' }
+            ].map((s, i) => (
+              <div key={s.week} className="relative rounded-card border border-border bg-surface p-5">
+                <span className="font-mono tabular-nums text-xs font-bold text-primary">{s.week}</span>
+                <p className="mt-2 text-sm text-muted-foreground text-balance">{s.note}</p>
+                {i < 3 && (
+                  <span
+                    aria-hidden="true"
+                    className="hidden sm:block absolute top-1/2 -right-3 -translate-y-1/2 text-muted-foreground"
+                  >
+                    &rarr;
+                  </span>
                 )}
               </div>
-            </Card>
-          </div>
-        </Section>
-
-        {/* Progress / future AI */}
-        <Section className="border-t border-border">
-          <SectionHeading eyebrow="Roadmap" title="Where Gym Meals is headed" />
-          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl">
-            <Card elevated className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="w-9 h-9 rounded-control bg-primary/15 text-primary flex items-center justify-center">
-                  <PlusIcon size={18} />
-                </span>
-                <Badge variant="success">Available now</Badge>
-              </div>
-              <h3 className="mt-4 font-display font-medium text-lg text-foreground">Manual Meal Planning</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                Full control over every food, portion, and meal - the product you can use today.
-              </p>
-            </Card>
-            <Card className="p-5 opacity-70" aria-disabled="true">
-              <div className="flex items-center justify-between gap-3">
-                <span className="w-9 h-9 rounded-control bg-surface-elevated text-muted-foreground flex items-center justify-center border border-border">
-                  <SearchIcon size={18} />
-                </span>
-                <Badge variant="neutral">Coming soon</Badge>
-              </div>
-              <h3 className="mt-4 font-display font-medium text-lg text-foreground">AI Meal Planner</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">Not available yet - no early access or preview.</p>
-            </Card>
-          </div>
-          <p className="mt-6 text-sm text-muted-foreground max-w-2xl">
-            AI-powered meal planning and progress coaching are coming next, building on the same manual foundation
-            you can already use today.
-          </p>
-        </Section>
-
-        {/* Trust */}
-        <Section className="border-t border-border">
-          <SectionHeading eyebrow="Built to be trusted" title="Designed around real nutrition tracking" />
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {TRUST_POINTS.map(point => (
-              <Card key={point.title} className="p-5">
-                <h3 className="font-display font-medium text-base text-foreground">{point.title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">{point.description}</p>
-              </Card>
             ))}
           </div>
+          <p className="reveal mt-8 text-sm text-muted-foreground max-w-2xl mx-auto text-center">
+            Track weight, body measurements, nutrition adherence, and progress photos. Structured check-ins are on the
+            roadmap. Progress photos are for your own visual comparison &mdash; Gym Meals doesn&apos;t estimate body-fat
+            percentage from them.
+          </p>
         </Section>
 
-        {/* FAQ */}
-        <Section id="faq" className="border-t border-border" ariaLabel="Frequently asked questions">
-          <SectionHeading eyebrow="FAQ" title="Frequently asked questions" />
-          <div className="max-w-2xl space-y-3">
+        {/* ---- AI ROADMAP ------------------------------------- */}
+        <Section className="bg-surface border-y border-border" ariaLabel="Roadmap">
+          <div className="reveal rounded-panel border border-border bg-gradient-to-br from-primary/8 via-surface to-surface p-8 sm:p-14">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-3">
+                <Eyebrow>Roadmap</Eyebrow>
+                <Badge variant="neutral">Coming soon</Badge>
+              </div>
+              <h2 className="mt-4 font-display font-medium text-[2rem] leading-[1.1] sm:text-4xl lg:text-5xl tracking-[-0.02em] text-foreground text-balance">
+                Your future nutrition coach.
+              </h2>
+              <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
+                Future versions of Gym Meals may add AI-assisted meal planning, progress analysis, and personalized
+                recommendations &mdash; built on the same manual foundation you can use today.
+              </p>
+              <p className="mt-5 text-sm font-semibold text-muted-foreground">
+                None of this is available yet. There is no preview and no early access &mdash; today&apos;s planning is
+                fully manual.
+              </p>
+            </div>
+          </div>
+        </Section>
+
+        {/* ---- FAQ ------------------------------------------- */}
+        <Section id="faq" ariaLabel="Frequently asked questions">
+          <div className="reveal">
+            <SectionHeading eyebrow="FAQ" title="Frequently asked questions." align="center" />
+          </div>
+          <div className="reveal mt-12 max-w-2xl mx-auto space-y-3">
             {FAQ_ITEMS.map(item => (
               <details
                 key={item.question}
-                className="group rounded-card border border-border bg-surface p-4 sm:p-5 [&_summary::-webkit-details-marker]:hidden"
+                className="group rounded-card border border-border bg-surface p-5 [&_summary::-webkit-details-marker]:hidden"
               >
                 <summary className="flex items-center justify-between gap-3 cursor-pointer list-none font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control">
                   {item.question}
@@ -684,32 +792,43 @@ export default function LandingPage() {
                     <PlusIcon size={18} />
                   </span>
                 </summary>
-                <p className="mt-3 text-sm text-muted-foreground">{item.answer}</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.answer}</p>
               </details>
             ))}
           </div>
         </Section>
 
-        {/* Final CTA */}
-        <Section className="border-t border-border">
-          <Card elevated className="p-10 sm:p-14 text-center">
-            <h2 className="font-display font-medium text-3xl sm:text-4xl tracking-tight text-foreground text-balance">
+        {/* ---- FINAL CTA ----------------------------------- */}
+        <Section className="bg-surface border-t border-border" ariaLabel="Get started">
+          <div className="reveal rounded-panel border border-border bg-gradient-to-b from-surface to-primary/8 p-12 sm:p-20 text-center">
+            <h2 className="font-display font-medium text-3xl sm:text-4xl lg:text-5xl tracking-[-0.02em] text-foreground text-balance">
               Build a plan that actually fits your life.
             </h2>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <LinkButton href="/login" variant="primary">
+            <p className="mt-5 text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
+              Free to start. Manual meal planning, personalized targets, and nutrition insights.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <LinkButton
+                href="/login"
+                variant="primary"
+                className="text-base px-7 min-h-[52px] transition-all hover:-translate-y-0.5"
+              >
                 Get Started
               </LinkButton>
-              <LinkButton href="/login" variant="secondary">
+              <LinkButton
+                href="/login"
+                variant="secondary"
+                className="text-base px-7 min-h-[52px] transition-all hover:-translate-y-0.5"
+              >
                 Log In
               </LinkButton>
             </div>
-          </Card>
+          </div>
         </Section>
       </main>
 
-      <footer className="border-t border-border">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-3 gap-8">
+      <footer className="bg-background border-t border-border">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 py-14 grid sm:grid-cols-3 gap-10">
           <div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0">
@@ -718,8 +837,8 @@ export default function LandingPage() {
               <span className="font-display font-semibold text-lg tracking-tight text-foreground">Gym Meals</span>
             </div>
             <p className="mt-3 text-sm text-muted-foreground max-w-xs">
-              A flexible nutrition planning and tracking system that keeps your targets visible while you stay in
-              control of every meal.
+              A flexible nutrition planning and tracking system that keeps your targets visible while you stay in control
+              of every meal.
             </p>
           </div>
           <nav aria-label="Footer">
@@ -728,6 +847,7 @@ export default function LandingPage() {
               <li><a href="#features" className="text-foreground hover:text-primary transition-colors">Features</a></li>
               <li><a href="#how-it-works" className="text-foreground hover:text-primary transition-colors">How It Works</a></li>
               <li><a href="#insights" className="text-foreground hover:text-primary transition-colors">Insights</a></li>
+              <li><a href="#faq" className="text-foreground hover:text-primary transition-colors">FAQ</a></li>
               <li><a href="/login" className="text-foreground hover:text-primary transition-colors">Log In</a></li>
               <li><a href="/login" className="text-foreground hover:text-primary transition-colors">Get Started</a></li>
             </ul>
@@ -741,7 +861,7 @@ export default function LandingPage() {
           </nav>
         </div>
         <div className="border-t border-border">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 text-xs text-muted-foreground">
+          <div className="max-w-6xl mx-auto px-5 sm:px-8 py-5 text-xs text-muted-foreground">
             &copy; {new Date().getFullYear()} Gym Meals. All rights reserved.
           </div>
         </div>
