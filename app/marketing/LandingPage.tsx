@@ -5,13 +5,23 @@
 // toggle; every product "screenshot" below is a static recreation built
 // from the same primitives (Card, Badge, design tokens) the real dashboard
 // uses, not an imported dashboard component (those are wired to live
-// Supabase data/callbacks and can't render for an anonymous visitor) and
-// not stock imagery.
+// Supabase data/callbacks and can't render for an anonymous visitor).
+// Food photography (images.ts) is real, individually-verified,
+// Unsplash-licensed photography - not stock-illustration filler and not
+// copied from mealtrack.com.
 import type { ReactNode } from 'react'
+import Image from 'next/image'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import LinkButton from '@/components/ui/LinkButton'
 import LandingNav from './LandingNav'
+import {
+  HERO_IMAGE,
+  MEAL_PLANNER_IMAGE,
+  FOOD_LIBRARY_IMAGE,
+  WORKOUT_NUTRITION_IMAGE,
+  SUPPLEMENTS_IMAGE
+} from './images'
 import {
   PlusIcon,
   TargetIcon,
@@ -53,9 +63,19 @@ function Eyebrow({ children }: { children: ReactNode }) {
   )
 }
 
-function SectionHeading({ eyebrow, title, description }: { eyebrow?: string; title: string; description?: string }) {
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+  className = 'max-w-2xl mb-10 sm:mb-14'
+}: {
+  eyebrow?: string
+  title: string
+  description?: string
+  className?: string
+}) {
   return (
-    <div className="max-w-2xl mb-10 sm:mb-14">
+    <div className={className}>
       {eyebrow && (
         <div className="mb-3">
           <Eyebrow>{eyebrow}</Eyebrow>
@@ -232,69 +252,107 @@ export default function LandingPage() {
       <LandingNav />
 
       <main id="main-content" className="bg-background text-foreground">
-        {/* Hero */}
-        <Section className="pt-12 sm:pt-16">
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            <div>
-              <Eyebrow>Manual meal planning - available now</Eyebrow>
-              <h1 className="mt-4 font-display font-medium text-4xl sm:text-5xl lg:text-[3.25rem] leading-[1.08] tracking-tight text-foreground text-balance">
-                Build Your Diet. Track Your Progress. Stay on Target.
-              </h1>
-              <p className="mt-5 text-lg text-muted-foreground max-w-xl">
-                Gym Meals helps you build, customize, and track your nutrition plan around your goals, foods,
-                training, and daily routine.
-              </p>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <LinkButton href="/login" variant="primary">
-                  Get Started
-                </LinkButton>
-                <LinkButton href="/login" variant="secondary">
-                  Log In
-                </LinkButton>
+        {/* Hero - full-bleed food photo background. Text is forced white/
+            near-white here (not the theme's text-foreground token) because
+            it sits on a photo, not the page surface - the same reason any
+            photo hero uses fixed light text regardless of site theme. Two
+            stacked overlays: a uniform dark floor (keeps text readable
+            everywhere, including once content stacks full-width on mobile)
+            plus an extra left-to-right gradient that deepens specifically
+            behind the text column on desktop, so the food stays visible on
+            the right without fighting the headline on the left. */}
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0">
+            <Image
+              src={HERO_IMAGE.src}
+              alt={HERO_IMAGE.alt}
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-black/45" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+          </div>
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-24 sm:py-32 lg:py-40">
+            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+              <div>
+                <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-pill border bg-white/10 backdrop-blur-sm text-white border-white/25">
+                  Manual meal planning - available now
+                </p>
+                <h1 className="mt-4 font-display font-medium text-4xl sm:text-5xl lg:text-[3.25rem] leading-[1.08] tracking-tight text-white text-balance">
+                  Build Your Diet. Track Your Progress. Stay on Target.
+                </h1>
+                <p className="mt-5 text-lg text-white/85 max-w-xl">
+                  Gym Meals helps you build, customize, and track your nutrition plan around your goals, foods,
+                  training, and daily routine.
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  <LinkButton href="/login" variant="primary">
+                    Get Started
+                  </LinkButton>
+                  <LinkButton href="/login" variant="secondary">
+                    Log In
+                  </LinkButton>
+                </div>
+                <p className="mt-4 text-xs text-white/70">
+                  Free to start. A flexible nutrition planning and tracking system, not a generic calorie counter.
+                </p>
               </div>
-              <p className="mt-4 text-xs text-muted-foreground">
-                Free to start. A flexible nutrition planning and tracking system, not a generic calorie counter.
-              </p>
-            </div>
-            <div className="flex justify-center lg:justify-end">
-              <HeroProductPreview />
+              <div className="flex justify-center lg:justify-end">
+                <HeroProductPreview />
+              </div>
             </div>
           </div>
-        </Section>
+        </section>
 
         {/* Core value proposition */}
         <Section className="border-t border-border">
-          <SectionHeading
-            eyebrow="Why Gym Meals"
-            title="Your nutrition. Your plan. Your control."
-            description="Gym Meals is a flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible - not a black-box calorie counter."
-          />
-          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
-            {[
-              'Personalized calorie and macro targets',
-              'Manual meal planning',
-              'Food library',
-              'Portion control',
-              'Planned vs. eaten tracking',
-              'Workout nutrition',
-              'Supplement tracking',
-              'Nutrition insights',
-              'Progress tracking'
-            ].map(item => (
-              <div key={item} className="flex items-center gap-3">
-                <span className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                  <CheckIcon size={14} />
-                </span>
-                <span className="text-sm font-semibold text-foreground">{item}</span>
+          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center">
+            <div>
+              <SectionHeading
+                eyebrow="Why Gym Meals"
+                title="Your nutrition. Your plan. Your control."
+                description="Gym Meals is a flexible nutrition planning and tracking system that gives you control over your meals while keeping your nutrition targets visible - not a black-box calorie counter."
+              />
+              <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                {[
+                  'Personalized calorie and macro targets',
+                  'Manual meal planning',
+                  'Food library',
+                  'Portion control',
+                  'Planned vs. eaten tracking',
+                  'Workout nutrition',
+                  'Supplement tracking',
+                  'Nutrition insights',
+                  'Progress tracking'
+                ].map(item => (
+                  <div key={item} className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                      <CheckIcon size={14} />
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">{item}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full bg-surface-elevated text-muted-foreground flex items-center justify-center shrink-0 border border-border">
+                    <CheckIcon size={14} />
+                  </span>
+                  <span className="text-sm font-semibold text-muted-foreground">
+                    Future AI coaching <Badge variant="neutral" className="ml-1 align-middle">Coming soon</Badge>
+                  </span>
+                </div>
               </div>
-            ))}
-            <div className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-surface-elevated text-muted-foreground flex items-center justify-center shrink-0 border border-border">
-                <CheckIcon size={14} />
-              </span>
-              <span className="text-sm font-semibold text-muted-foreground">
-                Future AI coaching <Badge variant="neutral" className="ml-1 align-middle">Coming soon</Badge>
-              </span>
+            </div>
+            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
+              <Image
+                src={FOOD_LIBRARY_IMAGE.src}
+                alt={FOOD_LIBRARY_IMAGE.alt}
+                fill
+                loading="lazy"
+                sizes="(min-width: 1024px) 40vw, 90vw"
+                className="object-cover"
+              />
             </div>
           </div>
         </Section>
@@ -366,7 +424,17 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <Card elevated className="p-5 sm:p-6" aria-hidden="true">
+            <Card elevated className="p-5 sm:p-6 overflow-hidden" aria-hidden="true">
+              <div className="relative -mx-5 sm:-mx-6 -mt-5 sm:-mt-6 mb-4 sm:mb-5 aspect-[16/9]">
+                <Image
+                  src={MEAL_PLANNER_IMAGE.src}
+                  alt={MEAL_PLANNER_IMAGE.alt}
+                  fill
+                  loading="lazy"
+                  sizes="(min-width: 1024px) 45vw, 90vw"
+                  className="object-cover"
+                />
+              </div>
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h3 className="font-display font-medium text-lg text-foreground">Lunch</h3>
                 <span className="font-mono tabular-nums text-xs font-bold text-muted-foreground">526 kcal</span>
@@ -411,11 +479,24 @@ export default function LandingPage() {
 
         {/* Training + workout nutrition */}
         <Section className="border-t border-border">
-          <SectionHeading
-            eyebrow="Training"
-            title="Nutrition built around training, not just meals"
-            description="Gym Meals doesn't treat pre- and post-workout nutrition as ordinary meals - they're kept separate, so your training days look different from your rest days without extra bookkeeping."
-          />
+          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center mb-10 sm:mb-14">
+            <SectionHeading
+              eyebrow="Training"
+              title="Nutrition built around training, not just meals"
+              description="Gym Meals doesn't treat pre- and post-workout nutrition as ordinary meals - they're kept separate, so your training days look different from your rest days without extra bookkeeping."
+              className="mb-0"
+            />
+            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
+              <Image
+                src={WORKOUT_NUTRITION_IMAGE.src}
+                alt={WORKOUT_NUTRITION_IMAGE.alt}
+                fill
+                loading="lazy"
+                sizes="(min-width: 1024px) 40vw, 90vw"
+                className="object-cover"
+              />
+            </div>
+          </div>
           <div className="grid sm:grid-cols-3 gap-4 items-stretch">
             {[
               { label: 'Main Meals', description: 'Breakfast, lunch, dinner - your everyday nutrition foundation.' },
@@ -446,7 +527,19 @@ export default function LandingPage() {
 
         {/* Supplements */}
         <Section className="border-t border-border">
-          <SectionHeading eyebrow="Supplements" title="Supplements, tracked correctly" />
+          <div className="grid lg:grid-cols-[3fr_2fr] gap-10 lg:gap-14 items-center mb-10 sm:mb-14">
+            <SectionHeading eyebrow="Supplements" title="Supplements, tracked correctly" className="mb-0" />
+            <div className="relative aspect-[4/3] rounded-panel overflow-hidden border border-border">
+              <Image
+                src={SUPPLEMENTS_IMAGE.src}
+                alt={SUPPLEMENTS_IMAGE.alt}
+                fill
+                loading="lazy"
+                sizes="(min-width: 1024px) 40vw, 90vw"
+                className="object-cover"
+              />
+            </div>
+          </div>
           <div className="grid sm:grid-cols-2 gap-4 max-w-3xl">
             <Card className="p-5">
               <div className="flex items-center justify-between gap-3">

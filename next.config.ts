@@ -11,6 +11,13 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "*.googleusercontent.com",
       },
+      // Landing page food photography (app/marketing/LandingPage.tsx) -
+      // Unsplash-licensed (free to use, no attribution required), served
+      // from Unsplash's own CDN rather than downloaded into the repo.
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
 };
