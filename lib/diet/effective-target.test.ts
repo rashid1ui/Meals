@@ -24,13 +24,23 @@ test('effectiveDailyTarget - ai_generated plans keep their stored *_target colum
   assert.deepEqual(target, { calories: 2295, protein: 146, carbs: 297, fat: 58 })
 })
 
-test('effectiveDailyTarget - user_customized (AI then hand-edited) plans keep their stored columns', () => {
+test('effectiveDailyTarget - user_customized (AI then hand-edited) plans are ALSO scored against their own food totals', () => {
   const target = effectiveDailyTarget({ ...onboardingTarget, plan_source: 'user_customized' }, planFoodTotals)
-  assert.deepEqual(target, { calories: 2295, protein: 146, carbs: 297, fat: 58 })
+  assert.deepEqual(target, { calories: 2060, protein: 126, carbs: 267, fat: 59 })
+  assert.notEqual(target.calories, 2295)
 })
 
 test('effectiveDailyTarget - a missing plan_source falls back to the stored columns', () => {
   assert.deepEqual(effectiveDailyTarget(onboardingTarget, planFoodTotals), {
+    calories: 2295,
+    protein: 146,
+    carbs: 297,
+    fat: 58
+  })
+})
+
+test('effectiveDailyTarget - an unknown/legacy plan_source keeps the stored columns (only user_created / user_customized self-score)', () => {
+  assert.deepEqual(effectiveDailyTarget({ ...onboardingTarget, plan_source: 'legacy_thing' }, planFoodTotals), {
     calories: 2295,
     protein: 146,
     carbs: 297,

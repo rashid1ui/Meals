@@ -360,6 +360,12 @@ async function createManualDietPlanLocked(
   // Update profile biometrics (if the Nutrition Engine was used) and
   // training/supplement fields - exact same conditional field list and
   // backward-compat legacy-column writes as submitOnboarding's final update.
+  //
+  // BEST-EFFORT ONLY: the plan is already persisted and active by this point
+  // (the swap above committed). Returning an error here would report failure
+  // after the important work succeeded, and the retry it suggests would
+  // create a second plan - so a failure is logged and swallowed, matching
+  // submitOnboarding.
   const { error: profileUpdateError } = await supabase
     .from('profiles')
     .update({
@@ -398,11 +404,8 @@ async function createManualDietPlanLocked(
     .eq('id', user.id)
 
   if (profileUpdateError) {
+    // Logged, not returned - see the BEST-EFFORT note above.
     console.error('[manual-onboarding] failed to update profile (including supplements):', profileUpdateError)
-    return {
-      error:
-        'Your meal plan was created, but we could not save your profile details (including supplements). Please try Settings > Generate New Plan again.'
-    }
   }
 
   return { success: true, dietPlanId: newPlan.id, meals: createdMeals }

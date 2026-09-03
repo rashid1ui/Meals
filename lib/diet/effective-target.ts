@@ -1,9 +1,12 @@
 import type { MacroTotals } from '@/lib/tracking/logic'
 
 export interface PlanTargetColumns {
-  // 'user_created' = built entirely by hand in the Manual Meal Builder,
-  // never AI-touched (migration 0017). 'ai_generated' / 'user_customized'
-  // keep the onboarding-recommended numbers as their target.
+  // 'user_created'    = built entirely by hand in the Manual Meal Builder,
+  //                     never AI-touched (migration 0017).
+  // 'user_customized' = AI-generated, then hand-edited on the dashboard.
+  // Both are plans the USER shaped, so both are scored against their own
+  // composition (see below). 'ai_generated' = untouched AI output; it keeps
+  // the onboarding-recommended numbers as its target.
   plan_source?: string | null
   calories_target: number
   protein_target: number
@@ -11,20 +14,26 @@ export interface PlanTargetColumns {
   fat_target: number
 }
 
+// plan_source values whose target is the plan's own food composition rather
+// than the onboarding recommendation. Anything NOT in this set (i.e.
+// 'ai_generated', or a null/legacy value) keeps the stored *_target columns.
+const SELF_SCORED_PLAN_SOURCES = new Set(['user_created', 'user_customized'])
+
 // The daily target that the dashboard rings, today's tracking, and the
 // Insights adherence charts compare actual intake against.
 //
-// For a hand-built plan the user's OWN meal composition IS the target: they
-// chose those foods and quantities deliberately, so progress should be
-// measured against the plan they built, not the onboarding recommendation.
-// Eating the plan as designed then reads as 100% / on-target instead of
-// perpetually "slightly under". The onboarding recommendation still lives on
-// the diet_plans row (calories_target etc.) for reference and plan history -
-// it is just no longer the number progress is scored against for these
-// plans.
+// For a plan the user shaped - built by hand (user_created) OR AI-generated
+// then hand-edited (user_customized) - the user's OWN meal composition IS the
+// target: they chose those foods and quantities deliberately, so progress is
+// measured against the plan they have in front of them, not the onboarding
+// recommendation. Eating the plan as designed then reads as 100% / on-target
+// instead of perpetually "slightly under". The onboarding recommendation
+// still lives on the diet_plans row (calories_target etc.) for reference and
+// plan history - it is just no longer the number progress is scored against
+// for these plans.
 //
-// Every other plan (ai_generated, user_customized) is unchanged: it keeps
-// using its stored *_target columns exactly as before.
+// A pristine ai_generated plan (never touched by the user) is unchanged: it
+// keeps using its stored *_target columns exactly as before.
 //
 // `planFoodTotals` is the sum of the active plan's own foods (via
 // sumMacros). When it is missing (not yet loaded) the stored columns are
@@ -33,7 +42,7 @@ export function effectiveDailyTarget(
   plan: PlanTargetColumns,
   planFoodTotals: MacroTotals | null | undefined
 ): MacroTotals {
-  if (plan.plan_source === 'user_created' && planFoodTotals) {
+  if (plan.plan_source && SELF_SCORED_PLAN_SOURCES.has(plan.plan_source) && planFoodTotals) {
     return {
       calories: Math.round(planFoodTotals.calories),
       protein: Math.round(planFoodTotals.protein),

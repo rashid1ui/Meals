@@ -430,7 +430,7 @@ export default function DietEditor({
         </div>
       ) : (
         <>
-          <DailyProgress tracking={dailyTracking!} targets={targets} />
+          <DailyProgress tracking={dailyTracking!} />
 
 
         </>

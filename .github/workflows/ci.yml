@@ -42,3 +42,41 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: placeholder-key
         run: npm run build
+
+  # Applies supabase/migrations/*.sql (starting from 0000_baseline_schema.sql)
+  # + seed.sql to a throwaway local Supabase stack. Fails if any migration is
+  # broken, out of order, or depends on schema that no committed file creates -
+  # the exact class of gap that let the base schema drift out of version
+  # control (audit finding C1). This is the only check that actually exercises
+  # the SQL; `build` above never touches a database.
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply migrations + seed to a fresh database
+        # `supabase db start` boots Postgres + the auth schema and applies
+        # every migration in order, then seed.sql. A non-zero exit here means
+        # the repo can no longer rebuild its own database.
+        run: supabase db start
+
+      - name: Smoke-check the rebuilt schema
+        run: |
+          supabase db execute --local <<'SQL'
+          select
+            (select count(*) from information_schema.tables
+               where table_schema = 'public'
+                 and table_name in ('profiles','diet_plans','meals','foods',
+                   'food_database','daily_tracking','food_tracking',
+                   'notification_preferences','notification_events',
+                   'push_subscriptions','onboarding_drafts')) as core_tables,
+            (select count(*) from food_database) as seeded_foods,
+            (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname = 'public'
+                 and p.proname in ('handle_new_user','finalize_plan_swap',
+                   'activate_plan_history_swap')) as functions;
+          SQL

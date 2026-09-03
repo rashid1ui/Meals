@@ -1,7 +1,5 @@
 export type FoodCategory = 'protein' | 'carbohydrate' | 'fat' | 'fruit' | 'vegetable' | 'dairy' | 'other';
 
-export type PreparationState = 'raw' | 'cooked' | 'dry' | 'prepared' | 'ready_to_eat';
-
 export interface NutritionValues {
   calories: number;
   protein: number;
@@ -130,39 +128,13 @@ export interface NotificationPreferences {
   updated_at?: string;
 }
 
-export interface DietFood {
-  id: string; // UUID
-  meal_id: string; // UUID references meals
-  food_id: string; // UUID references food_database
-  quantity: number;
-  unit: string;
-  preparation_state?: PreparationState | null;
-  notes?: string | null;
-  created_at?: string;
-}
-
-export interface DailyTracking {
-  id: string; // UUID
-  user_id: string; // UUID references profiles
-  date: string; // YYYY-MM-DD
-  total_calories: number;
-  total_protein: number;
-  total_carbs: number;
-  total_fat: number;
-  created_at?: string;
-}
-
-export interface FoodTracking {
-  id: string; // UUID
-  daily_tracking_id: string; // UUID references daily_tracking
-  food_id?: string | null; // UUID references food_database (optional if custom)
-  meal_name?: string | null;
-  food_name: string;
-  quantity: number;
-  unit: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  created_at?: string;
-}
+// NOTE: the persisted `foods`, `daily_tracking`, and `food_tracking` row
+// shapes are intentionally NOT modelled here. Each server action that reads
+// those tables declares a narrow, hand-verified local interface matching its
+// own SELECT (see app/dashboard/tracking-actions.ts, app/dashboard/page.tsx).
+// The previous global `DietFood` / `DailyTracking` / `FoodTracking`
+// interfaces in this spot described columns the live schema does not have
+// (`date` vs `tracking_date`, `total_calories` vs `calories`, a
+// `daily_tracking_id` FK that does not exist) and were imported by nothing -
+// a stale map that could only mislead. The authoritative schema now lives in
+// supabase/migrations/0000_baseline_schema.sql.

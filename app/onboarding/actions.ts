@@ -432,18 +432,20 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     // Activate: only now that the new plan is fully and successfully persisted
     // do we hand off "active" status (new-plan flow only). The previous plan is
     // NOT deleted - it becomes plan history (is_active=false), visible under
-    // "Previous Plans" on the dashboard. Old is deactivated before the new one
-    // is activated so the two updates never violate the one-active-per-user
-    // unique index (both is_active=false momentarily is always valid).
+    // "Previous Plans" on the dashboard. Both updates run as ONE atomic
+    // transaction (activate_plan_history_swap, migration
+    // 0021_activate_plan_history_swap_function.sql) - the SAME RPC
+    // app/onboarding/manual-actions.ts already uses - so a crash/timeout
+    // between the deactivate and the activate can never leave the user with
+    // zero active plans. If the swap fails, the previous plan is still active,
+    // exactly as before this call.
     if (previousPlanId) {
-      const { error: deactivateError } = await supabase.from('diet_plans').update({ is_active: false }).eq('id', previousPlanId)
-      if (deactivateError) {
-        console.error('[onboarding] failed to deactivate previous plan:', deactivateError)
-        return { error: 'Your new meal plan was created, but we could not switch you over to it. Please try again from Settings.' }
-      }
-      const { error: activateError } = await supabase.from('diet_plans').update({ is_active: true }).eq('id', newPlan.id)
-      if (activateError) {
-        console.error('[onboarding] failed to activate new plan:', activateError)
+      const { error: swapError } = await supabase.rpc('activate_plan_history_swap', {
+        p_old_plan_id: previousPlanId,
+        p_new_plan_id: newPlan.id
+      })
+      if (swapError) {
+        console.error('[onboarding] failed to activate new plan:', swapError)
         return { error: 'Your new meal plan was created, but we could not switch you over to it. Please try again from Settings.' }
       }
     }
@@ -472,10 +474,15 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
     // Nutrition Engine was used (see the "skip" comment above for why this is
     // conditional - a manual-entry submission must not overwrite/erase any
     // biometrics the user may have saved on a previous, calculator-driven run),
-    // and the Training Nutrition Setup / supplements. This is the write that
-    // was previously never error-checked, silently reporting success even
-    // when it failed outright (e.g. before supabase/migrations/0008 added the
-    // `supplements` column) - it is now checked like every other write above.
+    // and the Training Nutrition Setup / supplements.
+    //
+    // BEST-EFFORT ONLY: by this point the plan is fully persisted AND active
+    // (the swap above already committed and cannot be undone here). Returning
+    // an error now would tell the user "it failed" after the important work
+    // succeeded, and the suggested retry ("Generate New Plan") would create a
+    // SECOND plan. So a failure here is logged loudly and swallowed - exactly
+    // how the notification_preferences write above is already handled. The
+    // user can re-save these details from Settings without regenerating.
     const { error: profileUpdateError } = await supabase
       .from('profiles')
       .update({
@@ -523,11 +530,8 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
       .eq('id', user.id)
 
     if (profileUpdateError) {
+      // Logged, not returned - see the BEST-EFFORT note above.
       console.error('[onboarding] failed to update profile (including supplements):', profileUpdateError)
-      return {
-        error:
-          'Your meal plan was created, but we could not save your profile details (including supplements). Please try Settings > Generate New Plan again.'
-      }
     }
 
     return { success: true }

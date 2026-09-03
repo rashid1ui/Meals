@@ -2,7 +2,6 @@
 
 import { classifyTarget, type MacroTotals, type TargetStatus } from '@/lib/diet/diff'
 import type { DailyTrackingSummary } from '../tracking-actions'
-import type { Targets } from './DietEditor'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
@@ -146,7 +145,6 @@ function MacroTile({ label, value, target, unit, valueClass, barClass }: TilePro
 
 type Props = {
   tracking: DailyTrackingSummary
-  targets: Targets
 }
 
 // The ONE daily progress section (replaces the old Today's Nutrition hero +
@@ -156,8 +154,13 @@ type Props = {
 // diet total. The meals/foods completion counts at the bottom are the only
 // information that ISN'T already shown above, so they're kept as a compact
 // strip rather than a second full section.
-export default function DailyProgress({ tracking, targets }: Props) {
+export default function DailyProgress({ tracking }: Props) {
   const totals: MacroTotals = tracking.consumed
+  // ONE target source: the same effectiveDailyTarget the server already
+  // computed for this day (tracking.target). Previously this took a separate
+  // `targets` prop derived from a second, independently-fetched copy of the
+  // plan on the page - identical in practice but a latent divergence point.
+  const targets = tracking.target
   const totalMeals = tracking.meals.length
   const completedMeals = tracking.meals.filter(m => m.status === 'complete').length
   const totalFoods = tracking.meals.reduce((sum, m) => sum + m.foods.length, 0)

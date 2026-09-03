@@ -126,12 +126,24 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
 
   const supabase = await createClient()
 
-  const { data: activePlans } = await supabase
-    .from('diet_plans')
-    .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .limit(1)
+  // The active plan, today's food_tracking rows, and the protein-type catalog
+  // lookup have no dependency on each other - fire them together instead of in
+  // series (this action previously did several sequential round-trips per
+  // dashboard load).
+  const [{ data: activePlans }, { data: trackedFoods }, { typeByName, categoryByName }] = await Promise.all([
+    supabase
+      .from('diet_plans')
+      .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .limit(1),
+    supabase
+      .from('food_tracking')
+      .select('food_id, food_name, completed, quantity, calories, protein, carbs, fat')
+      .eq('user_id', user.id)
+      .eq('tracking_date', localDate),
+    loadProteinTypeLookups(supabase)
+  ])
 
   const activePlan = activePlans?.[0]
   if (!activePlan) return { error: 'No active meal plan found.' }
@@ -143,12 +155,6 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
     .order('sort_order')
 
   const mealRows = (meals as MealRow[] | null) || []
-
-  const { data: trackedFoods } = await supabase
-    .from('food_tracking')
-    .select('food_id, food_name, completed, quantity, calories, protein, carbs, fat')
-    .eq('user_id', user.id)
-    .eq('tracking_date', localDate)
 
   // Only completed=true rows represent an actual logged quantity - a
   // completed=false row (an explicit "un-mark") is the same as no row.
@@ -207,12 +213,12 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   // are in the live plan AND logged today should be classified, so this is
   // derived from mealStates/trackedByFoodId rather than the raw
   // `trackedFoods` array (which can carry orphaned rows - see above).
+  // typeByName / categoryByName were resolved in the Promise.all above.
   const completedTrackedFoods = mealRows.flatMap(meal =>
     meal.foods
       .map(f => trackedByFoodId.get(f.id))
       .filter((t): t is TrackedFoodRow => Boolean(t))
   )
-  const { typeByName, categoryByName } = await loadProteinTypeLookups(supabase)
   const proteinBreakdown = splitProteinByType(
     completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
     typeByName,
@@ -437,14 +443,26 @@ async function getPeriodTracking(startDate: string, endDate: string): Promise<Re
     }
   }
 
+  // Each macro's percent-of-target is averaged only over the days that
+  // actually carry a positive target for that macro. A row with a missing or
+  // zero target (a legacy row written before the *_target snapshot columns
+  // existed, or any future write path that forgets to set them) would
+  // otherwise contribute a silent 0% and drag the average down with no
+  // signal. `daysOnTarget` likewise only considers days with a real calorie
+  // target - a day with no target genuinely cannot be classified "on target".
+  const hasTarget = (t: unknown) => typeof t === 'number' && isFinite(t) && t > 0
   let sumCal = 0, sumP = 0, sumC = 0, sumF = 0, onTargetDays = 0
+  let nCal = 0, nP = 0, nC = 0, nF = 0
   for (const r of rows) {
-    sumCal += pctOf(Number(r.calories), r.calories_target)
-    sumP += pctOf(Number(r.protein), r.protein_target)
-    sumC += pctOf(Number(r.carbs), r.carbs_target)
-    sumF += pctOf(Number(r.fat), r.fat_target)
-    if (classifyTarget(Number(r.calories), r.calories_target).status === 'on-target') onTargetDays++
+    if (hasTarget(r.calories_target)) {
+      sumCal += pctOf(Number(r.calories), r.calories_target); nCal++
+      if (classifyTarget(Number(r.calories), r.calories_target).status === 'on-target') onTargetDays++
+    }
+    if (hasTarget(r.protein_target)) { sumP += pctOf(Number(r.protein), r.protein_target); nP++ }
+    if (hasTarget(r.carbs_target)) { sumC += pctOf(Number(r.carbs), r.carbs_target); nC++ }
+    if (hasTarget(r.fat_target)) { sumF += pctOf(Number(r.fat), r.fat_target); nF++ }
   }
+  const avg = (sum: number, n: number) => (n > 0 ? Math.round(sum / n) : 0)
 
   const { data: mealRows } = await supabase
     .from('food_tracking')
@@ -473,10 +491,10 @@ async function getPeriodTracking(startDate: string, endDate: string): Promise<Re
       totalDays,
       daysWithData,
       averages: {
-        calories: Math.round(sumCal / daysWithData),
-        protein: Math.round(sumP / daysWithData),
-        carbs: Math.round(sumC / daysWithData),
-        fat: Math.round(sumF / daysWithData)
+        calories: avg(sumCal, nCal),
+        protein: avg(sumP, nP),
+        carbs: avg(sumC, nC),
+        fat: avg(sumF, nF)
       },
       daysOnTarget: onTargetDays,
       mealAdherence

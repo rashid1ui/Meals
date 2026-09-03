@@ -357,3 +357,98 @@ test('acquireManualPlanLock rejects a second concurrent acquire for the same use
     await releaseManualPlanLock(userClient, userId)
   })
 })
+
+// --- Migration 0026: finalize_plan_swap must ignore relink-map entries whose
+// old_id does not belong to the plan being retired (audit fix M5). ---
+
+test('finalize_plan_swap ignores a relink pair whose old_id is not a food of the old plan', async () => {
+  const planIds: string[] = []
+  const mealIds: string[] = []
+
+  try {
+    await withAuthenticatedUser(async (userClient, userId) => {
+      const trackDate = daysAgo(2)
+
+      // A "foreign" plan+meal+food+tracking row that must NOT be touched.
+      const { data: otherPlan } = await userClient.from('diet_plans').insert({
+        user_id: userId, name: 'Other', calories_target: 2000, protein_target: 150,
+        carbs_target: 200, fat_target: 60, is_active: false, plan_source: 'user_created'
+      }).select().single()
+      planIds.push(otherPlan!.id)
+      const { data: otherMeal } = await userClient.from('meals').insert({
+        user_id: userId, diet_plan_id: otherPlan!.id, name: 'M', sort_order: 0, reminder_enabled: true
+      }).select().single()
+      mealIds.push(otherMeal!.id)
+      const { data: otherFood } = await userClient.from('foods').insert({
+        user_id: userId, meal_id: otherMeal!.id, name: 'X', quantity: 100, unit: 'grams',
+        calories: 100, protein: 10, carbs: 5, fat: 2, sort_order: 0
+      }).select().single()
+      await userClient.from('food_tracking').insert({
+        user_id: userId, tracking_date: trackDate, food_id: otherFood!.id, meal_id: otherMeal!.id,
+        food_name: 'X', meal_name: 'M', quantity: 100, calories: 100, protein: 10, carbs: 5, fat: 2, completed: true
+      })
+
+      // The real old -> new swap (a genuine plan replacement).
+      const { data: oldPlan } = await userClient.from('diet_plans').insert({
+        user_id: userId, name: 'Old', calories_target: 2000, protein_target: 150,
+        carbs_target: 200, fat_target: 60, is_active: true, plan_source: 'user_created'
+      }).select().single()
+      planIds.push(oldPlan!.id)
+      const { data: oldMeal } = await userClient.from('meals').insert({
+        user_id: userId, diet_plan_id: oldPlan!.id, name: 'L', sort_order: 0, reminder_enabled: true
+      }).select().single()
+      mealIds.push(oldMeal!.id)
+      const { data: oldFood } = await userClient.from('foods').insert({
+        user_id: userId, meal_id: oldMeal!.id, name: 'Y', quantity: 100, unit: 'grams',
+        calories: 200, protein: 20, carbs: 10, fat: 4, sort_order: 0
+      }).select().single()
+      await userClient.from('food_tracking').insert({
+        user_id: userId, tracking_date: trackDate, food_id: oldFood!.id, meal_id: oldMeal!.id,
+        food_name: 'Y', meal_name: 'L', quantity: 100, calories: 200, protein: 20, carbs: 10, fat: 4, completed: true
+      })
+
+      const { data: newPlan } = await userClient.from('diet_plans').insert({
+        user_id: userId, name: 'Old', calories_target: 2000, protein_target: 150,
+        carbs_target: 200, fat_target: 60, is_active: false, plan_source: 'user_created'
+      }).select().single()
+      planIds.push(newPlan!.id)
+      const { data: newMeal } = await userClient.from('meals').insert({
+        user_id: userId, diet_plan_id: newPlan!.id, name: 'L', sort_order: 0, reminder_enabled: true
+      }).select().single()
+      mealIds.push(newMeal!.id)
+      const { data: newFood } = await userClient.from('foods').insert({
+        user_id: userId, meal_id: newMeal!.id, name: 'Y', quantity: 120, unit: 'grams',
+        calories: 240, protein: 24, carbs: 12, fat: 5, sort_order: 0
+      }).select().single()
+
+      // Map includes a MALICIOUS/STALE pair: otherFood -> newFood. The hardened
+      // function must skip it because otherFood is not under oldPlan.
+      const { error: swapError } = await userClient.rpc('finalize_plan_swap', {
+        p_old_plan_id: oldPlan!.id,
+        p_new_plan_id: newPlan!.id,
+        p_meal_id_map: [{ old_id: oldMeal!.id, new_id: newMeal!.id }],
+        p_food_id_map: [
+          { old_id: oldFood!.id, new_id: newFood!.id, new_meal_id: newMeal!.id },
+          { old_id: otherFood!.id, new_id: newFood!.id, new_meal_id: newMeal!.id }
+        ]
+      })
+      assert.strictEqual(swapError, null, `swap must succeed: ${swapError?.message}`)
+
+      // The genuine row was relinked...
+      const { data: relinked } = await userClient.from('food_tracking')
+        .select('food_id, meal_id').eq('user_id', userId).eq('food_name', 'Y').single()
+      assert.strictEqual(relinked!.food_id, newFood!.id)
+
+      // ...but the FOREIGN row was left completely alone.
+      const { data: untouched } = await userClient.from('food_tracking')
+        .select('food_id, meal_id').eq('user_id', userId).eq('food_name', 'X').single()
+      assert.strictEqual(untouched!.food_id, otherFood!.id, 'a relink pair for a food outside the old plan must be ignored')
+      assert.strictEqual(untouched!.meal_id, otherMeal!.id)
+    })
+  } finally {
+    await admin.from('food_tracking').delete().in('meal_id', mealIds)
+    if (mealIds.length > 0) await admin.from('foods').delete().in('meal_id', mealIds)
+    if (mealIds.length > 0) await admin.from('meals').delete().in('id', mealIds)
+    if (planIds.length > 0) await admin.from('diet_plans').delete().in('id', planIds)
+  }
+})

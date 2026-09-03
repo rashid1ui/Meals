@@ -149,7 +149,7 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
 
   if (existingInactive) {
     return {
-      error: `"${name}" already exists in the catalog but is no longer active, so it can't be reused automatically. Please choose a different, more specific name (e.g. add a brand or serving size) to create a distinct food.`
+      error: `A food called "${name}" already exists. Try a more specific name - for example add the brand or serving size.`
     }
   }
 
@@ -188,7 +188,7 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
         .maybeSingle()
       if (raceWinner) return { data: raceWinner as FoodOption }
       return {
-        error: `"${name}" already exists in the catalog but is no longer active, so it can't be reused automatically. Please choose a different, more specific name (e.g. add a brand or serving size) to create a distinct food.`
+        error: `A food called "${name}" already exists. Try a more specific name - for example add the brand or serving size.`
       }
     }
     console.error('[food-actions] createFoodDatabaseEntry insert failed:', error)
