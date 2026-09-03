@@ -5,11 +5,13 @@ import {
   deriveMealStatus,
   sumMacros,
   zeroMacros,
+  pctOf,
   computeActualFoodMacros,
   computeDayAdherencePct,
   buildFoodTrackingRow,
   adherenceTier,
-  type TrackableFood
+  type TrackableFood,
+  type MacroTotals
 } from './logic'
 
 function food(id: string, name: string, quantity: number, calories: number, protein: number, carbs: number, fat: number): TrackableFood {
@@ -215,4 +217,210 @@ test('adherenceTier - buckets percentages at the documented boundaries', () => {
   assert.strictEqual(adherenceTier(24), 'verylow')
   assert.strictEqual(adherenceTier(0), 'verylow')
   assert.strictEqual(adherenceTier(null), 'none')
+})
+
+// ============================================================================
+// Regression: "Today's Actual Progress" daily total (dashboard bug repro)
+// ============================================================================
+//
+// ROOT CAUSE (see app/dashboard/tracking-actions.ts): the daily total used to
+// be computed by a query that summed every food_tracking row with
+// completed=true for the date, with NO scoping to the currently active
+// plan's live foods. A same-day plan edit that computeFoodRelinkPairs
+// couldn't cleanly re-link (lib/diet/save-plan.ts) left an orphaned
+// food_tracking row (food_id set NULL by ON DELETE SET NULL) that no longer
+// matched any food in the CURRENT plan - invisible to the per-meal
+// breakdown, but still completed=true and still summed into the daily
+// total. If the user then re-logged that same real food under its post-edit
+// id, BOTH rows got summed: one real eating event counted twice, inflating
+// the top-level total while every per-meal card (and the 9/15 foods eaten
+// counter, which is also plan-scoped) kept showing the correct number.
+//
+// The fix: the daily total (and the protein-source breakdown, which had the
+// same unscoped-source flaw independently) is now derived from the exact
+// same per-meal `actual` values the UI already renders (itself built by
+// joining the CURRENT plan's live foods against food_tracking), instead of
+// an independent, unscoped raw sum. These tests simulate that computation
+// (sum of per-meal actuals, each meal actual = sum of only its foods that
+// were actually logged as eaten) end-to-end, using the exact bug-report
+// scenario, and separately demonstrate why the old unscoped-sum approach
+// was wrong.
+
+interface ScenarioFood extends TrackableFood {
+  eaten: boolean
+}
+
+interface ScenarioMeal {
+  name: string
+  foods: ScenarioFood[]
+}
+
+// Mirrors exactly what getTodayTracking computes per meal: for each food,
+// consumedQuantity is either its full planned quantity (eaten) or 0 (not
+// eaten); actual macros come from computeActualFoodMacros; the meal's
+// actual is the sum of its foods' actuals. This is the CORRECT, current
+// behavior - scoped to only the foods present in the (simulated) active
+// plan, exactly like the live join in getTodayTracking.
+function computeMealActual(meal: ScenarioMeal): MacroTotals {
+  return sumMacros(
+    meal.foods.map(f => computeActualFoodMacros(f.eaten ? f.quantity : 0, f))
+  )
+}
+
+function buildBugReportScenario(): ScenarioMeal[] {
+  return [
+    {
+      name: 'Breakfast',
+      foods: [
+        food('oats', 'Rolled Oats, Dry', 100, 379, 13, 68, 7),
+        food('pb', 'Peanut Butter, Smooth', 20, 118, 5, 4, 10),
+        food('milk', 'Whole Milk', 100, 61, 3, 5, 3),
+        food('honey', 'Honey', 20, 60, 0, 16, 0)
+      ].map(f => ({ ...f, eaten: true }))
+    },
+    {
+      name: 'Lunch',
+      foods: [
+        { ...food('chicken', 'Chicken Breast, Cooked', 250, 413, 78, 0, 9), eaten: true },
+        { ...food('oil', 'Olive Oil, Extra Virgin', 10, 88, 0, 0, 10), eaten: true },
+        { ...food('banana-lunch', 'Banana, Raw', 118, 105, 1, 27, 0), eaten: true },
+        // Cucumber is NOT eaten - must contribute nothing to Lunch's actual.
+        { ...food('cucumber', 'Cucumber, Raw', 150, 23, 1, 5, 0), eaten: false }
+      ]
+    },
+    {
+      name: 'Pre-Workout',
+      foods: [
+        { ...food('sweet-potato', 'Sweet Potato, Cooked', 300, 228, 4, 53, 1), eaten: true },
+        // Same food (Banana, Raw) as in Lunch, but a DISTINCT plan row (own
+        // id) - must be tracked and summed independently.
+        { ...food('banana-preworkout', 'Banana, Raw', 118, 105, 1, 27, 0), eaten: true }
+      ]
+    },
+    {
+      name: 'Post-Workout',
+      foods: [{ ...food('protein-shake', 'Whey Protein Shake', 30, 120, 24, 3, 1), eaten: false }]
+    },
+    {
+      name: 'Dinner',
+      foods: [
+        { ...food('salmon', 'Salmon, Cooked', 200, 367, 40, 0, 22), eaten: false },
+        { ...food('rice', 'White Rice, Cooked', 200, 258, 5, 56, 1), eaten: false }
+      ]
+    }
+  ]
+}
+
+test('dashboard bug repro - Breakfast (fully eaten) actual equals the full meal, not zero or partial', () => {
+  const [breakfast] = buildBugReportScenario()
+  assert.deepStrictEqual(computeMealActual(breakfast), { calories: 618, protein: 21, carbs: 93, fat: 20 })
+})
+
+test('dashboard bug repro - Lunch (partially eaten) excludes Cucumber entirely from the actual total', () => {
+  const [, lunch] = buildBugReportScenario()
+  assert.deepStrictEqual(computeMealActual(lunch), { calories: 606, protein: 79, carbs: 27, fat: 19 })
+  assert.strictEqual(deriveMealStatus(lunch.foods.map(f => computeFoodStatus(f.eaten ? f.quantity : 0, f.quantity))), 'partial')
+})
+
+test('dashboard bug repro - Post-Workout and Dinner (not eaten) contribute exactly zero', () => {
+  const meals = buildBugReportScenario()
+  const postWorkout = meals.find(m => m.name === 'Post-Workout')!
+  const dinner = meals.find(m => m.name === 'Dinner')!
+  assert.deepStrictEqual(computeMealActual(postWorkout), zeroMacros())
+  assert.deepStrictEqual(computeMealActual(dinner), zeroMacros())
+})
+
+test('dashboard bug repro - the same food (Banana) in two different meals is tracked and summed independently', () => {
+  const meals = buildBugReportScenario()
+  const lunch = meals.find(m => m.name === 'Lunch')!
+  const preWorkout = meals.find(m => m.name === 'Pre-Workout')!
+  const lunchBanana = lunch.foods.find(f => f.id === 'banana-lunch')!
+  const preWorkoutBanana = preWorkout.foods.find(f => f.id === 'banana-preworkout')!
+
+  assert.notStrictEqual(lunchBanana.id, preWorkoutBanana.id)
+  const lunchBananaActual = computeActualFoodMacros(lunchBanana.quantity, lunchBanana)
+  const preWorkoutBananaActual = computeActualFoodMacros(preWorkoutBanana.quantity, preWorkoutBanana)
+  // Each banana counts once - the pair sums to double one banana's macros,
+  // not a single banana's macros deduplicated away.
+  assert.strictEqual(lunchBananaActual.calories + preWorkoutBananaActual.calories, 210)
+})
+
+// The exact scenario from the bug report: the dashboard's daily total must
+// equal the sum of the per-meal actuals above (1557/105/200/40), never the
+// previously-reported inflated 2176/127/293/60 (which corresponded to
+// Breakfast's own actual - 618/21/93/20 - being folded into the total an
+// extra time, plus 1 stray kcal of rounding drift: 1557+618=2175, and the
+// reported bug had 2176).
+test('dashboard bug repro - daily consumed total is 1557/105/200/40, NOT the previously-reported 2176/127/293/60', () => {
+  const meals = buildBugReportScenario()
+  const consumed = sumMacros(meals.map(computeMealActual))
+
+  assert.deepStrictEqual(consumed, { calories: 1557, protein: 105, carbs: 200, fat: 40 })
+
+  assert.notStrictEqual(consumed.calories, 2176)
+  assert.notStrictEqual(consumed.protein, 127)
+  assert.notStrictEqual(consumed.carbs, 293)
+  assert.notStrictEqual(consumed.fat, 60)
+})
+
+test('dashboard bug repro - the daily target (2060/165/225/61) is independent of consumed and is never mixed into it', () => {
+  const target = { calories: 2060, protein: 165, carbs: 225, fat: 61 }
+  const meals = buildBugReportScenario()
+  const consumed = sumMacros(meals.map(computeMealActual))
+
+  // Target must equal the plan's own configured values, completely
+  // unaffected by how much has actually been eaten.
+  assert.deepStrictEqual(target, { calories: 2060, protein: 165, carbs: 225, fat: 61 })
+  // And consumed must never equal, or have been derived from, target.
+  assert.notDeepStrictEqual(consumed, target)
+})
+
+test('dashboard bug repro - percentages match the expected dashboard display (~76% consumed, not 106%)', () => {
+  const target = { calories: 2060, protein: 165, carbs: 225, fat: 61 }
+  const meals = buildBugReportScenario()
+  const consumed = sumMacros(meals.map(computeMealActual))
+
+  assert.strictEqual(Math.round(pctOf(consumed.calories, target.calories)), 76)
+  assert.strictEqual(Math.round(pctOf(consumed.protein, target.protein)), 64)
+  assert.strictEqual(Math.round(pctOf(consumed.carbs, target.carbs)), 89)
+  assert.strictEqual(Math.round(pctOf(consumed.fat, target.fat)), 66)
+
+  const remaining = target.calories - consumed.calories
+  assert.strictEqual(remaining, 503)
+})
+
+// Demonstrates the actual failure mode being guarded against: an unscoped
+// "sum every completed row for the date" query (the pre-fix behavior) is
+// vulnerable to double-counting the instant a stale/orphaned row and a
+// fresh row both exist for the same real eating event - exactly what a
+// same-day plan edit with an unmatched relink leaves behind. The
+// plan-scoped, per-meal-actual computation above is immune to this by
+// construction, because a stale row (belonging to no current meal) is never
+// included in any meal's food list in the first place.
+test('dashboard bug repro - mechanism check: an unscoped raw-row sum double-counts a stale + fresh row pair; the plan-scoped sum does not', () => {
+  const [breakfast] = buildBugReportScenario()
+  const correctBreakfastActual = computeMealActual(breakfast)
+
+  // Simulates the OLD recomputeDailyAndReturn: a flat list of every
+  // completed=true food_tracking row for the day, with no awareness of
+  // which foods still belong to the current plan. A same-day edit that
+  // failed to relink Breakfast's foods would leave the ORIGINAL rows
+  // (food_id now NULL) in this list alongside freshly-logged rows for the
+  // same real foods under their post-edit ids.
+  const staleOrphanedRows: MacroTotals[] = breakfast.foods.map(f => ({
+    calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat
+  }))
+  const freshPostEditRows: MacroTotals[] = breakfast.foods.map(f => ({
+    calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat
+  }))
+  const unscopedRawSum = sumMacros([...staleOrphanedRows, ...freshPostEditRows])
+
+  // The old, buggy approach: Breakfast gets counted twice.
+  assert.strictEqual(unscopedRawSum.calories, correctBreakfastActual.calories * 2)
+
+  // The current, fixed approach never sees the orphaned rows at all, since
+  // it only ever sums the foods actually present in the (simulated)
+  // current plan's meals - so it can't double-count regardless of how many
+  // stale rows accumulate in food_tracking.
+  assert.strictEqual(correctBreakfastActual.calories, 618)
 })

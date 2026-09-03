@@ -117,10 +117,8 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 // Read-only. Joins today's LIVE meals/foods (the actual current plan)
 // against today's food_tracking rows to determine per-meal/per-food
-// completion AND actual consumed quantity/macros, and reads today's
-// daily_tracking row (if any) for the consumed rollup. Never writes - a day
-// with no daily_tracking row yet simply shows zero consumed, it is never
-// inserted here.
+// completion AND actual consumed quantity/macros. Never writes - a day with
+// no food_tracking rows yet simply shows zero consumed.
 export async function getTodayTracking(localDate: string): Promise<Result<DailyTrackingSummary>> {
   const user = await getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -155,20 +153,9 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   // Only completed=true rows represent an actual logged quantity - a
   // completed=false row (an explicit "un-mark") is the same as no row.
   const trackedByFoodId = new Map<string, TrackedFoodRow>()
-  const completedTrackedFoods: TrackedFoodRow[] = []
   for (const t of (trackedFoods as TrackedFoodRow[] | null) || []) {
-    if (t.completed && t.food_id) {
-      trackedByFoodId.set(t.food_id, t)
-      completedTrackedFoods.push(t)
-    }
+    if (t.completed && t.food_id) trackedByFoodId.set(t.food_id, t)
   }
-
-  const { typeByName, categoryByName } = await loadProteinTypeLookups(supabase)
-  const proteinBreakdown = splitProteinByType(
-    completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
-    typeByName,
-    categoryByName
-  )
 
   const mealStates: MealCompletionState[] = mealRows.map(meal => {
     const planned = sumMacros(meal.foods)
@@ -204,24 +191,38 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
     }
   })
 
-  const { data: dailyRows } = await supabase
-    .from('daily_tracking')
-    .select('calories, protein, carbs, fat')
-    .eq('user_id', user.id)
-    .eq('tracking_date', localDate)
-    .limit(1)
+  // Single source of truth for "actual consumed": the sum of each meal's own
+  // `actual`, which is itself built only from foods that are BOTH in the
+  // current live plan (mealRows) AND logged as completed today
+  // (trackedByFoodId). This is deliberately NOT a raw sum over `trackedFoods`
+  // - a plan edit can leave behind orphaned food_tracking rows (old food id,
+  // no longer part of any current meal; see computeFoodRelinkPairs in
+  // lib/diet/save-plan.ts) that would otherwise get double-counted alongside
+  // their re-linked replacement. Also deliberately not the daily_tracking
+  // rollup - that's a periodic snapshot for Weekly/Monthly/Calendar history,
+  // not live truth for today (see recomputeDailyAndReturn below).
+  const consumed = sumMacros(mealStates.map(m => m.actual))
 
-  const daily = dailyRows?.[0]
+  // Same plan-scoping applies to the protein-type breakdown: only foods that
+  // are in the live plan AND logged today should be classified, so this is
+  // derived from mealStates/trackedByFoodId rather than the raw
+  // `trackedFoods` array (which can carry orphaned rows - see above).
+  const completedTrackedFoods = mealRows.flatMap(meal =>
+    meal.foods
+      .map(f => trackedByFoodId.get(f.id))
+      .filter((t): t is TrackedFoodRow => Boolean(t))
+  )
+  const { typeByName, categoryByName } = await loadProteinTypeLookups(supabase)
+  const proteinBreakdown = splitProteinByType(
+    completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
+    typeByName,
+    categoryByName
+  )
 
   return {
     data: {
       date: localDate,
-      consumed: {
-        calories: Number(daily?.calories ?? 0),
-        protein: Number(daily?.protein ?? 0),
-        carbs: Number(daily?.carbs ?? 0),
-        fat: Number(daily?.fat ?? 0)
-      },
+      consumed,
       // A hand-built plan is scored against its own composition, not the
       // onboarding recommendation stored on the row (lib/diet/effective-target.ts).
       target: effectiveDailyTarget(
@@ -234,64 +235,35 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   }
 }
 
-// Recomputes today's daily_tracking rollup strictly from completed=true
-// food_tracking rows (each already storing its own ACTUAL consumed
-// quantity/macros, whether that's a full or partial portion), upserts it,
-// then returns the fresh full state. Shared by both logging actions below so
-// the rollup logic exists in exactly one place. Never sums planned/meal
-// totals - only ever what's actually been logged as eaten.
+// Recomputes today's daily_tracking rollup (the persisted snapshot read by
+// Weekly/Monthly/Calendar history) and returns the fresh full state. Reuses
+// getTodayTracking as the single source of truth for `consumed`/`target`
+// instead of independently re-summing food_tracking - that used to be a
+// second, unscoped `completed=true` sum that could double-count orphaned
+// rows left behind by a plan edit (see the comment on `consumed` in
+// getTodayTracking above), and independently re-derive the target via a
+// second `meals` query. Computing it once here and upserting a snapshot of
+// it keeps today's live numbers and today's persisted snapshot from ever
+// disagreeing.
 async function recomputeDailyAndReturn(
   supabase: SupabaseServerClient,
   userId: string,
   localDate: string
 ): Promise<Result<DailyTrackingSummary>> {
-  const { data: completedRows, error: sumError } = await supabase
-    .from('food_tracking')
-    .select('calories, protein, carbs, fat')
-    .eq('user_id', userId)
-    .eq('tracking_date', localDate)
-    .eq('completed', true)
+  const result = await getTodayTracking(localDate)
+  if ('error' in result) return result
 
-  if (sumError) {
-    console.error('[tracking] failed to sum completed food_tracking rows:', sumError)
-    return { error: 'Failed to update daily progress. Please try again.' }
-  }
-
-  const totals = sumMacros(completedRows || [])
-
-  const { data: activePlans } = await supabase
-    .from('diet_plans')
-    .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .limit(1)
-
-  const activePlan = activePlans?.[0]
-  if (!activePlan) return { error: 'No active meal plan found.' }
-
-  // Snapshot the target this day is scored against. For a hand-built plan
-  // that is the plan's own food totals, not the onboarding recommendation
-  // (lib/diet/effective-target.ts); the per-day snapshot is what the
-  // Insights weekly/monthly adherence charts read back.
-  const { data: planMeals } = await supabase
-    .from('meals')
-    .select('foods(calories, protein, carbs, fat)')
-    .eq('diet_plan_id', activePlan.id)
-
-  const planFoodTotals = sumMacros(
-    ((planMeals as { foods: MacroTotals[] }[] | null) || []).flatMap(m => m.foods)
-  )
-  const target = effectiveDailyTarget(activePlan, planFoodTotals)
+  const { consumed, target } = result.data
 
   const { error: dailyError } = await supabase.from('daily_tracking').upsert(
     {
       user_id: userId,
       tracking_date: localDate,
-      calories: totals.calories,
-      protein: totals.protein,
-      carbs: totals.carbs,
-      fat: totals.fat,
-      nutrition_progress: Math.round(pctOf(totals.calories, target.calories)),
+      calories: consumed.calories,
+      protein: consumed.protein,
+      carbs: consumed.carbs,
+      fat: consumed.fat,
+      nutrition_progress: Math.round(pctOf(consumed.calories, target.calories)),
       calories_target: target.calories,
       protein_target: target.protein,
       carbs_target: target.carbs,
@@ -306,7 +278,7 @@ async function recomputeDailyAndReturn(
     return { error: 'Failed to update daily progress. Please try again.' }
   }
 
-  return getTodayTracking(localDate)
+  return result
 }
 
 // Logs the ACTUAL quantity of one food eaten for a given date - 0 means "not
