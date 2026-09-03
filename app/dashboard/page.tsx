@@ -8,6 +8,7 @@ import Badge from '@/components/ui/Badge'
 import { ChevronRightIcon } from '@/components/ui/icons'
 import DietEditor, { type FoodOption } from './components/DietEditor'
 import SupplementsSection from './components/SupplementsSection'
+import { SupplementsTrackingProvider } from '@/lib/supplements/SupplementsTrackingProvider'
 import type { DraftMeal } from '@/lib/diet/diff'
 import { sumMacros } from '@/lib/tracking/logic'
 import { effectiveDailyTarget } from '@/lib/diet/effective-target'
@@ -151,14 +152,16 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        <DietEditor
-          key={dietPlan.id}
-          initialMeals={initialMeals}
-          targets={targets}
-          foodOptions={foodOptions}
-        />
+        <SupplementsTrackingProvider>
+          <DietEditor
+            key={dietPlan.id}
+            initialMeals={initialMeals}
+            targets={targets}
+            foodOptions={foodOptions}
+          />
 
-        <SupplementsSection initialSupplements={initialSupplements} />
+          <SupplementsSection initialSupplements={initialSupplements} />
+        </SupplementsTrackingProvider>
 
         <div className="space-y-6">
           <h2 className="font-display text-2xl font-bold text-foreground tracking-tight border-b border-border pb-4">

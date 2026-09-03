@@ -2,17 +2,20 @@
 
 // Dashboard (and Settings) "Vitamins & Supplements" section - real,
 // authenticated-user data only (spec section 7/15: no mock/fake rows, and a
-// deliberately non-broken empty state). Full CRUD + notification toggle
-// (spec section 8) via lib/supplements/actions.ts, and independently fires
-// its own reminders via useSupplementReminders - never a second, unrelated
-// notification system (spec section 9).
+// deliberately non-broken empty state). Full CRUD + notification toggle via
+// lib/supplements/actions.ts, PLUS daily dose completion (taken/not taken)
+// via the shared SupplementsTrackingProvider - the same source the
+// Dashboard's top-level SupplementProgressCard reads, so marking a dose here
+// updates that card immediately, with no reload and no second, competing
+// percentage. Independently fires its own reminders via
+// useSupplementReminders - never a second, unrelated notification system.
 
 import { useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { PlusIcon } from '@/components/ui/icons'
 import SupplementFormModal from '@/components/supplements/SupplementFormModal'
-import SupplementListItem from '@/components/supplements/SupplementListItem'
+import SupplementTrackingCard from '@/components/supplements/SupplementTrackingCard'
 import { emptySupplementFormValue, supplementDTOToFormValue, supplementFormValueToInput, type SupplementFormValue } from '@/components/supplements/types'
 import {
   createSupplement,
@@ -22,6 +25,7 @@ import {
   type SupplementDTO
 } from '@/lib/supplements/actions'
 import { useSupplementReminders } from '@/lib/notifications/useSupplementReminders'
+import { useSupplementsTracking } from '@/lib/supplements/SupplementsTrackingProvider'
 import { useLocalDate } from '@/lib/tracking/useLocalDate'
 import type { ReminderSupplement } from '@/lib/notifications/supplementSchedule'
 
@@ -35,6 +39,7 @@ export default function SupplementsSection({ initialSupplements }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const localDate = useLocalDate()
+  const { summary: trackingSummary, toggleDose, refresh: refreshTracking } = useSupplementsTracking()
 
   const reminderSupplements: ReminderSupplement[] = supplements.map(s => ({
     id: s.id,
@@ -50,6 +55,13 @@ export default function SupplementsSection({ initialSupplements }: Props) {
   }))
   useSupplementReminders(reminderSupplements, localDate)
 
+  const dosesBySupplementId = new Map<string, { scheduledTime: string; completed: boolean }[]>()
+  for (const dose of trackingSummary?.doses ?? []) {
+    const list = dosesBySupplementId.get(dose.supplementId) ?? []
+    list.push({ scheduledTime: dose.scheduledTime, completed: dose.completed })
+    dosesBySupplementId.set(dose.supplementId, list)
+  }
+
   const handleSave = async (value: SupplementFormValue) => {
     const input = supplementFormValueToInput(value)
     if (modalMode && typeof modalMode === 'object') {
@@ -62,6 +74,11 @@ export default function SupplementsSection({ initialSupplements }: Props) {
       setSupplements(prev => [...prev, result.data])
     }
     setModalMode(null)
+    // A create/edit can change what's due TODAY (new times, a shifted
+    // start/end date) - refresh the shared tracking summary so the
+    // Dashboard's progress card and this section's dose controls reflect it
+    // immediately, without waiting for the next natural refetch.
+    void refreshTracking()
   }
 
   const handleToggleNotification = async (id: string, enabled: boolean) => {
@@ -72,6 +89,8 @@ export default function SupplementsSection({ initialSupplements }: Props) {
       setSupplements(previous)
       setError(result.error)
     }
+    // Deliberately NOT refreshing tracking here - notification_enabled has
+    // no bearing on today's target or completion (spec section 15).
   }
 
   const handleDelete = async (id: string) => {
@@ -84,6 +103,7 @@ export default function SupplementsSection({ initialSupplements }: Props) {
       return
     }
     setSupplements(prev => prev.filter(s => s.id !== id))
+    void refreshTracking()
   }
 
   return (
@@ -116,10 +136,12 @@ export default function SupplementsSection({ initialSupplements }: Props) {
       ) : (
         <div className="space-y-3">
           {supplements.map(s => (
-            <SupplementListItem
+            <SupplementTrackingCard
               key={s.id}
               supplement={s}
+              doses={dosesBySupplementId.get(s.id) ?? []}
               deleting={deletingId === s.id}
+              onToggleDose={(scheduledTime, completed) => toggleDose(s.id, scheduledTime, completed)}
               onToggleNotification={enabled => handleToggleNotification(s.id, enabled)}
               onEdit={() => setModalMode({ editing: s })}
               onDelete={() => handleDelete(s.id)}

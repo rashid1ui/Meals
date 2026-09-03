@@ -11,6 +11,7 @@ import ResetAccountButton from './ResetAccountButton'
 import NotificationSettings from './NotificationSettings'
 import { getReminderSchedule } from '@/lib/notifications/actions'
 import SupplementsSection from '@/app/dashboard/components/SupplementsSection'
+import { SupplementsTrackingProvider } from '@/lib/supplements/SupplementsTrackingProvider'
 import { getSupplements } from '@/lib/supplements/actions'
 
 export default async function SettingsPage() {
@@ -155,7 +156,9 @@ export default async function SettingsPage() {
 
         {/* Vitamins & Supplements */}
         <section className="space-y-3">
-          <SupplementsSection initialSupplements={initialSupplements} />
+          <SupplementsTrackingProvider>
+            <SupplementsSection initialSupplements={initialSupplements} />
+          </SupplementsTrackingProvider>
         </section>
 
         {/* Danger Zone */}

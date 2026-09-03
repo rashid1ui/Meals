@@ -11,78 +11,12 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
-import { validateSupplementInput, type SupplementInput, type SupplementFrequency } from './validation'
+import { validateSupplementInput, type SupplementInput } from './validation'
+import { rowToDTO, inputToRow, SUPPLEMENT_SELECT_COLUMNS as SELECT_COLUMNS, type SupplementDTO, type SupplementRow } from './mapRow'
 
 type Result<T> = { data: T } | { error: string }
 
-export interface SupplementDTO {
-  id: string
-  name: string
-  dose: number | null
-  doseUnit: string | null
-  quantity: number
-  quantityUnit: string
-  frequency: SupplementFrequency
-  times: string[]
-  startDate: string
-  endDate: string | null
-  notes: string | null
-  notificationEnabled: boolean
-}
-
-interface SupplementRow {
-  id: string
-  name: string
-  dose: number | string | null
-  dose_unit: string | null
-  quantity: number | string
-  quantity_unit: string
-  frequency: string
-  times: string[] | null
-  start_date: string
-  end_date: string | null
-  notes: string | null
-  notification_enabled: boolean
-}
-
-// Postgres `time` values round-trip as "HH:MM:SS" - trimmed to "HH:MM" here,
-// exactly like lib/notifications/actions.ts already does for
-// meals.reminder_time, so every layer above this one only ever sees the
-// wall-clock format isValidReminderTime/isMealReminderDue expect.
-function rowToDTO(row: SupplementRow): SupplementDTO {
-  return {
-    id: row.id,
-    name: row.name,
-    dose: row.dose === null ? null : Number(row.dose),
-    doseUnit: row.dose_unit,
-    quantity: Number(row.quantity),
-    quantityUnit: row.quantity_unit,
-    frequency: row.frequency as SupplementFrequency,
-    times: (row.times || []).map(t => String(t).slice(0, 5)),
-    startDate: row.start_date,
-    endDate: row.end_date,
-    notes: row.notes,
-    notificationEnabled: Boolean(row.notification_enabled)
-  }
-}
-
-function inputToRow(input: SupplementInput): Record<string, unknown> {
-  return {
-    name: input.name.trim(),
-    dose: input.dose,
-    dose_unit: input.doseUnit && input.doseUnit.trim().length > 0 ? input.doseUnit.trim() : null,
-    quantity: input.quantity,
-    quantity_unit: input.quantityUnit.trim(),
-    frequency: input.frequency,
-    times: input.times,
-    start_date: input.startDate,
-    end_date: input.endDate,
-    notes: input.notes && input.notes.trim().length > 0 ? input.notes.trim() : null,
-    notification_enabled: input.notificationEnabled
-  }
-}
-
-const SELECT_COLUMNS = 'id, name, dose, dose_unit, quantity, quantity_unit, frequency, times, start_date, end_date, notes, notification_enabled'
+export type { SupplementDTO }
 
 export async function getSupplements(): Promise<Result<SupplementDTO[]>> {
   const user = await getUser()
