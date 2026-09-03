@@ -7,16 +7,36 @@
 // untouched - still a single "Continue with Google" that calls
 // supabase.auth.signInWithOAuth and redirects to /auth/callback.
 import { createClient } from '@/lib/supabase/client'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import Button from '@/components/ui/Button'
 import { AlertIcon } from '@/components/ui/icons'
 import { LOGIN_IMAGE } from '@/app/marketing/images'
+import { resolveOAuthRedirectOrigin, AUTH_CALLBACK_ERROR } from '@/lib/auth/routing'
 
-export default function LoginPage() {
+function LoginForm() {
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [oauthError, setOauthError] = useState<string | null>(null)
+
+  // Surface a failed OAuth callback instead of swallowing it. The callback
+  // route (app/auth/callback/route.ts) redirects here with
+  // ?error=AuthCallbackFailed AFTER it has signed the stale session out, so
+  // the user sees why they're back on the login screen. Derived during
+  // render from the URL (no effect, no setState-in-effect); an error raised
+  // by the sign-in button itself takes precedence.
+  const searchParams = useSearchParams()
+  const callbackErrorCode = searchParams.get('error')
+  const callbackError =
+    callbackErrorCode === AUTH_CALLBACK_ERROR
+      ? 'We could not complete your sign-in. Please try again. If this keeps happening, make sure you are opening the app from its main web address, not a preview or deployment link.'
+      : callbackErrorCode
+        ? 'Sign-in was interrupted. Please try again.'
+        : null
+  const error = oauthError ?? callbackError
+
+  const setError = setOauthError
 
   const handleGoogleLogin = async () => {
     try {
@@ -24,10 +44,22 @@ export default function LoginPage() {
       setError(null)
       const supabase = createClient()
 
+      // Pin the OAuth redirect to the canonical site origin
+      // (NEXT_PUBLIC_SITE_URL), never window.location.origin. If the user
+      // opened the app from a Vercel preview / raw deployment URL (SSO-gated,
+      // different host), an origin-derived callback lands there, the PKCE
+      // code-verifier cookie is unavailable, exchangeCodeForSession fails and
+      // the login silently no-ops. Falls back to window.location.origin only
+      // when NEXT_PUBLIC_SITE_URL is not configured.
+      const redirectOrigin = resolveOAuthRedirectOrigin(
+        process.env.NEXT_PUBLIC_SITE_URL,
+        window.location.origin
+      )
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${redirectOrigin}/auth/callback`,
           // Always show Google's account picker. Without this, Google
           // silently reuses whichever account is already active in the
           // browser - so the same person on a phone and a Mac can end up
@@ -161,5 +193,16 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+// useSearchParams() must sit under a Suspense boundary so /login can still
+// be prerendered (the search-param-dependent part suspends on the server
+// and resolves on the client).
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

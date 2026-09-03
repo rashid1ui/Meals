@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import LandingPage from './marketing/LandingPage'
+import { decideAuthedRoute } from '@/lib/auth/routing'
 
 export const metadata: Metadata = {
   title: 'Gym Meals — Build Your Diet. Track Your Progress.',
@@ -57,7 +58,14 @@ export default async function HomePage() {
     .eq('is_active', true)
     .limit(1)
 
-  if (existingPlans && existingPlans.length > 0) {
+  const hasActivePlan = Boolean(existingPlans && existingPlans.length > 0)
+
+  // Same routing decision as middleware (lib/auth/routing.ts) - one
+  // definition, account-scoped, never device state. For '/' this always
+  // resolves to '/dashboard' or '/onboarding'.
+  const dest = decideAuthedRoute('/', hasActivePlan, false) ?? '/onboarding'
+
+  if (dest === '/dashboard') {
     // Ensure the middleware fast-path cookie is set. Setting cookies during
     // a Server Component render is only permitted when the framework is
     // already treating the response as dynamic; when it isn't, this throws.
@@ -76,8 +84,7 @@ export default async function HomePage() {
       // Cookies can only be modified in a Server Action or Route Handler.
       // Ignored - middleware refreshes this cookie on the next request.
     }
-    redirect('/dashboard')
-  } else {
-    redirect('/onboarding')
   }
+
+  redirect(dest)
 }

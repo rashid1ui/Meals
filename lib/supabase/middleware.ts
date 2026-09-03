@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { decideAuthedRoute } from '@/lib/auth/routing'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -78,7 +79,7 @@ export async function updateSession(request: NextRequest) {
         .eq('is_active', true)
         .limit(1)
 
-      const hasPlan = plans && plans.length > 0
+      const hasPlan = Boolean(plans && plans.length > 0)
 
       // Sync the cookie state just in case, though we now rely on DB for these core routes
       if (hasPlan) {
@@ -87,29 +88,14 @@ export async function updateSession(request: NextRequest) {
         supabaseResponse.cookies.delete('gym_meals_onboarded')
       }
 
-      if (isLogin) {
+      // Single source of truth for "where should this authenticated user
+      // be", shared with app/page.tsx (lib/auth/routing.ts). The decision
+      // depends only on this user's own active-plan fact (an RLS-scoped
+      // auth.uid() = user_id query) - never on device/browser/cookie state.
+      const dest = decideAuthedRoute(request.nextUrl.pathname, hasPlan, isNewPlanRequest)
+      if (dest && dest !== request.nextUrl.pathname) {
         const url = request.nextUrl.clone()
-        url.pathname = hasPlan ? '/dashboard' : '/onboarding'
-        const redirectRes = NextResponse.redirect(url)
-        supabaseResponse.cookies.getAll().forEach((cookie) => {
-          redirectRes.cookies.set(cookie.name, cookie.value, cookie)
-        })
-        return redirectRes
-      }
-
-      if (isDashboard && !hasPlan) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/onboarding'
-        const redirectRes = NextResponse.redirect(url)
-        supabaseResponse.cookies.getAll().forEach((cookie) => {
-          redirectRes.cookies.set(cookie.name, cookie.value, cookie)
-        })
-        return redirectRes
-      }
-
-      if (isOnboarding && hasPlan && !isNewPlanRequest) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/dashboard'
+        url.pathname = dest
         const redirectRes = NextResponse.redirect(url)
         supabaseResponse.cookies.getAll().forEach((cookie) => {
           redirectRes.cookies.set(cookie.name, cookie.value, cookie)
