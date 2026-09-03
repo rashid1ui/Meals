@@ -6,6 +6,11 @@
 // landing page so the two read as one product. The authentication path is
 // untouched - still a single "Continue with Google" that calls
 // supabase.auth.signInWithOAuth and redirects to /auth/callback.
+//
+// Build note: this comment exists only to change this module's source hash
+// so a Vercel production build recompiles it instead of reusing a cached
+// chunk - needed so NEXT_PUBLIC_SITE_URL (read below for the OAuth
+// redirectTo) gets inlined. No behavior change.
 import { createClient } from '@/lib/supabase/client'
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
