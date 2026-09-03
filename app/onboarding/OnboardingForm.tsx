@@ -27,6 +27,11 @@ import DailyTargetsStep from './DailyTargetsStep'
 import ManualMealBuilderStep, { type ManualFoodOption } from './ManualMealBuilderStep'
 import FinalReviewStep from './FinalReviewStep'
 import { createManualDietPlan, saveMealReminders, ensureManualSupplementFoods, type CreatedMeal } from './manual-actions'
+import {
+  saveServerOnboardingDraft,
+  clearServerOnboardingDraft,
+  type ServerOnboardingDraft
+} from './draft-actions'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, validateNutritionTarget, validateMacroValues, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
@@ -45,6 +50,12 @@ import type { UserProfile } from '@/lib/types'
 const ONBOARDING_DRAFT_KEY = 'gym-meals-onboarding-draft-v1'
 
 interface OnboardingDraft {
+  // Epoch ms of the last save. Used only to reconcile this localStorage
+  // draft against the account-scoped server draft (public.onboarding_drafts)
+  // on mount - whichever was written more recently wins, so opening the same
+  // account on a second device resumes the newer progress. Optional so a
+  // draft written by an older client (no savedAt) still restores.
+  savedAt?: number
   step: number
   profile: ProfileFormValue
   goal: Goal | ''
@@ -85,12 +96,18 @@ function loadOnboardingDraft(): OnboardingDraft | null {
 }
 
 function clearOnboardingDraft() {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(ONBOARDING_DRAFT_KEY)
-  } catch {
-    // Storage unavailable (private browsing, quota) - nothing to clean up.
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(ONBOARDING_DRAFT_KEY)
+    } catch {
+      // Storage unavailable (private browsing, quota) - nothing to clean up.
+    }
   }
+  // Also drop the account-scoped copy so a finished (or abandoned) onboarding
+  // doesn't resurrect itself on another device. Fire-and-forget: a failure
+  // here is harmless (the row is overwritten on the next real save, and
+  // ignored entirely once the user has an active diet plan).
+  void clearServerOnboardingDraft()
 }
 
 type Food = {
@@ -119,6 +136,11 @@ type Props = {
   // `foods` above (which continues to feed the untouched, unreachable AI
   // steps only). Includes supplement rows, unlike `foods`.
   manualFoodOptions?: ManualFoodOption[]
+  // Account-scoped copy of an in-progress wizard draft, loaded server-side
+  // in page.tsx from public.onboarding_drafts. Reconciled against the
+  // localStorage draft on mount (newer wins) so onboarding continues across
+  // devices. Null for a first-time user or once onboarding has completed.
+  initialServerDraft?: ServerOnboardingDraft | null
 }
 
 // Base steps every path shares (About You / Goal / Targets), plus the
@@ -221,7 +243,8 @@ export default function OnboardingForm({
   initialGoal = null,
   initialRemindersEnabled = null,
   initialMealReminders = null,
-  manualFoodOptions = []
+  manualFoodOptions = [],
+  initialServerDraft = null
 }: Props) {
   // Local copy of the server-fetched catalog so a custom food created via
   // FoodStep's "Add Custom Food" appears (and can be selected) immediately,
@@ -233,8 +256,26 @@ export default function OnboardingForm({
   // Computed once, synchronously, on mount - a leftover draft from a
   // previous incomplete session (refresh, closed tab) takes priority over
   // the server-provided initial* props so the user resumes exactly where
-  // they left off.
-  const [draft] = useState<OnboardingDraft | null>(() => loadOnboardingDraft())
+  // they left off. The draft itself is reconciled across two sources: this
+  // device's localStorage copy and the account-scoped server copy
+  // (initialServerDraft, from public.onboarding_drafts). Whichever was
+  // saved more recently wins - so a wizard started on another device and
+  // left unfinished is picked up here instead of a blank form, while a
+  // fresher local draft is never clobbered by a stale server one.
+  const [draft] = useState<OnboardingDraft | null>(() => {
+    const local = loadOnboardingDraft()
+    const server = (initialServerDraft?.draft ?? null) as OnboardingDraft | null
+    if (!local) return server
+    if (!server) return local
+    const localAt = local.savedAt ?? 0
+    const serverAt = initialServerDraft?.updatedAt ? Date.parse(initialServerDraft.updatedAt) : 0
+    return serverAt > localAt ? server : local
+  })
+
+  // Debounce handle for the best-effort server write-through (see the draft
+  // persistence effect below). Cleared on every dependency change and on
+  // unmount, so only a genuine ~1.5s pause in edits triggers a network call.
+  const serverDraftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const PROTEINS = useMemo(
     () => foodList.filter(f => ['protein', 'dairy'].includes((f.category || '').toLowerCase().trim())),
@@ -419,6 +460,7 @@ export default function OnboardingForm({
   useEffect(() => {
     if (phase !== 'idle') return
     const toSave: OnboardingDraft = {
+      savedAt: Date.now(),
       step,
       profile,
       goal,
@@ -445,6 +487,19 @@ export default function OnboardingForm({
     } catch {
       // Best-effort - storage unavailable or full. The user's current
       // session is unaffected either way.
+    }
+
+    // Write-through to the account-scoped server copy, debounced so a burst
+    // of keystrokes is one request, not dozens. Purely additive on top of
+    // the localStorage write above: if this never lands (offline, migration
+    // 0025 not applied, RLS/auth hiccup) same-device resume still works -
+    // only cross-device resume degrades.
+    if (serverDraftTimer.current) clearTimeout(serverDraftTimer.current)
+    serverDraftTimer.current = setTimeout(() => {
+      void saveServerOnboardingDraft(toSave as unknown as Record<string, unknown>)
+    }, 1500)
+    return () => {
+      if (serverDraftTimer.current) clearTimeout(serverDraftTimer.current)
     }
   }, [
     step,

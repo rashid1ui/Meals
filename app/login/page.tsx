@@ -28,6 +28,14 @@ export default function LoginPage() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          // Always show Google's account picker. Without this, Google
+          // silently reuses whichever account is already active in the
+          // browser - so the same person on a phone and a Mac can end up
+          // authenticated as two different Google accounts (two different
+          // Supabase Auth users) without ever realizing it, which then
+          // looks like "my account is empty on this device". Forcing the
+          // chooser makes the account being used explicit on every login.
+          queryParams: { prompt: 'select_account' },
         },
       })
 

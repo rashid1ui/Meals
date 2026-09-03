@@ -2,6 +2,7 @@ import OnboardingForm from './OnboardingForm'
 import { getUser } from '@/lib/auth/get-user'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { loadServerOnboardingDraft } from './draft-actions'
 
 export const maxDuration = 60
 
@@ -85,6 +86,14 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     .eq('user_id', user.id)
     .maybeSingle()
 
+  // Cross-device onboarding continuity: the account-scoped copy of an
+  // in-progress wizard draft (public.onboarding_drafts, migration 0025).
+  // OnboardingForm reconciles this against its own localStorage draft and
+  // resumes from whichever was saved more recently - so starting onboarding
+  // on one device and opening the same account on another continues where
+  // it left off instead of showing a blank wizard.
+  const serverDraft = await loadServerOnboardingDraft()
+
   // Regenerate-plan flow only: prefill the Reminders step from the plan
   // being replaced, by position (sort_order) - same "reopen with last-saved
   // values" treatment as Profile/Goal above. A first-time onboarding has no
@@ -114,6 +123,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           initialRemindersEnabled={notificationPrefs?.reminders_enabled ?? null}
           initialMealReminders={initialMealReminders}
           manualFoodOptions={manualFoodOptions}
+          initialServerDraft={serverDraft}
         />
       </div>
     </main>

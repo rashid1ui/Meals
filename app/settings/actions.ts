@@ -34,6 +34,13 @@ export async function resetAccount() {
     const { error: plansError } = await supabase.from('diet_plans').delete().eq('user_id', user.id)
     if (plansError) throw new Error(`Failed to delete diet plans: ${plansError.message}`)
 
+    // Also drop any account-scoped onboarding draft (public.onboarding_drafts,
+    // migration 0025). Without this, "Start Fresh" wipes the plan but a
+    // half-finished wizard draft from before the reset would immediately
+    // reappear - on this device and every other one the account is open on.
+    const { error: draftError } = await supabase.from('onboarding_drafts').delete().eq('user_id', user.id)
+    if (draftError) throw new Error(`Failed to delete onboarding draft: ${draftError.message}`)
+
     // We do NOT delete the profiles row, as it is tied to the auth identity.
     // We only update the 'updated_at' to release any potential generation locks.
     const { error: profileError } = await supabase

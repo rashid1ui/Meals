@@ -14,18 +14,28 @@ export async function GET(request: Request) {
 
       let isOnboarded = false
       if (user) {
-        // Initialize profile safely
+        // Idempotent profile bootstrap, keyed on the auth user id (profiles.id
+        // is the PK and a FK to auth.users.id). Upsert - not insert-and-ignore
+        // - so the FIRST login on a new device still creates the row, and
+        // every subsequent login on any device just refreshes the Google
+        // contact fields (email/full_name/avatar_url) instead of erroring on
+        // the duplicate key. Only these four columns are sent, so a conflict's
+        // DO UPDATE never touches the biometric columns (sex/age/height_cm/
+        // weight_kg/...) the user filled in during onboarding.
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: user.id,
-            email: user.email || '',
-            full_name: user.user_metadata?.full_name || null,
-            avatar_url: user.user_metadata?.avatar_url || null,
-            updated_at: new Date().toISOString()
-          })
-          
-        if (profileError && profileError.code !== '23505') { // Ignore unique constraint violation
+          .upsert(
+            {
+              id: user.id,
+              email: user.email || '',
+              full_name: user.user_metadata?.full_name || null,
+              avatar_url: user.user_metadata?.avatar_url || null,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+          )
+
+        if (profileError) {
           console.error("Failed to initialize profile:", profileError)
         }
         // Check onboarding status by seeing if they have any diet plans (legacy logic)
