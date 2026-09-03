@@ -48,9 +48,14 @@ The full schema lives in `supabase/migrations/`, applied in filename order:
 - **`0000_baseline_schema.sql`** — every core table, constraint, index, RLS
   policy, and the `handle_new_user` trigger. Rebuilt from a production
   introspection; represents the state immediately before `0001`.
-- **`0001`–`0025`** — incremental `ALTER`s / new tables / functions, each with a
+- **`0001`–`0026`** — incremental `ALTER`s / new tables / functions, each with a
   header explaining why it exists.
-- **`0026`+** — new work starts here.
+- **`0027_user_supplements.sql`** — Vitamins & Supplements tracker: adds
+  `user_supplements` (free-text name, dose/dose_unit, quantity/quantity_unit,
+  frequency, one or more reminder `times`, start/end date, notes,
+  `notification_enabled`), RLS-scoped to `auth.uid() = user_id`, and widens
+  `notification_events.event_type` to accept `supplement_reminder`.
+- **`0028`+** — new work starts here.
 
 Every migration is written to be safe to run against production (idempotent
 guards throughout) and is applied via the Supabase CLI or dashboard — nothing in
@@ -85,9 +90,28 @@ lib/
   diet/                    PURE: diff, save-plan, effective-target, generate-diet, supplements
   tracking/                PURE: logic, date, optimisticTracking
   notifications/           schedule, milestones, copy, timezone, sweep, push
+                            supplementSchedule/supplementCopy, useSupplementReminders
+  supplements/             PURE: validation (dose/quantity/frequency/times/dates)
+                            + actions.ts (CRUD + notification toggle, 'use server')
   supabase/                server.ts (RLS client), admin.ts (service role), middleware.ts
 supabase/migrations/      the schema (see above)
+components/supplements/   shared form/list-item UI, used by both the dashboard
+                            and the onboarding "Vitamins & Supplements" step
 ```
+
+**Vitamins & Supplements:** a user-owned, freely-named list (`user_supplements`
+— no fixed catalog) with its own dose/quantity/frequency/reminder times/notes
+and a per-row `notification_enabled` switch. Reuses the meal-reminder
+notification architecture end to end rather than a second system: the same
+`notification_events` dedup ledger (keyed `supplement_reminder:<id>:<time>`),
+the same client-side `Notification` tick (`useSupplementReminders`, gated only
+on browser permission — independent of the meal-reminders master switch), and
+the same cron sweep (`app/api/cron/notifications/route.ts`) for closed-browser
+Web Push, swept as its own user population since a supplement's notification
+setting is independent of `notification_preferences.reminders_enabled`.
+Managed from the Dashboard and Settings (`SupplementsSection`, shared with
+onboarding's optional, skippable "Vitamins & Supplements" step via
+`components/supplements/`).
 
 **The rule:** framework-free logic lives in `lib/**` and is unit-tested there;
 `'use server'` files are thin — they authenticate, load reference data, call the
@@ -115,13 +139,14 @@ cookie) and every query is `user_id`-scoped on top of RLS.
 npm run dev        # next dev
 npm run build      # next build
 npm run lint       # eslint
-npm test           # unit tests (lib/**, pure logic) — ~440 tests, runs in CI
+npm test           # unit tests (lib/**, pure logic) — ~490 tests, runs in CI
 npx tsc --noEmit   # type-check
 
 # Integration tests — need a live/local Supabase in .env.local, NOT in `npm test`:
 npm run test:audit                 # calls the real DeepSeek API (costs money)
 npm run test:manual-plan
 npm run test:supplement-db
+npm run test:user-supplements       # user_supplements RLS: own-row CRUD + cross-user isolation
 npm run test:production-hardening   # finalize_plan_swap, manual-plan lock, supplement catalog
 ```
 

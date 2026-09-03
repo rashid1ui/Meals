@@ -111,7 +111,8 @@ test('OnboardingForm renders the stale-action recovery card, not "Generation Fai
   assert.ok(source.includes('window.location.reload()'))
   assert.ok(source.includes('onClick={handleReloadAfterUpdate}'))
 
-  // Both vulnerable manual-flow actions route here: create-plan and reminders.
+  // Every vulnerable manual-flow action routes here: create-plan, reminders,
+  // and supplements (all three POST a server action from this same wizard).
   const staleBranches = source.match(/if \(isStaleServerActionError\(err\)\) \{/g) ?? []
-  assert.strictEqual(staleBranches.length, 2, 'expected stale handling in both manual submit handlers')
+  assert.strictEqual(staleBranches.length, 3, 'expected stale handling in all three manual submit handlers')
 })

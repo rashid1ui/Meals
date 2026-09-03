@@ -10,6 +10,8 @@ import GenerateNewPlanButton from './GenerateNewPlanButton'
 import ResetAccountButton from './ResetAccountButton'
 import NotificationSettings from './NotificationSettings'
 import { getReminderSchedule } from '@/lib/notifications/actions'
+import SupplementsSection from '@/app/dashboard/components/SupplementsSection'
+import { getSupplements } from '@/lib/supplements/actions'
 
 export default async function SettingsPage() {
   const user = await getUser()
@@ -41,6 +43,9 @@ export default async function SettingsPage() {
 
   const reminderScheduleResult = await getReminderSchedule()
   const reminderSchedule = 'data' in reminderScheduleResult ? reminderScheduleResult.data : null
+
+  const supplementsResult = await getSupplements()
+  const initialSupplements = 'data' in supplementsResult ? supplementsResult.data : []
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -146,6 +151,11 @@ export default async function SettingsPage() {
               }
             />
           </Card>
+        </section>
+
+        {/* Vitamins & Supplements */}
+        <section className="space-y-3">
+          <SupplementsSection initialSupplements={initialSupplements} />
         </section>
 
         {/* Danger Zone */}
