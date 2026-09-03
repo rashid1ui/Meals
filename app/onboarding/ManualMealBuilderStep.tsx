@@ -131,7 +131,7 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
     <div className="space-y-6 animate-step-in">
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground mb-2">Build your meals</h1>
-        <p className="text-muted-foreground">Add foods to each meal from our library - the guidance below updates as you go.</p>
+        <p className="text-muted-foreground">Add foods and set quantities - this plan is saved exactly as you build it. The targets below are guidance only.</p>
       </div>
 
       <div className="flex items-center justify-between">

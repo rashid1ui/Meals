@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import LinkButton from '@/components/ui/LinkButton'
 import { AlertIcon, CheckIcon } from '@/components/ui/icons'
 
 // Purely cosmetic status copy advancing on a client-side timer - it does not
@@ -29,7 +30,15 @@ type Props = {
   errorMessage?: string | null
   onRetry: () => void
   onGoBack?: () => void
+  // Fires the post-success auto-advance only. The visible "View My Meal Plan"
+  // control is a real <a href> (see continueHref) so clicking it is a plain
+  // browser navigation, not a call into this callback.
   onContinue?: () => void
+  // Destination for the "View My Meal Plan" link on the success card. A real
+  // route the app already has (defaults to the dashboard) - rendered as a
+  // next/link anchor so it is keyboard accessible, right-click/open-in-new-tab
+  // friendly, and cannot be silently swallowed by a client-router race.
+  continueHref?: string
   // 'manual' is a near-instant DB write (create-plan, no external API call),
   // not a ~60s AI generation - shown a single static message instead of the
   // 4-stage cycling copy below, which would otherwise read as misleadingly
@@ -38,7 +47,15 @@ type Props = {
   mode?: 'ai' | 'manual'
 }
 
-export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBack, onContinue, mode = 'ai' }: Props) {
+export default function GeneratingPanel({
+  status,
+  errorMessage,
+  onRetry,
+  onGoBack,
+  onContinue,
+  continueHref = '/dashboard',
+  mode = 'ai'
+}: Props) {
   const [stageIndex, setStageIndex] = useState(0)
 
   useEffect(() => {
@@ -67,9 +84,9 @@ export default function GeneratingPanel({ status, errorMessage, onRetry, onGoBac
             Your personalized meal plan has been created successfully.
           </p>
         </div>
-        <Button onClick={onContinue} className="w-full">
+        <LinkButton href={continueHref} className="w-full">
           View My Meal Plan →
-        </Button>
+        </LinkButton>
       </Card>
     )
   }

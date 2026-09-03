@@ -78,7 +78,14 @@ export interface CreatedMeal {
   sortOrder: number
 }
 
-export type CreateManualDietPlanResult = { success: true; meals: CreatedMeal[] } | { error: string }
+// `dietPlanId` is the id of the persisted, now-active `diet_plans` row - the
+// caller (OnboardingForm) treats a non-null value here as the single source
+// of truth for "the plan is really saved", and refuses to show the success
+// screen without it. Returned only once every write below (plan + meals +
+// foods, the active-plan swap, and the profile update) has succeeded.
+export type CreateManualDietPlanResult =
+  | { success: true; dietPlanId: string; meals: CreatedMeal[] }
+  | { error: string }
 
 // Creates the user's FIRST plan entirely by hand - no AI call, no
 // generation lock (deterministic and fast, see the plan doc). Structure
@@ -398,7 +405,7 @@ async function createManualDietPlanLocked(
     }
   }
 
-  return { success: true, meals: createdMeals }
+  return { success: true, dietPlanId: newPlan.id, meals: createdMeals }
 }
 
 // Configures reminder times against the plan's real, already-persisted

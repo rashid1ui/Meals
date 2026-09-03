@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { computeMealTotals, computeDailyTotals, classifyTarget, type DraftMeal } from '@/lib/diet/diff'
+import { computeMealTotals, computeDailyTotals, type DraftMeal } from '@/lib/diet/diff'
 import { toDisplayQuantity, unitLabel, type UnitConfig } from '@/lib/nutrition/units'
 import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
@@ -15,22 +15,6 @@ type Props = {
   foodOptions: FoodOption[]
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  'on-target': 'On Target',
-  'slightly-over': 'Slightly Over',
-  'slightly-under': 'Slightly Under',
-  over: 'Over',
-  under: 'Under'
-}
-
-const STATUS_CLASS: Record<string, string> = {
-  'on-target': 'text-success',
-  'slightly-over': 'text-warning',
-  'slightly-under': 'text-warning',
-  over: 'text-error',
-  under: 'text-error'
-}
-
 export default function FinalReviewStep({ meals, targets, foodOptions }: Props) {
   const foodOptionsById = useMemo(() => {
     const map = new Map<string, FoodOption>()
@@ -39,7 +23,6 @@ export default function FinalReviewStep({ meals, targets, foodOptions }: Props) 
   }, [foodOptions])
 
   const dailyTotals = useMemo(() => computeDailyTotals(meals), [meals])
-  const calorieComparison = classifyTarget(dailyTotals.calories, targets.calories)
 
   return (
     <div className="space-y-6 animate-step-in">
@@ -49,26 +32,32 @@ export default function FinalReviewStep({ meals, targets, foodOptions }: Props) 
       </div>
 
       <div className="p-4 rounded-control border border-border bg-surface-elevated space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <span className="text-sm font-semibold text-foreground">Daily Summary</span>
-          <span className={`text-xs font-bold uppercase tracking-wide ${STATUS_CLASS[calorieComparison.status]}`}>
-            {STATUS_LABEL[calorieComparison.status]}
-          </span>
+        {/* Two explicitly separate concepts: "Your plan" is the actual totals
+            from the foods/quantities the user chose and is exactly what gets
+            saved; "Daily target" is guidance only. Deliberately no
+            on/over/under status badge here - a manual plan is never "wrong"
+            for sitting above or below the target. */}
+        <div className="space-y-1">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Your plan</span>
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono tabular-nums text-sm">
+            <span className="font-bold text-calories">{Math.round(dailyTotals.calories)} kcal</span>
+            <span className="text-protein">{Math.round(dailyTotals.protein)}g P</span>
+            <span className="text-carbs">{Math.round(dailyTotals.carbs)}g C</span>
+            <span className="text-fat">{Math.round(dailyTotals.fat)}g F</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono tabular-nums text-sm">
-          <span className="font-bold text-calories">
-            {Math.round(dailyTotals.calories)} / {Math.round(targets.calories)} kcal
-          </span>
-          <span className="text-protein">
-            {Math.round(dailyTotals.protein)} / {Math.round(targets.protein)}g P
-          </span>
-          <span className="text-carbs">
-            {Math.round(dailyTotals.carbs)} / {Math.round(targets.carbs)}g C
-          </span>
-          <span className="text-fat">
-            {Math.round(dailyTotals.fat)} / {Math.round(targets.fat)}g F
-          </span>
+        <div className="space-y-1 pt-2 border-t border-border">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Daily target (reference)</span>
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono tabular-nums text-sm text-muted-foreground">
+            <span>{Math.round(targets.calories)} kcal</span>
+            <span>{Math.round(targets.protein)}g P</span>
+            <span>{Math.round(targets.carbs)}g C</span>
+            <span>{Math.round(targets.fat)}g F</span>
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Your target is a reference. Your meal plan is saved exactly as you built it.
+        </p>
       </div>
 
       <div className="space-y-4">

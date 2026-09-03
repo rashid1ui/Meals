@@ -8,12 +8,22 @@ import { diffMeals, moveFood, computeDailyTotals, uniqueMealName, type DraftMeal
 import { saveDietPlan } from '../actions'
 import {
   getTodayTracking,
-  toggleMealCompletion,
   logFoodConsumption,
-  type DailyTrackingSummary,
-  type FoodTrackingState
+  type FoodTrackingState,
+  type DailyTrackingSummary
 } from '../tracking-actions'
 import { useLocalDate } from '@/lib/tracking/useLocalDate'
+import {
+  initState,
+  viewOf,
+  savingFoodIdsOf,
+  requestFoodLog,
+  requestMealToggle,
+  settleFoodLog,
+  type OptimisticState,
+  type Effect,
+  type FoodIntent
+} from '@/lib/tracking/optimisticTracking'
 import type { SaveDietPlanPayload } from '@/lib/diet/save-plan'
 import MealCard from './MealCard'
 import AddMealModal from './AddMealModal'
@@ -34,6 +44,10 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferencesDTO = {
   milestonesEnabled: true,
   timezone: null
 }
+
+// Stable identity for "nothing is saving" so the memo below doesn't hand a
+// fresh Set to every MealCard on every render.
+const EMPTY_SAVING_SET: ReadonlySet<string> = new Set()
 
 export interface FoodOption extends FoodMacro {
   category: string
@@ -86,18 +100,36 @@ export default function DietEditor({
   // across a session left open past midnight; the effect below already
   // re-fetches whenever this value changes.
   const localDate = useLocalDate()
-  const [dailyTracking, setDailyTracking] = useState<DailyTrackingSummary | null>(null)
+  // A ref so an in-flight persist that resolves after a midnight rollover can
+  // tell its result is for the previous day and drop it. Kept in sync via an
+  // effect (never written during render).
+  const localDateRef = useRef(localDate)
+  useEffect(() => {
+    localDateRef.current = localDate
+  }, [localDate])
+
+  // `optState` holds BOTH the last server-confirmed tracking snapshot AND any
+  // optimistic changes the server has not acknowledged yet - see
+  // lib/tracking/optimisticTracking.ts. The meal UI renders viewOf(optState)
+  // so a click shows instantly; notifications keep reading the confirmed
+  // snapshot only, so their timing is unchanged. `optStateRef` mirrors it so
+  // background-persist callbacks act on the latest state without going stale.
+  const [optState, setOptState] = useState<OptimisticState | null>(null)
+  const optStateRef = useRef<OptimisticState | null>(null)
   const [trackingLoading, setTrackingLoading] = useState(true)
   const [trackingError, setTrackingError] = useState<string | null>(null)
-  const [togglingMealId, setTogglingMealId] = useState<string | null>(null)
-  const [loggingFoodId, setLoggingFoodId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     getTodayTracking(localDate).then(result => {
       if (cancelled) return
-      if ('error' in result) setTrackingError(result.error)
-      else setDailyTracking(result.data)
+      if ('error' in result) {
+        setTrackingError(result.error)
+      } else {
+        const next = initState(result.data)
+        optStateRef.current = next
+        setOptState(next)
+      }
       setTrackingLoading(false)
     })
     return () => {
@@ -128,10 +160,23 @@ export default function DietEditor({
     }
   }, [])
 
-  useMealReminders(reminderMeals, notificationPreferences, dailyTracking, localDate)
+  // Notifications read the server-CONFIRMED snapshot, never the optimistic
+  // overlay - a reminder/milestone must only fire off state that is actually
+  // persisted. `optState.confirmed` keeps a stable identity across
+  // optimistic-only churn, so this effect still only re-runs when the server
+  // truly advances the confirmed state (same cadence as before this change).
+  useMealReminders(reminderMeals, notificationPreferences, optState?.confirmed ?? null, localDate)
+
+  // Everything the meal UI renders comes from this optimistic view: the
+  // confirmed snapshot with any un-acknowledged clicks folded on top.
+  const dailyTracking = useMemo(() => (optState ? viewOf(optState) : null), [optState])
+  const savingFoodIds = useMemo(
+    () => (optState ? savingFoodIdsOf(optState) : EMPTY_SAVING_SET),
+    [optState]
+  )
 
   const completionByMealId = useMemo(() => {
-    const map = new Map<string, DailyTrackingSummary['meals'][number]>()
+    const map = new Map<string, NonNullable<typeof dailyTracking>['meals'][number]>()
     dailyTracking?.meals.forEach(m => map.set(m.mealId, m))
     return map
   }, [dailyTracking])
@@ -159,26 +204,53 @@ export default function DietEditor({
     el.focus({ preventScroll: true })
   }
 
-  // Meal-level click: incomplete/partial -> mark every food in the meal
-  // completed; already complete -> mark every food incomplete.
-  const handleToggleMealCompletion = async (mealId: string) => {
-    const currentStatus = completionByMealId.get(mealId)?.status ?? 'none'
-    const nextCompleted = currentStatus !== 'complete'
-    setTogglingMealId(mealId)
-    setTrackingError(null)
-    const result = await toggleMealCompletion(mealId, localDate, nextCompleted)
-    if ('error' in result) setTrackingError(result.error)
-    else setDailyTracking(result.data)
-    setTogglingMealId(null)
+  // Runs one pure transition against the live optState and then executes the
+  // Effects it asks for. Effects are handled HERE, outside any React updater,
+  // so a StrictMode double-invoke can never fire a persist twice.
+  const applyTracking = (
+    transition: (s: OptimisticState) => { state: OptimisticState; effects: Effect[] }
+  ) => {
+    const current = optStateRef.current
+    if (!current) return
+    const { state, effects } = transition(current)
+    optStateRef.current = state
+    setOptState(state)
+    for (const effect of effects) {
+      if (effect.type === 'error') setTrackingError(effect.message)
+      else void persistFoodLog(effect.foodId, effect.intent)
+    }
   }
 
-  const handleLogFoodConsumption = async (foodId: string, mealId: string, consumedQuantity: number) => {
-    setLoggingFoodId(foodId)
+  // The background half of the optimistic update: the UI has already moved;
+  // this persists to Supabase through the UNCHANGED server action (same RLS,
+  // same user/date/meal ownership checks, same idempotent upsert) and feeds
+  // the result back so the change is either confirmed or rolled back.
+  const persistFoodLog = async (foodId: string, intent: FoodIntent) => {
+    const dispatchDate = localDateRef.current
     setTrackingError(null)
-    const result = await logFoodConsumption(foodId, mealId, localDate, consumedQuantity)
-    if ('error' in result) setTrackingError(result.error)
-    else setDailyTracking(result.data)
-    setLoggingFoodId(null)
+    let result: { data: DailyTrackingSummary } | { error: string }
+    try {
+      result = await logFoodConsumption(foodId, intent.mealId, dispatchDate, intent.consumedQuantity)
+    } catch {
+      result = { error: 'Something went wrong while saving. Please try again.' }
+    }
+    // A midnight rollover happened while this was in flight - the result is
+    // for the previous day; the new day already re-fetched from scratch.
+    if (localDateRef.current !== dispatchDate) return
+    applyTracking(s => settleFoodLog(s, foodId, result))
+  }
+
+  // Meal-level click: incomplete/partial -> mark every food in the meal
+  // eaten; already complete -> mark every food not-eaten. Fans out over the
+  // meal's foods through the same per-food path so serialization and
+  // rollback are identical to a direct food click.
+  const handleToggleMealCompletion = (mealId: string) => {
+    const currentStatus = completionByMealId.get(mealId)?.status ?? 'none'
+    applyTracking(s => requestMealToggle(s, mealId, currentStatus !== 'complete'))
+  }
+
+  const handleLogFoodConsumption = (foodId: string, mealId: string, consumedQuantity: number) => {
+    applyTracking(s => requestFoodLog(s, foodId, { mealId, consumedQuantity }))
   }
 
   const foodOptionsById = useMemo(() => {
@@ -342,7 +414,7 @@ export default function DietEditor({
           never from the planned diet total. Answers "how much of my daily
           target have I actually consumed today?" without repeating the same
           percentages in a second card set below it. */}
-      {trackingLoading ? (
+      {trackingLoading || (!trackingError && !dailyTracking) ? (
         <div className="space-y-4" aria-hidden="true">
           <div className="h-40 rounded-card bg-surface border border-border animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -420,8 +492,12 @@ export default function DietEditor({
                       ),
                       onToggleMeal: () => handleToggleMealCompletion(meal.id),
                       onLogFood: (foodId, consumedQuantity) => handleLogFoodConsumption(foodId, meal.id, consumedQuantity),
-                      togglingMeal: togglingMealId === meal.id,
-                      loggingFoodId
+                      // A meal-level saving hint that never blocks: true while
+                      // any food in this meal has an unsaved change in flight.
+                      togglingMeal: completionByMealId
+                        .get(meal.id)!
+                        .foods.some(f => savingFoodIds.has(f.foodId)),
+                      savingFoodIds
                     }
                   : undefined
               }

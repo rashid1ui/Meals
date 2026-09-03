@@ -176,3 +176,233 @@ test('macro calculation correctness - splitProteinByType/splitCarbsByType reconc
   const carbBreakdown = splitCarbsByType(allFoods, carbLookup)
   assert.ok(Math.abs(carbBreakdown.simple + carbBreakdown.complex - dailyTotals.carbs) < 1e-9)
 })
+
+// ---------------------------------------------------------------------------
+// Manual Mode product rule: the nutrition target is GUIDANCE ONLY. The user's
+// selected foods, quantities, meals, order and distribution ARE the plan. The
+// manual save path (app/onboarding/manual-actions.ts) must NEVER scale,
+// rebalance, add/remove foods, or normalize the plan toward the target.
+//
+// resolveMeal (lib/diet/save-plan.ts) is the ONLY transform the manual
+// payload passes through on the server before it is written to meals/foods.
+// It takes no target parameter at all - these tests pin that: identical
+// payload in => identical rows out, regardless of the target shown alongside.
+// ---------------------------------------------------------------------------
+
+// Seven synthetic food_database rows, all serving_size 100 / serving_unit
+// 'grams', with calories set independently of the 4/4/9 macro sum (exactly
+// like real food_database rows, where label calories differ from the Atwater
+// estimate). At quantity 100 each, calculateFoodMacros' multiplier is 1, so
+// every row contributes its values verbatim - the plan below sums to exactly
+// 2060 kcal / 165P / 225C / 61F.
+function manualRuleDb(): Map<string, FoodMacro> {
+  return new Map(
+    [
+      dbFood({ id: 'a', name: 'Food A', calories: 300, protein: 20, carbs: 40, fat: 8 }),
+      dbFood({ id: 'b', name: 'Food B', calories: 160, protein: 10, carbs: 20, fat: 4 }),
+      dbFood({ id: 'c', name: 'Food C', calories: 515, protein: 45, carbs: 55, fat: 15 }),
+      dbFood({ id: 'd', name: 'Food D', calories: 450, protein: 40, carbs: 30, fat: 18 }),
+      dbFood({ id: 'e', name: 'Food E', calories: 385, protein: 15, carbs: 65, fat: 4 }),
+      dbFood({ id: 'f', name: 'Food F', calories: 170, protein: 25, carbs: 10, fat: 8 }),
+      dbFood({ id: 'g', name: 'Food G', calories: 80, protein: 10, carbs: 5, fat: 4 })
+    ].map(f => [f.id, f])
+  )
+}
+
+// The exact structure the user built: 5 meals, specific order, specific food
+// distribution ([2,1,1,1,2] foods per meal), all quantities 100g.
+function manualRulePayload(): SaveDietPlanMeal[] {
+  return [
+    {
+      name: 'Breakfast',
+      foods: [
+        { foodDatabaseId: 'a', originalFoodId: null, quantity: 100, unit: 'grams' },
+        { foodDatabaseId: 'b', originalFoodId: null, quantity: 100, unit: 'grams' }
+      ]
+    },
+    { name: 'Lunch', foods: [{ foodDatabaseId: 'c', originalFoodId: null, quantity: 100, unit: 'grams' }] },
+    { name: 'Dinner', foods: [{ foodDatabaseId: 'd', originalFoodId: null, quantity: 100, unit: 'grams' }] },
+    { name: 'Pre-Workout', foods: [{ foodDatabaseId: 'e', originalFoodId: null, quantity: 100, unit: 'grams' }] },
+    {
+      name: 'Post-Workout',
+      foods: [
+        { foodDatabaseId: 'f', originalFoodId: null, quantity: 100, unit: 'grams' },
+        { foodDatabaseId: 'g', originalFoodId: null, quantity: 100, unit: 'grams' }
+      ]
+    }
+  ]
+}
+
+// Runs the payload through the real server-side resolution and returns the
+// resolved meals plus their summed nutrition (via the same computeDailyTotals
+// the builder/review UI use). No production logic is reimplemented here.
+function resolveManualPlan(payload: SaveDietPlanMeal[], db: Map<string, FoodMacro> = manualRuleDb()) {
+  const resolvedMeals = payload.map(meal => {
+    const result = resolveMeal(meal, db, new Map())
+    assert.ok('meal' in result, 'expected the meal to resolve')
+    if (!('meal' in result)) throw new Error('unreachable')
+    return result.meal
+  })
+  const asDraft: DraftMeal[] = resolvedMeals.map((m, i) => ({
+    id: `m${i}`,
+    name: m.name,
+    sortOrder: i,
+    foods: m.foods.map((f, j) => ({ id: `m${i}f${j}`, foodDatabaseId: null, ...f }))
+  }))
+  return { resolvedMeals, totals: computeDailyTotals(asDraft) }
+}
+
+// The target from the product spec's worked example - deliberately different
+// from the plan on every macro (calories & carbs BELOW it, protein & fat
+// ABOVE it). It is never passed into resolution; it exists here only to be
+// asserted as untouched and non-influential.
+const MANUAL_RULE_TARGET = { calories: 2295, protein: 146, carbs: 297, fat: 58 }
+const MANUAL_RULE_PLAN = { calories: 2060, protein: 165, carbs: 225, fat: 61 }
+
+test('Manual Mode - explicit spec scenario: plan 2060/165/225/61 is saved verbatim against target 2295/146/297/58', () => {
+  const { totals } = resolveManualPlan(manualRulePayload())
+
+  // Plan nutrition is exactly the sum of the selected foods...
+  assert.equal(Math.round(totals.calories), MANUAL_RULE_PLAN.calories)
+  assert.equal(Math.round(totals.protein), MANUAL_RULE_PLAN.protein)
+  assert.equal(Math.round(totals.carbs), MANUAL_RULE_PLAN.carbs)
+  assert.equal(Math.round(totals.fat), MANUAL_RULE_PLAN.fat)
+
+  // ...and is NOT normalized toward the target on any macro.
+  assert.notEqual(Math.round(totals.calories), MANUAL_RULE_TARGET.calories)
+  assert.notEqual(Math.round(totals.protein), MANUAL_RULE_TARGET.protein)
+  assert.notEqual(Math.round(totals.carbs), MANUAL_RULE_TARGET.carbs)
+  assert.notEqual(Math.round(totals.fat), MANUAL_RULE_TARGET.fat)
+
+  // The plan sits on the same side of the target the user built it on -
+  // nothing nudged it closer.
+  assert.ok(totals.calories < MANUAL_RULE_TARGET.calories, 'calories stay below target, not raised to it')
+  assert.ok(totals.protein > MANUAL_RULE_TARGET.protein, 'protein stays above target, not cut to it')
+  assert.ok(totals.carbs < MANUAL_RULE_TARGET.carbs, 'carbs stay below target, not raised to it')
+  assert.ok(totals.fat > MANUAL_RULE_TARGET.fat, 'fat stays above target, not cut to it')
+})
+
+test('Manual Mode - saved nutrition equals the sum of the selected foods (per-food, deterministic)', () => {
+  const db = manualRuleDb()
+  const { resolvedMeals } = resolveManualPlan(manualRulePayload(), db)
+  const flat = resolvedMeals.flatMap(m => m.foods)
+
+  let cal = 0, p = 0, c = 0, f = 0
+  for (const food of db.values()) {
+    const expected = calculateFoodMacros(100, food)
+    cal += expected.calories; p += expected.protein; c += expected.carbs; f += expected.fat
+  }
+  const sum = (key: 'calories' | 'protein' | 'carbs' | 'fat') => flat.reduce((acc, x) => acc + x[key], 0)
+
+  assert.ok(Math.abs(sum('calories') - cal) < 1e-9)
+  assert.ok(Math.abs(sum('protein') - p) < 1e-9)
+  assert.ok(Math.abs(sum('carbs') - c) < 1e-9)
+  assert.ok(Math.abs(sum('fat') - f) < 1e-9)
+})
+
+test('Manual Mode - exact meal count, names and order are preserved', () => {
+  const { resolvedMeals } = resolveManualPlan(manualRulePayload())
+  assert.equal(resolvedMeals.length, 5)
+  assert.deepEqual(
+    resolvedMeals.map(m => m.name),
+    ['Breakfast', 'Lunch', 'Dinner', 'Pre-Workout', 'Post-Workout']
+  )
+})
+
+test('Manual Mode - exact food distribution between meals is preserved', () => {
+  const { resolvedMeals } = resolveManualPlan(manualRulePayload())
+  assert.deepEqual(resolvedMeals.map(m => m.foods.length), [2, 1, 1, 1, 2])
+  assert.deepEqual(resolvedMeals[0].foods.map(f => f.name), ['Food A', 'Food B'])
+  assert.deepEqual(resolvedMeals[4].foods.map(f => f.name), ['Food F', 'Food G'])
+})
+
+test('Manual Mode - exact food order within a meal is preserved (not reordered)', () => {
+  const payload = manualRulePayload()
+  // Flip the two Breakfast foods; the resolved order must follow the payload.
+  payload[0].foods.reverse()
+  const { resolvedMeals } = resolveManualPlan(payload)
+  assert.deepEqual(resolvedMeals[0].foods.map(f => f.name), ['Food B', 'Food A'])
+})
+
+test('Manual Mode - exact quantities and units are preserved', () => {
+  const { resolvedMeals } = resolveManualPlan(manualRulePayload())
+  for (const meal of resolvedMeals) {
+    for (const food of meal.foods) {
+      assert.equal(food.quantity, 100)
+      assert.equal(food.unit, 'grams')
+    }
+  }
+})
+
+test('Manual Mode - nutrition target is independent of the manual payload (same foods + different target => identical plan)', () => {
+  // Two different targets a caller might show alongside the builder. The
+  // target is not an input to resolution - proving independence means the
+  // resolved rows and totals are identical no matter which one is displayed.
+  const targetA = { calories: 2295, protein: 146, carbs: 297, fat: 58 }
+  const targetB = { calories: 2500, protein: 180, carbs: 250, fat: 70 }
+  assert.notDeepEqual(targetA, targetB)
+
+  const a = resolveManualPlan(manualRulePayload())
+  const b = resolveManualPlan(manualRulePayload())
+  assert.deepEqual(a.resolvedMeals, b.resolvedMeals)
+  assert.deepEqual(a.totals, b.totals)
+})
+
+// Directional preservation - one focused test per macro/side. Each builds a
+// single-food plan, then names a target that sits on the opposite side, and
+// asserts resolution leaves the plan value exactly where the user put it.
+function singleFoodTotals(food: FoodMacro, quantity: number) {
+  const { totals } = resolveManualPlan(
+    [{ name: 'Meal 1', foods: [{ foodDatabaseId: food.id, originalFoodId: null, quantity, unit: 'grams' }] }],
+    new Map([[food.id, food]])
+  )
+  return totals
+}
+
+test('Manual Mode - a plan BELOW the calorie target is preserved', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 300, protein: 20, carbs: 40, fat: 8 }), 100)
+  assert.equal(Math.round(totals.calories), 300)
+  assert.ok(totals.calories < 2295) // target far above; plan not raised toward it
+})
+
+test('Manual Mode - a plan ABOVE the calorie target is preserved', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 515, protein: 45, carbs: 55, fat: 15 }), 500)
+  assert.equal(Math.round(totals.calories), 2575)
+  assert.ok(totals.calories > 1800) // target below; plan not scaled down toward it
+})
+
+test('Manual Mode - protein ABOVE target is preserved (not reduced)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 515, protein: 45, carbs: 55, fat: 15 }), 400)
+  assert.equal(Math.round(totals.protein), 180)
+  assert.ok(totals.protein > 146)
+})
+
+test('Manual Mode - protein BELOW target is preserved (not topped up)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 385, protein: 15, carbs: 65, fat: 4 }), 100)
+  assert.equal(Math.round(totals.protein), 15)
+  assert.ok(totals.protein < 146)
+})
+
+test('Manual Mode - carbs ABOVE target are preserved (not reduced)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 385, protein: 15, carbs: 65, fat: 4 }), 600)
+  assert.equal(Math.round(totals.carbs), 390)
+  assert.ok(totals.carbs > 297)
+})
+
+test('Manual Mode - carbs BELOW target are preserved (not topped up)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 450, protein: 40, carbs: 30, fat: 18 }), 100)
+  assert.equal(Math.round(totals.carbs), 30)
+  assert.ok(totals.carbs < 297)
+})
+
+test('Manual Mode - fat ABOVE target is preserved (not reduced)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 450, protein: 40, carbs: 30, fat: 18 }), 500)
+  assert.equal(Math.round(totals.fat), 90)
+  assert.ok(totals.fat > 58)
+})
+
+test('Manual Mode - fat BELOW target is preserved (not topped up)', () => {
+  const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 385, protein: 15, carbs: 65, fat: 4 }), 100)
+  assert.equal(Math.round(totals.fat), 4)
+  assert.ok(totals.fat < 58)
+})

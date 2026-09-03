@@ -32,6 +32,8 @@ import {
   clearServerOnboardingDraft,
   type ServerOnboardingDraft
 } from './draft-actions'
+import { isStaleServerActionError } from '@/lib/actions/staleActionError'
+import { canShowManualPlanSuccess } from '@/lib/diet/manual-plan-success'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import { buildNutritionTarget, validateNutritionTarget, validateMacroValues, type ActivityLevel, type Goal, type NutritionTarget } from '@/lib/nutrition/engine'
@@ -82,6 +84,13 @@ interface OnboardingDraft {
   // (plan saved, reminders not yet configured) doesn't strand the user on a
   // Reminders step with no meals to address.
   createdMeals: CreatedMeal[]
+  // Id of the persisted, active diet_plans row, set only once
+  // createManualDietPlan (step 8) has returned a confirmed success result.
+  // Persisted so a refresh mid-step-9 still knows the plan is really saved -
+  // and so the success screen's own gate (canShowManualPlanSuccess) still
+  // passes after a resume. Optional: absent in drafts written before this
+  // field existed, and in every pre-step-9 draft.
+  createdPlanId?: string | null
   manualReminders: RemindersFormValue
 }
 
@@ -315,7 +324,12 @@ export default function OnboardingForm({
   // "threw" are mutually exclusive by construction - there's no combination
   // of flags that could show the error screen while a request that's about
   // to succeed is still in flight.
-  const [phase, setPhase] = useState<'idle' | 'generating' | 'success' | 'error'>('idle')
+  // 'stale' is a dedicated recovery phase for the one Next.js deployment-skew
+  // failure (a Server Action id the current build no longer has - see
+  // lib/actions/staleActionError.ts). It is NOT a generation failure, so it
+  // renders its own "App Updated / reload to continue" card rather than the
+  // GeneratingPanel "Generation Failed" screen, and never clears the draft.
+  const [phase, setPhase] = useState<'idle' | 'generating' | 'success' | 'error' | 'stale'>('idle')
   const [error, setError] = useState<string | null>(null)
   // Remounts GeneratingPanel on each attempt so its stage timer resets
   // cleanly on retry, instead of resetting state imperatively in an effect.
@@ -443,6 +457,11 @@ export default function OnboardingForm({
   // (no name/position matching needed, unlike the AI path's `reminders`
   // state above).
   const [createdMeals, setCreatedMeals] = useState<CreatedMeal[]>(draft?.createdMeals ?? [])
+  // The confirmed diet_plans id from createManualDietPlan's success result -
+  // the single source of truth for "the plan is really saved". The success
+  // screen (handleSkipReminders / handleFinishReminders) refuses to render
+  // without it. Restored from the draft so a resumed step-9 stays valid.
+  const [createdPlanId, setCreatedPlanId] = useState<string | null>(draft?.createdPlanId ?? null)
   const [manualReminders, setManualReminders] = useState<RemindersFormValue>(
     draft?.manualReminders ?? { enabled: false, perMeal: [] }
   )
@@ -480,6 +499,7 @@ export default function OnboardingForm({
       path,
       manualMeals,
       createdMeals,
+      createdPlanId,
       manualReminders
     }
     try {
@@ -521,6 +541,7 @@ export default function OnboardingForm({
     path,
     manualMeals,
     createdMeals,
+    createdPlanId,
     manualReminders,
     phase
   ])
@@ -903,9 +924,22 @@ export default function OnboardingForm({
         return
       }
 
+      // Confirmed success requires the real diet_plans id AND the meal rows.
+      // createManualDietPlan only returns this shape once every write landed,
+      // so this should always hold - but if the id is ever missing we must
+      // NOT advance to the (success-bearing) Reminders step. Fail loudly
+      // instead, exactly like any other error result.
+      if (!canShowManualPlanSuccess({ dietPlanId: result.dietPlanId, createdMealCount: result.meals.length })) {
+        submittingManualPlanRef.current = false
+        setError('Your plan could not be confirmed as saved. Please try again.')
+        setPhase('error')
+        return
+      }
+
       // The plan is fully saved at this point - only the (optional) Meal
       // Reminders step remains. Draft persistence continues (see the
       // effect above) so a refresh mid-step-9 doesn't strand the user.
+      setCreatedPlanId(result.dietPlanId)
       setCreatedMeals(result.meals)
       const defaults = defaultReminderTimes(result.meals.length)
       setManualReminders({
@@ -917,13 +951,36 @@ export default function OnboardingForm({
       setStep(9)
     } catch (err: unknown) {
       submittingManualPlanRef.current = false
+      // Deployment skew: the browser POSTed a Server Action id this build no
+      // longer has. The plan was NOT saved. Don't show "Generation Failed" or
+      // touch the draft - the meal builder state is already in the draft
+      // (persisted on every edit), so a reload restores it and the user
+      // retries against the current build.
+      if (isStaleServerActionError(err)) {
+        setPhase('stale')
+        return
+      }
       setError((err instanceof Error && err.message) || 'Failed to save your meal plan.')
       setPhase('error')
     }
   }
 
+  // The success screen ("Your Meal Plan Is Ready") may only be shown once
+  // createManualDietPlan has returned a confirmed success result - i.e. we
+  // hold the real diet_plans id it returned. Both step-9 exits route through
+  // this. A false result here means step 9 was reached without a genuine
+  // step-8 success (e.g. a corrupted resumed draft) - show the error state,
+  // never success.
+  const manualPlanConfirmed = () =>
+    canShowManualPlanSuccess({ dietPlanId: createdPlanId, createdMealCount: createdMeals.length })
+
   const handleFinishReminders = async () => {
     setError(null)
+    if (!manualPlanConfirmed()) {
+      setError('Your plan could not be confirmed as saved. Please go back and create it again.')
+      setPhase('error')
+      return
+    }
     setSavingReminders(true)
     try {
       const mealReminders = createdMeals.map((meal, i) => ({
@@ -948,6 +1005,16 @@ export default function OnboardingForm({
       setSavingReminders(false)
       setPhase('success')
     } catch (err: unknown) {
+      // Same deployment-skew case as handleManualSubmit. The plan itself was
+      // already saved in step 8; only the (optional) reminder write hit a
+      // stale action id. Route to the reload-recovery card instead of an
+      // inline error - after reload the user has an active plan, so they land
+      // on the dashboard and can set reminders later from Settings.
+      if (isStaleServerActionError(err)) {
+        setSavingReminders(false)
+        setPhase('stale')
+        return
+      }
       setError((err instanceof Error && err.message) || 'Failed to save your reminders.')
       setSavingReminders(false)
     }
@@ -955,18 +1022,63 @@ export default function OnboardingForm({
 
   const handleSkipReminders = () => {
     setError(null)
+    if (!manualPlanConfirmed()) {
+      setError('Your plan could not be confirmed as saved. Please go back and create it again.')
+      setPhase('error')
+      return
+    }
     clearOnboardingDraft()
     setPhase('success')
   }
 
+  // Real client navigation to the saved plan's home surface. Was previously
+  // `router.push('/dashboard'); router.refresh()` - calling refresh()
+  // synchronously in the same handler re-renders the CURRENT route
+  // (/onboarding, where this client component lives) and supersedes the
+  // in-flight push transition, so the navigation silently never happened and
+  // the success card just stayed on screen. /dashboard is a dynamic route
+  // (reads auth cookies) and is re-rendered fresh on navigation anyway, so
+  // the refresh() was both harmful and unnecessary. The success screen's own
+  // "View My Meal Plan" control is a real <a href> (see GeneratingPanel), so
+  // this programmatic path is only the post-success auto-advance.
   const handleContinue = () => {
     router.push('/dashboard')
-    router.refresh()
   }
 
   const handleGoBack = () => {
     setError(null)
     setPhase('idle')
+  }
+
+  // User-initiated (never automatic) full-page reload for the deployment-skew
+  // recovery card. A hard reload - not router.refresh() - so the browser
+  // re-fetches the current deployment's HTML and JS chunks and drops the
+  // stale client bundle whose Server Action ids the server rejected. The
+  // in-progress meal builder is already saved to the localStorage draft
+  // (persisted on every edit), so the wizard resumes where the user left off.
+  const handleReloadAfterUpdate = () => {
+    if (typeof window !== 'undefined') window.location.reload()
+  }
+
+  if (phase === 'stale') {
+    return (
+      <div className="w-full max-w-xl mx-auto">
+        <Card className="p-8 text-center space-y-5">
+          <div className="mx-auto w-12 h-12 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
+            <AlertIcon size={22} />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-foreground">App Updated</h1>
+            <p className="text-muted-foreground mt-2">
+              The app was updated while you were working. Reload to continue.
+            </p>
+          </div>
+          <Button onClick={handleReloadAfterUpdate} className="w-full">
+            Reload &amp; Continue
+          </Button>
+        </Card>
+      </div>
+    )
   }
 
   if (phase !== 'idle') {
@@ -979,6 +1091,7 @@ export default function OnboardingForm({
           onRetry={path === 'manual' ? handleManualSubmit : handleSubmit}
           onGoBack={handleGoBack}
           onContinue={handleContinue}
+          continueHref="/dashboard"
           mode={path === 'manual' ? 'manual' : 'ai'}
         />
       </div>

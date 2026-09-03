@@ -13,8 +13,8 @@
 import { useEffect, useRef } from 'react'
 import { claimNotificationEvent, type NotificationPreferencesDTO, type ReminderMealDTO } from './actions'
 import { dueMealReminders, nowMinutesLocal, buildMealReminderEventKey, type ReminderMeal } from './schedule'
-import { thresholdsToClaim, buildMilestoneEventKey, type MilestoneThreshold } from './milestones'
 import { buildMealReminderCopy, buildMilestoneCopy } from './copy'
+import { claimAndDisplayMealReminder, claimNewMilestones, highestMilestone } from './clientSweep'
 import { pctOf } from '@/lib/tracking/logic'
 import type { DailyTrackingSummary } from '@/app/dashboard/tracking-actions'
 
@@ -58,6 +58,13 @@ export function useMealReminders(
     let cancelled = false
 
     const tick = async () => {
+      // Re-checked every tick, not just once when the effect mounts: if
+      // permission is revoked mid-session the interval keeps firing, and
+      // claiming (below) without being able to display would write the
+      // shared notification_events row with nothing shown - which also
+      // suppresses the cron's Web Push for that key/day.
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+
       const nowMinutes = nowMinutesLocal()
 
       const reminderMeals: ReminderMeal[] = meals.map(m => ({
@@ -69,14 +76,11 @@ export function useMealReminders(
       }))
 
       for (const meal of dueMealReminders(reminderMeals, nowMinutes)) {
-        const key = buildMealReminderEventKey(meal.id)
-        if (resolvedRef.current.has(key)) continue
-
-        const result = await claimNotificationEvent(localDate, key, 'meal_reminder')
+        // Only skip work not yet started - once a claim is in flight,
+        // claimAndDisplayMealReminder owns the claim->display ordering and
+        // finishes it even if we were cancelled during its await.
         if (cancelled) return
-        if ('error' in result) continue
-        resolvedRef.current.add(key)
-        if (!result.claimed) continue
+        if (resolvedRef.current.has(buildMealReminderEventKey(meal.id))) continue
 
         const trackedMeal = dailyTracking.meals.find(t => t.mealId === meal.id)
         const plannedCalories = trackedMeal?.planned.calories
@@ -91,36 +95,34 @@ export function useMealReminders(
               }
             : undefined
 
-        const copy = buildMealReminderCopy(meal.name, projected)
-        showNotification(copy.title, copy.body)
+        const { eventKey, resolved } = await claimAndDisplayMealReminder(
+          meal,
+          () => buildMealReminderCopy(meal.name, projected),
+          (key, eventType) => claimNotificationEvent(localDate, key, eventType),
+          copy => showNotification(copy.title, copy.body)
+        )
+        if (resolved) resolvedRef.current.add(eventKey)
       }
 
       if (preferences.milestonesEnabled) {
+        if (cancelled) return
+
         const currentPct = Math.round(pctOf(dailyTracking.consumed.calories, dailyTracking.target.calories))
-        // No client-side "already claimed" list is threaded in here - the
-        // per-key resolvedRef check below plus the server's unique
-        // constraint are what actually prevent repeats (see comment above).
-        const toClaim = thresholdsToClaim(currentPct, [])
-        const newlyClaimed: MilestoneThreshold[] = []
-
-        for (const threshold of toClaim) {
-          const key = buildMilestoneEventKey(threshold)
-          if (resolvedRef.current.has(key)) continue
-
-          const result = await claimNotificationEvent(localDate, key, 'milestone')
-          if (cancelled) return
-          if ('error' in result) continue
-          resolvedRef.current.add(key)
-          if (result.claimed) newlyClaimed.push(threshold)
-        }
 
         // A single tracking update can cross several thresholds at once
-        // (e.g. logging a big meal) - claim all of them (above) so none can
-        // fire later on their own, but only ever notify about the highest
-        // one actually reached, to avoid a burst of near-simultaneous
-        // notifications for one user action.
-        if (newlyClaimed.length > 0) {
-          const highest = newlyClaimed.reduce((a, b) => (b > a ? b : a))
+        // (e.g. logging a big meal) - claimNewMilestones claims all of them
+        // (so none can fire later on their own) but only reports which were
+        // freshly claimed, so we notify about the highest one only, to
+        // avoid a burst of near-simultaneous notifications for one action.
+        const { resolvedKeys, newlyClaimed } = await claimNewMilestones(
+          currentPct,
+          key => resolvedRef.current.has(key),
+          (key, eventType) => claimNotificationEvent(localDate, key, eventType)
+        )
+        for (const key of resolvedKeys) resolvedRef.current.add(key)
+
+        const highest = highestMilestone(newlyClaimed)
+        if (highest !== null) {
           const copy = buildMilestoneCopy(highest)
           showNotification(copy.title, copy.body)
         }

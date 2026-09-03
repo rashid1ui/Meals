@@ -10,7 +10,7 @@ import FoodPickerModal from '@/components/food/FoodPickerModal'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
-import { PlusIcon, CheckIcon, SpinnerIcon } from '@/components/ui/icons'
+import { PlusIcon, CheckIcon } from '@/components/ui/icons'
 
 const STATUS_TEXT_CLASS: Record<MealTrackingStatus, string> = {
   none: 'text-muted-foreground hover:text-foreground',
@@ -29,8 +29,12 @@ export type MealCompletionInfo = {
   foods: ReadonlyMap<string, FoodTrackingState>
   onToggleMeal: () => void
   onLogFood: (foodId: string, consumedQuantity: number) => void
+  // A non-blocking "saving" hint. `togglingMeal` is true while any food in
+  // this meal has an unsaved change in flight; `savingFoodIds` is the live
+  // set of those foods. Neither ever disables a control - the optimistic UI
+  // has already updated.
   togglingMeal: boolean
-  loggingFoodId: string | null
+  savingFoodIds: ReadonlySet<string>
 }
 
 type Props = {
@@ -130,14 +134,12 @@ export default function MealCard({
                 aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
                 aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
                 onClick={completion.onToggleMeal}
-                disabled={completion.togglingMeal}
-                className={`inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_TEXT_CLASS[status]}`}
+                aria-busy={completion.togglingMeal}
+                className={`inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${STATUS_TEXT_CLASS[status]}`}
               >
-                {completion.togglingMeal ? (
-                  <SpinnerIcon size={16} className="animate-spin" />
-                ) : (
+                <span className={completion.togglingMeal ? 'animate-pulse' : undefined}>
                   <TrackingStatusIcon status={status} size={20} />
-                )}
+                </span>
                 {STATUS_LABEL[status]}
               </button>
             )}
@@ -232,7 +234,7 @@ export default function MealCard({
                         plannedQuantity: foodTracking.plannedQuantity,
                         actual: foodTracking.actual,
                         onLog: (consumedQuantity) => completion.onLogFood(food.id, consumedQuantity),
-                        logging: completion.loggingFoodId === food.id
+                        logging: completion.savingFoodIds.has(food.id)
                       }
                     : undefined
                 }

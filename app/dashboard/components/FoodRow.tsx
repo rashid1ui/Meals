@@ -14,7 +14,7 @@ import {
 import { isValidQuantity } from '@/lib/nutrition/calculator'
 import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
-import { PlusIcon, MinusIcon, CloseIcon, SpinnerIcon, ChevronDownIcon } from '@/components/ui/icons'
+import { PlusIcon, MinusIcon, CloseIcon, ChevronDownIcon } from '@/components/ui/icons'
 import { getFoodEmoji } from '@/lib/food/foodEmojiMap'
 import { formatMealName } from '@/lib/nutrition/workoutMeals'
 
@@ -203,14 +203,16 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
             aria-label={nextActionLabel}
             title={statusLabel}
             onClick={handleQuickToggle}
-            disabled={completion.logging}
-            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={completion.logging}
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            {completion.logging ? (
-              <SpinnerIcon size={16} className="animate-spin" />
-            ) : (
+            {/* The checkmark updates instantly from the optimistic state; a
+                background save shows only as a subtle pulse, never a spinner
+                that hides the result or a disabled control that blocks the
+                next click. */}
+            <span className={completion.logging ? 'animate-pulse' : undefined}>
               <TrackingStatusIcon status={status} size={24} />
-            )}
+            </span>
           </button>
         )}
 
@@ -302,7 +304,6 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => logStep(-stepSize)}
-                  disabled={completion.logging}
                   aria-label={`Decrease amount of ${food.name} eaten`}
                   className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
@@ -311,7 +312,6 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
                 <input
                   type="number"
                   value={logInputValue}
-                  disabled={completion.logging}
                   onChange={e => setLogInputValue(e.target.value)}
                   onBlur={() => commitLoggedQuantity(parseFloat(logInputValue))}
                   aria-label={`Amount of ${food.name} eaten, in ${unit}`}
@@ -322,7 +322,6 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
                 </span>
                 <button
                   onClick={() => logStep(stepSize)}
-                  disabled={completion.logging}
                   aria-label={`Increase amount of ${food.name} eaten`}
                   className="w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
