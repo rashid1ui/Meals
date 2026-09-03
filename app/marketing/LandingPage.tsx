@@ -415,9 +415,9 @@ export default function LandingPage() {
               sizes="100vw"
               className="object-cover object-center"
             />
-            <div className="absolute inset-0 bg-black/35" />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/45 to-black/10" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/25" />
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/15" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/25" />
           </div>
 
           <div className="relative max-w-6xl mx-auto px-5 sm:px-8 py-32 sm:py-44 lg:py-52">
@@ -449,7 +449,7 @@ export default function LandingPage() {
                   Log In
                 </LinkButton>
               </div>
-              <p className="hero-rise hero-rise-delay-3 mt-5 text-sm text-white/65">
+              <p className="hero-rise hero-rise-delay-3 mt-5 text-sm text-white/80">
                 Free to start. A flexible nutrition planning and tracking system, not a generic calorie counter.
               </p>
             </div>

@@ -1,8 +1,9 @@
-// Food photography for the landing page - all sourced live from Unsplash
-// (images.unsplash.com), verified individually as free-to-use (not
-// Unsplash+) before picking. Unsplash License: free for commercial and
-// noncommercial use, no permission or attribution required - credited here
-// anyway, for the record. None of this is copied from mealtrack.com.
+// Food photography for the public surfaces (marketing landing page +
+// /login) - all sourced live from Unsplash (images.unsplash.com), verified
+// individually as free-to-use (not Unsplash+) before picking. Unsplash
+// License: free for commercial and noncommercial use, no permission or
+// attribution required - credited here anyway, for the record. None of this
+// is copied from mealtrack.com or any competitor.
 export type LandingImage = {
   src: string
   alt: string
@@ -15,10 +16,23 @@ function unsplash(id: string, width: number): string {
 }
 
 export const HERO_IMAGE: LandingImage = {
-  src: unsplash('photo-1636044992119-be0892f9de94', 1800),
-  alt: 'A bowl of salmon, brown rice, cherry tomatoes, avocado, and microgreens - a balanced fitness meal',
-  credit: 'nrd on Unsplash',
-  sourceUrl: 'https://unsplash.com/photos/k7luFw-7rGk'
+  src: unsplash('photo-1512621776951-a57141f2eefd', 2000),
+  alt:
+    'An overhead bowl of avocado, chickpeas, roasted sweet potato, cherry tomatoes, greens, and radish on a rustic wood table',
+  credit: 'Anh Nguyen on Unsplash',
+  sourceUrl: 'https://unsplash.com/@pwign'
+}
+
+// Login / auth surface - same "healthy bowl" visual family as the hero but
+// a cleaner, centred composition on a seamless neutral background, so it
+// reads as a calm editorial panel next to the sign-in card rather than
+// competing with it.
+export const LOGIN_IMAGE: LandingImage = {
+  src: unsplash('photo-1546069901-ba9599a7e63c', 1400),
+  alt:
+    'An overhead protein bowl with grilled chicken, edamame, sweetcorn, egg, tomato, cucumber, and leafy greens on a light background',
+  credit: 'Anh Nguyen on Unsplash',
+  sourceUrl: 'https://unsplash.com/@pwign'
 }
 
 export const MEAL_PLANNER_IMAGE: LandingImage = {
