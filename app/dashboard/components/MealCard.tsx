@@ -160,46 +160,24 @@ export default function MealCard({
           </div>
         )}
 
+        {/* Header: emoji + full meal name get priority for horizontal space.
+            Only the low-frequency Remove (×) sits here; the reorder controls
+            live in their own row at the bottom of the card so the meal name
+            is never truncated to make room for arrows. */}
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-display text-xl font-bold text-foreground truncate flex items-center gap-2 min-w-0">
+          <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2 min-w-0">
             {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
             <span className="truncate">{formatMealName(meal.name)}</span>
           </h3>
-          {(onMoveMealUp || onMoveMealDown || onRemoveMeal) && (
-            <div className="shrink-0 -mt-1.5 -mr-1.5 flex items-center">
-              {(onMoveMealUp || onMoveMealDown) && (
-                <>
-                  <button
-                    type="button"
-                    onClick={onMoveMealUp}
-                    disabled={!onMoveMealUp}
-                    aria-label={`Move ${formatMealName(meal.name)} up`}
-                    className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  >
-                    <ChevronDownIcon size={16} className="rotate-180" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onMoveMealDown}
-                    disabled={!onMoveMealDown}
-                    aria-label={`Move ${formatMealName(meal.name)} down`}
-                    className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  >
-                    <ChevronDownIcon size={16} />
-                  </button>
-                </>
-              )}
-              {onRemoveMeal && (
-                <button
-                  type="button"
-                  onClick={onRemoveMeal}
-                  aria-label={`Remove ${formatMealName(meal.name)} meal`}
-                  className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <CloseIcon size={16} />
-                </button>
-              )}
-            </div>
+          {onRemoveMeal && (
+            <button
+              type="button"
+              onClick={onRemoveMeal}
+              aria-label={`Remove ${formatMealName(meal.name)} meal`}
+              className="shrink-0 -mt-1.5 -mr-1.5 w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <CloseIcon size={16} />
+            </button>
           )}
         </div>
 
@@ -303,6 +281,36 @@ export default function MealCard({
         <PlusIcon size={14} />
         Add food
       </button>
+
+      {/* Reorder row: its own quiet strip at the foot of the card (manual
+          builder only - the dashboard editor passes neither handler). Text +
+          icon, wraps on narrow widths, and never competes with the meal
+          title for space. Each button is disabled at its boundary (first
+          meal has no "up", last has no "down"). */}
+      {(onMoveMealUp || onMoveMealDown) && (
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-2.5 mt-2 border-t border-border/60">
+          <button
+            type="button"
+            onClick={onMoveMealUp}
+            disabled={!onMoveMealUp}
+            aria-label={`Move ${formatMealName(meal.name)} up`}
+            className="min-h-[44px] px-3 inline-flex items-center gap-1.5 rounded-control text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <ChevronDownIcon size={14} className="rotate-180" />
+            Move up
+          </button>
+          <button
+            type="button"
+            onClick={onMoveMealDown}
+            disabled={!onMoveMealDown}
+            aria-label={`Move ${formatMealName(meal.name)} down`}
+            className="min-h-[44px] px-3 inline-flex items-center gap-1.5 rounded-control text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <ChevronDownIcon size={14} />
+            Move down
+          </button>
+        </div>
+      )}
 
       {showAddFood && (
         <FoodPickerModal
