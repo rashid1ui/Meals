@@ -8,6 +8,8 @@ import Badge from '@/components/ui/Badge'
 import { ChevronRightIcon } from '@/components/ui/icons'
 import DietEditor, { type FoodOption } from './components/DietEditor'
 import type { DraftMeal } from '@/lib/diet/diff'
+import { sumMacros } from '@/lib/tracking/logic'
+import { effectiveDailyTarget } from '@/lib/diet/effective-target'
 
 // Narrow, hand-verified shapes for the `meals`/`foods` query result below.
 // There is no generated Supabase Database type in this project (no live DB
@@ -110,12 +112,13 @@ export default async function DashboardPage() {
     })
   }))
 
-  const targets = {
-    calories: dietPlan.calories_target,
-    protein: dietPlan.protein_target,
-    carbs: dietPlan.carbs_target,
-    fat: dietPlan.fat_target
-  }
+  // For a hand-built (user_created) plan the daily target the rings score
+  // against is the plan's OWN food totals - the user chose those foods and
+  // quantities deliberately. The onboarding recommendation stays on the row
+  // (calories_target etc.) for reference. Every other plan is unchanged.
+  // See lib/diet/effective-target.ts.
+  const planFoodTotals = sumMacros(sortedMeals.flatMap(m => m.foods))
+  const targets = effectiveDailyTarget(dietPlan, planFoodTotals)
 
   // Previous Plans: metadata-only list (no meals/foods fetched here - those
   // are only loaded when a specific previous plan is opened).

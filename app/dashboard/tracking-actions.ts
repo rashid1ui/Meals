@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
 import { classifyTarget } from '@/lib/diet/diff'
+import { effectiveDailyTarget } from '@/lib/diet/effective-target'
 import {
   isPlausibleToday,
   todayUTCString,
@@ -129,7 +130,7 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
 
   const { data: activePlans } = await supabase
     .from('diet_plans')
-    .select('id, calories_target, protein_target, carbs_target, fat_target')
+    .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .limit(1)
@@ -221,12 +222,12 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
         carbs: Number(daily?.carbs ?? 0),
         fat: Number(daily?.fat ?? 0)
       },
-      target: {
-        calories: activePlan.calories_target,
-        protein: activePlan.protein_target,
-        carbs: activePlan.carbs_target,
-        fat: activePlan.fat_target
-      },
+      // A hand-built plan is scored against its own composition, not the
+      // onboarding recommendation stored on the row (lib/diet/effective-target.ts).
+      target: effectiveDailyTarget(
+        activePlan,
+        sumMacros(mealRows.flatMap(m => m.foods))
+      ),
       meals: mealStates,
       proteinBreakdown
     }
@@ -260,13 +261,27 @@ async function recomputeDailyAndReturn(
 
   const { data: activePlans } = await supabase
     .from('diet_plans')
-    .select('calories_target, protein_target, carbs_target, fat_target')
+    .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
     .eq('user_id', userId)
     .eq('is_active', true)
     .limit(1)
 
   const activePlan = activePlans?.[0]
   if (!activePlan) return { error: 'No active meal plan found.' }
+
+  // Snapshot the target this day is scored against. For a hand-built plan
+  // that is the plan's own food totals, not the onboarding recommendation
+  // (lib/diet/effective-target.ts); the per-day snapshot is what the
+  // Insights weekly/monthly adherence charts read back.
+  const { data: planMeals } = await supabase
+    .from('meals')
+    .select('foods(calories, protein, carbs, fat)')
+    .eq('diet_plan_id', activePlan.id)
+
+  const planFoodTotals = sumMacros(
+    ((planMeals as { foods: MacroTotals[] }[] | null) || []).flatMap(m => m.foods)
+  )
+  const target = effectiveDailyTarget(activePlan, planFoodTotals)
 
   const { error: dailyError } = await supabase.from('daily_tracking').upsert(
     {
@@ -276,11 +291,11 @@ async function recomputeDailyAndReturn(
       protein: totals.protein,
       carbs: totals.carbs,
       fat: totals.fat,
-      nutrition_progress: Math.round(pctOf(totals.calories, activePlan.calories_target)),
-      calories_target: activePlan.calories_target,
-      protein_target: activePlan.protein_target,
-      carbs_target: activePlan.carbs_target,
-      fat_target: activePlan.fat_target,
+      nutrition_progress: Math.round(pctOf(totals.calories, target.calories)),
+      calories_target: target.calories,
+      protein_target: target.protein,
+      carbs_target: target.carbs,
+      fat_target: target.fat,
       updated_at: new Date().toISOString()
     },
     { onConflict: 'user_id,tracking_date' }

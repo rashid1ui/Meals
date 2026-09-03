@@ -5,6 +5,8 @@ import Link from 'next/link'
 import Header from '@/components/ui/Header'
 import { ChevronLeftIcon } from '@/components/ui/icons'
 import InsightsView from './InsightsView'
+import { sumMacros, type MacroTotals } from '@/lib/tracking/logic'
+import { effectiveDailyTarget } from '@/lib/diet/effective-target'
 
 export default async function InsightsPage() {
   const user = await getUser()
@@ -18,20 +20,25 @@ export default async function InsightsPage() {
   // Active diet plan — needed for protein target + goal (WorkoutMealRecommendations)
   const { data: dietPlans } = await supabase
     .from('diet_plans')
-    .select('id, calories_target, protein_target, carbs_target, fat_target, goal')
+    .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target, goal')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .limit(1)
 
   const dietPlan = dietPlans?.[0]
 
+  // A hand-built plan is scored against its own food totals, matching the
+  // dashboard (lib/diet/effective-target.ts). Every other plan keeps its
+  // stored *_target columns.
+  const { data: planMeals } = dietPlan
+    ? await supabase.from('meals').select('foods(calories, protein, carbs, fat)').eq('diet_plan_id', dietPlan.id)
+    : { data: null }
+
   const targets = dietPlan
-    ? {
-        calories: dietPlan.calories_target,
-        protein: dietPlan.protein_target,
-        carbs: dietPlan.carbs_target,
-        fat: dietPlan.fat_target,
-      }
+    ? effectiveDailyTarget(
+        dietPlan,
+        sumMacros(((planMeals as { foods: MacroTotals[] }[] | null) || []).flatMap(m => m.foods))
+      )
     : null
 
   return (
