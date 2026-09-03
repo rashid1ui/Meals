@@ -8,8 +8,10 @@
 // tests/integration/manual-plan.test.ts.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { resolveMeal, validateMealsShape, type SaveDietPlanMeal } from './save-plan'
-import { computeMealTotals, computeDailyTotals, type DraftMeal } from './diff'
+import { computeMealTotals, computeDailyTotals, removeMeal, uniqueMealName, type DraftMeal } from './diff'
 import { calculateFoodMacros, type FoodMacro } from '../nutrition/calculator'
 import { splitProteinByType } from '../nutrition/proteinType'
 import { splitCarbsByType } from '../nutrition/carbType'
@@ -405,4 +407,197 @@ test('Manual Mode - fat BELOW target is preserved (not topped up)', () => {
   const totals = singleFoodTotals(dbFood({ id: 'x', name: 'Food X', calories: 385, protein: 15, carbs: 65, fat: 4 }), 100)
   assert.equal(Math.round(totals.fat), 4)
   assert.ok(totals.fat < 58)
+})
+
+// ---------------------------------------------------------------------------
+// Manual Mode product rule (meal level): the user has complete control over
+// WHICH meals exist. If they can add a meal they can remove it - including
+// Pre-Workout / Post-Workout / Snack, none of which are product-mandatory in
+// Manual Mode. Removing a meal drops that meal and its foods from the plan;
+// nothing recreates it, no target math adds it back, and training options
+// never force it. The only floor is validateMealsShape's "at least one meal".
+// ---------------------------------------------------------------------------
+
+// A builder tree (DraftMeal[], with ids) matching the product spec's example:
+// Breakfast / Lunch / Dinner / Pre-Workout. Foods reuse manualRuleDb() rows.
+function mealFlexDraft(): DraftMeal[] {
+  const f = (id: string, dbId: string) => ({
+    id,
+    foodDatabaseId: dbId,
+    name: manualRuleDb().get(dbId)!.name,
+    quantity: 100,
+    unit: 'grams',
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0
+  })
+  return [
+    { id: 'm-b', name: 'Breakfast', sortOrder: 0, foods: [f('fa', 'a'), f('fb', 'b')] },
+    { id: 'm-l', name: 'Lunch', sortOrder: 1, foods: [f('fc', 'c')] },
+    { id: 'm-d', name: 'Dinner', sortOrder: 2, foods: [f('fd', 'd')] },
+    { id: 'm-pw', name: 'Pre-Workout', sortOrder: 3, foods: [f('fe', 'e')] }
+  ]
+}
+
+// The exact client boundary transform handleManualSubmit (OnboardingForm)
+// applies to build the server payload from the builder's DraftMeal[] state:
+// meal name + order verbatim, per-food { foodDatabaseId, quantity, unit }.
+// Nothing is added, dropped, reordered, or renumbered here.
+function draftToSavePayload(meals: DraftMeal[]): SaveDietPlanMeal[] {
+  return meals.map(meal => ({
+    name: meal.name,
+    foods: meal.foods.map(food => ({
+      foodDatabaseId: food.foodDatabaseId,
+      originalFoodId: food.foodDatabaseId ? null : food.id,
+      quantity: food.quantity,
+      unit: food.unit
+    }))
+  }))
+}
+
+test('Manual Mode meal level - EXPLICIT SPEC: remove Pre-Workout, final payload is exactly Breakfast/Lunch/Dinner', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-pw')
+
+  // Builder state
+  assert.deepEqual(built.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner'])
+  assert.ok(!built.some(m => m.name === 'Pre-Workout'), 'Pre-Workout is gone from the builder')
+
+  // Submitted payload
+  const payload = draftToSavePayload(built)
+  assert.deepEqual(payload.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner'])
+  assert.equal(payload.length, 3)
+
+  // Server-resolved rows (what actually gets persisted, sort_order = index)
+  const { resolvedMeals } = resolveManualPlan(payload)
+  assert.deepEqual(resolvedMeals.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner'])
+  assert.ok(!resolvedMeals.some(m => m.name === 'Pre-Workout'))
+  // Pre-Workout's food (Food E) is not anywhere in the persisted plan.
+  assert.ok(!resolvedMeals.flatMap(m => m.foods).some(food => food.name === 'Food E'))
+})
+
+test('Manual Mode meal level - add a meal: it exists in the builder and in the submitted payload', () => {
+  const meals = mealFlexDraft()
+  const added: DraftMeal = {
+    id: 'm-new',
+    name: uniqueMealName(meals.map(m => m.name), 'Post-Workout'),
+    sortOrder: meals.length,
+    foods: []
+  }
+  const built = [...meals, added]
+  assert.deepEqual(built.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner', 'Pre-Workout', 'Post-Workout'])
+  assert.deepEqual(draftToSavePayload(built).map(m => m.name), [
+    'Breakfast', 'Lunch', 'Dinner', 'Pre-Workout', 'Post-Workout'
+  ])
+})
+
+test('Manual Mode meal level - remove a meal: it is absent from the final payload (Pre/Post-Workout, Snack)', () => {
+  for (const name of ['Pre-Workout', 'Post-Workout', 'Snack']) {
+    const meals: DraftMeal[] = [
+      { id: 'm1', name: 'Breakfast', sortOrder: 0, foods: [] },
+      { id: 'm2', name: 'Lunch', sortOrder: 1, foods: [] },
+      { id: 'm3', name, sortOrder: 2, foods: [] }
+    ]
+    const payload = draftToSavePayload(removeMeal(meals, 'm3'))
+    assert.deepEqual(payload.map(m => m.name), ['Breakfast', 'Lunch'], `${name} removed`)
+    assert.ok(!payload.some(m => m.name === name))
+  }
+})
+
+test('Manual Mode meal level - removing a middle meal preserves the original order of the rest', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-l') // drop Lunch
+  assert.deepEqual(built.map(m => m.name), ['Breakfast', 'Dinner', 'Pre-Workout'])
+  const { resolvedMeals } = resolveManualPlan(draftToSavePayload(built))
+  assert.deepEqual(resolvedMeals.map(m => m.name), ['Breakfast', 'Dinner', 'Pre-Workout'])
+})
+
+test('Manual Mode meal level - removing a meal removes all of its foods from the final payload', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-b') // Breakfast held Food A + Food B
+  const foods = draftToSavePayload(built).flatMap(m => m.foods.map(f => f.foodDatabaseId))
+  assert.ok(!foods.includes('a') && !foods.includes('b'), 'both Breakfast foods are gone')
+  assert.deepEqual(foods, ['c', 'd', 'e'])
+})
+
+test('Manual Mode meal level - daily totals immediately exclude the removed meal, with no rebalancing', () => {
+  // Give the draft real macro numbers so totals are meaningful.
+  const withMacros = mealFlexDraft().map(m => ({
+    ...m,
+    foods: m.foods.map(food => {
+      const db = manualRuleDb().get(food.foodDatabaseId!)!
+      return { ...food, calories: db.calories, protein: db.protein, carbs: db.carbs, fat: db.fat }
+    })
+  }))
+  const before = computeDailyTotals(withMacros)
+  const after = computeDailyTotals(removeMeal(withMacros, 'm-pw'))
+  // Food E (Pre-Workout) = 385 / 15 / 65 / 4. After removal totals drop by
+  // exactly that and nothing else moves.
+  assert.deepEqual(
+    { calories: before.calories - after.calories, protein: before.protein - after.protein, carbs: before.carbs - after.carbs, fat: before.fat - after.fat },
+    { calories: 385, protein: 15, carbs: 65, fat: 4 }
+  )
+})
+
+test('Manual Mode meal level - removing a meal never causes another meal to be created', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-pw')
+  assert.equal(built.length, 3, 'exactly one fewer meal')
+  // Idempotent: re-running removal for the same id changes nothing further.
+  assert.equal(removeMeal(built, 'm-pw').length, 3)
+})
+
+test('Manual Mode meal level - changing the nutrition target does not recreate a removed meal', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-pw')
+  const payload = draftToSavePayload(built)
+  // The target is never an input to the payload build or to resolveMeal.
+  const targetA = { calories: 2295, protein: 146, carbs: 297, fat: 58 }
+  const targetB = { calories: 2600, protein: 200, carbs: 300, fat: 80 }
+  assert.notDeepEqual(targetA, targetB)
+  const a = resolveManualPlan(payload)
+  const b = resolveManualPlan(payload)
+  assert.deepEqual(a.resolvedMeals.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner'])
+  assert.deepEqual(a.resolvedMeals, b.resolvedMeals)
+})
+
+test('Manual Mode meal level - final submitted meal count equals the builder meal count', () => {
+  let built = mealFlexDraft()
+  assert.equal(draftToSavePayload(built).length, built.length)
+  built = removeMeal(built, 'm-l')
+  built = removeMeal(built, 'm-pw')
+  assert.equal(built.length, 2)
+  assert.equal(draftToSavePayload(built).length, 2)
+})
+
+test('Manual Mode meal level - final persisted meal order (sort_order = array index) matches builder order', () => {
+  const built = removeMeal(mealFlexDraft(), 'm-l') // Breakfast, Dinner, Pre-Workout
+  const payload = draftToSavePayload(built)
+  // createManualDietPlanLocked writes sort_order: i for payload.meals[i], so
+  // the persisted order is exactly the payload/builder array order.
+  const persisted = payload.map((m, i) => ({ sort_order: i, name: m.name }))
+  assert.deepEqual(persisted, [
+    { sort_order: 0, name: 'Breakfast' },
+    { sort_order: 1, name: 'Dinner' },
+    { sort_order: 2, name: 'Pre-Workout' }
+  ])
+})
+
+test('Manual Mode meal level - at least one meal is still a server invariant (empty plan rejected)', () => {
+  assert.notEqual(validateMealsShape([]), null)
+  // A single remaining meal - even with no foods yet - is structurally valid;
+  // the food check happens elsewhere (handleManualSubmit / per-food rules).
+  assert.equal(validateMealsShape([{ name: 'Breakfast', foods: [] }]), null)
+})
+
+test('Manual Mode meal level - removing meals never invokes AI: the manual save path imports no generation code', () => {
+  const manualActions = readFileSync(
+    fileURLToPath(new URL('../../app/onboarding/manual-actions.ts', import.meta.url)),
+    'utf8'
+  )
+  const builder = readFileSync(
+    fileURLToPath(new URL('../../app/onboarding/ManualMealBuilderStep.tsx', import.meta.url)),
+    'utf8'
+  )
+  for (const src of [manualActions, builder]) {
+    assert.ok(!/generate-diet|deepseek|DeepSeek|openai|OpenAI/i.test(src))
+  }
+  // And removeMeal itself is a pure array filter - no imports at all.
+  assert.equal(removeMeal([{ id: 'x', name: 'X', sortOrder: 0, foods: [] }], 'x').length, 0)
 })

@@ -7,6 +7,7 @@ import {
   classifyTarget,
   getFoodBadges,
   moveFood,
+  removeMeal,
   uniqueMealName,
   defaultMealNamesForCount,
   type DraftMeal
@@ -177,6 +178,56 @@ test('moveFood - is a no-op when the target meal does not exist', () => {
   const meals = [meal('dinner', 'Dinner', [food('f1', 'Chicken', 150, 180, 33.75, 0, 3.9)])]
   const result = moveFood(meals, 'dinner', 'f1', 'does-not-exist')
   assert.deepStrictEqual(result, meals)
+})
+
+test('removeMeal - deletes the named meal and every food in it, leaving the rest in order', () => {
+  const meals = [
+    meal('b', 'Breakfast', [food('f1', 'Oats', 80, 300, 10, 55, 5)]),
+    meal('l', 'Lunch', [food('f2', 'Chicken', 200, 330, 62, 0, 7)]),
+    meal('d', 'Dinner', [food('f3', 'Rice', 150, 200, 4, 44, 0)]),
+    meal('pw', 'Pre-Workout', [food('f4', 'Banana', 120, 105, 1, 27, 0)])
+  ]
+  const result = removeMeal(meals, 'pw')
+  assert.deepStrictEqual(result.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner'])
+  assert.ok(!result.some(m => m.foods.some(f => f.id === 'f4')), 'the removed meal\'s food is gone too')
+  // The surviving meals are the exact same objects, untouched.
+  assert.strictEqual(result[0], meals[0])
+  assert.strictEqual(result[1], meals[1])
+  assert.strictEqual(result[2], meals[2])
+})
+
+test('removeMeal - removing a middle meal preserves the original order of the rest', () => {
+  const meals = [
+    meal('b', 'Breakfast', []),
+    meal('l', 'Lunch', []),
+    meal('d', 'Dinner', []),
+    meal('pw', 'Pre-Workout', [])
+  ]
+  assert.deepStrictEqual(
+    removeMeal(meals, 'l').map(m => m.name),
+    ['Breakfast', 'Dinner', 'Pre-Workout']
+  )
+})
+
+test('removeMeal - is a no-op (same reference) when the id is not present, and never adds a meal', () => {
+  const meals = [meal('b', 'Breakfast', []), meal('l', 'Lunch', [])]
+  assert.strictEqual(removeMeal(meals, 'nope'), meals)
+  assert.strictEqual(removeMeal(meals, 'b').length, 1, 'exactly one fewer meal - nothing is recreated')
+})
+
+test('removeMeal - daily totals immediately drop the removed meal\'s contribution and nothing else', () => {
+  const meals = [
+    meal('b', 'Breakfast', [food('f1', 'Oats', 80, 300, 10, 55, 5)]),
+    meal('l', 'Lunch', [food('f2', 'Chicken', 200, 330, 62, 0, 7)]),
+    meal('pw', 'Pre-Workout', [food('f3', 'Banana', 120, 105, 1, 27, 0)])
+  ]
+  const before = computeDailyTotals(meals)
+  assert.deepStrictEqual(before, { calories: 735, protein: 73, carbs: 82, fat: 12 })
+
+  const after = computeDailyTotals(removeMeal(meals, 'pw'))
+  // Exactly Breakfast + Lunch - the Pre-Workout banana no longer counts,
+  // and nothing was rebalanced to compensate.
+  assert.deepStrictEqual(after, { calories: 630, protein: 72, carbs: 55, fat: 12 })
 })
 
 test('computeMealTotals - sums foods within a meal (macro recalculation)', () => {

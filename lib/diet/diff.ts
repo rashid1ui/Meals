@@ -163,6 +163,18 @@ export function classifyTarget(actual: number, target: number): TargetComparison
   return { status, diff, diffPct }
 }
 
+// Removes an entire meal slot - and every food assigned to it - from the
+// builder tree by id. A no-op (returns `meals` as-is) when the id isn't
+// present. The order of the remaining meals is preserved exactly: their
+// array positions are what persistence writes as sort_order, so nothing is
+// renumbered here. Keeping at least one meal is the caller's responsibility
+// (the Manual Meal Builder hides the control on the last remaining meal) -
+// validateMealsShape is the server-side backstop that rejects an empty plan.
+export function removeMeal(meals: DraftMeal[], mealId: string): DraftMeal[] {
+  if (!meals.some(m => m.id === mealId)) return meals
+  return meals.filter(m => m.id !== mealId)
+}
+
 // Moves a food from one meal to another by id, unchanged otherwise - the
 // food's quantity/unit/macros are carried over verbatim (no recompute), so
 // computeMealTotals/computeDailyTotals reflect the move for free once called

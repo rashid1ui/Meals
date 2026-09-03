@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { calculateFoodMacros } from '@/lib/nutrition/calculator'
-import { computeDailyTotals, moveFood, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { computeDailyTotals, moveFood, removeMeal, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import MealCard from '@/app/dashboard/components/MealCard'
 import AddMealModal from '@/app/dashboard/components/AddMealModal'
@@ -116,6 +116,18 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
     setMeals(current => moveFood(current, sourceMealId, foodId, targetMealId))
   }
 
+  // Removes an entire meal the user no longer wants (Pre-Workout, a Snack,
+  // anything - nothing here is product-mandatory). No confirmation dialog:
+  // it's a deliberate icon-button press, consistent with per-food removal,
+  // and the target/guidance is only ever a reference. The last remaining
+  // meal keeps no remove control (see the MealCard prop below), so this
+  // can't empty the plan below validateMealsShape's server minimum. Nothing
+  // recreates the meal afterward - the seed only ever runs once, when the
+  // manual path is first chosen (OnboardingForm.handleSelectManualPath).
+  const handleRemoveMeal = (mealId: string) => {
+    setMeals(current => (current.length <= 1 ? current : removeMeal(current, mealId)))
+  }
+
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
@@ -155,6 +167,7 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
             onMoveFood={(foodId, targetMealId) => handleMoveFood(meal.id, foodId, targetMealId)}
             otherMeals={meals.filter(m => m.id !== meal.id).map(m => ({ id: m.id, name: m.name }))}
             onFoodCreated={onFoodCreated}
+            onRemoveMeal={meals.length > 1 ? () => handleRemoveMeal(meal.id) : undefined}
             dailyTargets={targets}
             dailyTotals={dailyTotals}
           />
