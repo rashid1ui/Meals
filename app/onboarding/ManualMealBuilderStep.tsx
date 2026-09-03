@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { calculateFoodMacros } from '@/lib/nutrition/calculator'
-import { computeDailyTotals, moveFood, removeMeal, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
+import { computeDailyTotals, moveFood, moveMeal, removeMeal, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import type { FoodOption } from '@/app/dashboard/components/DietEditor'
 import MealCard from '@/app/dashboard/components/MealCard'
 import AddMealModal from '@/app/dashboard/components/AddMealModal'
@@ -128,6 +128,16 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
     setMeals(current => (current.length <= 1 ? current : removeMeal(current, mealId)))
   }
 
+  // Reorders one meal by a single position so the plan matches the user's
+  // real daily schedule. Pure swap of two adjacent slots (lib/diet/diff.ts's
+  // moveMeal) - foods, quantities, units, nutrition and names are all
+  // untouched; the new array order is what handleManualSubmit submits and
+  // what the server writes as sort_order. Nothing here sorts by meal
+  // type/calories/workout timing.
+  const handleMoveMeal = (mealId: string, direction: 'up' | 'down') => {
+    setMeals(current => moveMeal(current, mealId, direction))
+  }
+
   const handleAddMeal = (name: string) => {
     const newMeal: DraftMeal = {
       id: nextTempId('new-meal'),
@@ -155,7 +165,7 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {meals.map(meal => (
+        {meals.map((meal, index) => (
           <MealCard
             key={meal.id}
             meal={meal}
@@ -168,6 +178,8 @@ export default function ManualMealBuilderStep({ meals, setMeals, foodOptions, ta
             otherMeals={meals.filter(m => m.id !== meal.id).map(m => ({ id: m.id, name: m.name }))}
             onFoodCreated={onFoodCreated}
             onRemoveMeal={meals.length > 1 ? () => handleRemoveMeal(meal.id) : undefined}
+            onMoveMealUp={index > 0 ? () => handleMoveMeal(meal.id, 'up') : undefined}
+            onMoveMealDown={index < meals.length - 1 ? () => handleMoveMeal(meal.id, 'down') : undefined}
             dailyTargets={targets}
             dailyTotals={dailyTotals}
           />

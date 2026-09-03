@@ -10,7 +10,7 @@ import FoodPickerModal from '@/components/food/FoodPickerModal'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
-import { PlusIcon, CheckIcon, CloseIcon } from '@/components/ui/icons'
+import { PlusIcon, CheckIcon, CloseIcon, ChevronDownIcon } from '@/components/ui/icons'
 
 const STATUS_TEXT_CLASS: Record<MealTrackingStatus, string> = {
   none: 'text-muted-foreground hover:text-foreground',
@@ -55,6 +55,12 @@ type Props = {
   // passes it, and the Manual Meal Builder omits it on the last remaining
   // meal so a plan can never be emptied below validateMealsShape's minimum.
   onRemoveMeal?: () => void
+  // Reorder this meal one position within the builder tree. Undefined for a
+  // direction that is unavailable (first meal has no "up", last has no
+  // "down") - the button still renders, disabled. Both undefined omits the
+  // whole group (dashboard editor, or a single-meal plan).
+  onMoveMealUp?: () => void
+  onMoveMealDown?: () => void
   // Undefined for a meal that hasn't been saved yet (e.g. added but not
   // saved this session) - tracking only ever applies to persisted meals,
   // so the toggle is simply omitted rather than shown disabled.
@@ -86,6 +92,8 @@ export default function MealCard({
   otherMeals,
   onFoodCreated,
   onRemoveMeal,
+  onMoveMealUp,
+  onMoveMealDown,
   completion,
   isNext = false,
   dailyTargets,
@@ -157,15 +165,41 @@ export default function MealCard({
             {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
             <span className="truncate">{formatMealName(meal.name)}</span>
           </h3>
-          {onRemoveMeal && (
-            <button
-              type="button"
-              onClick={onRemoveMeal}
-              aria-label={`Remove ${formatMealName(meal.name)} meal`}
-              className="shrink-0 -mt-1.5 -mr-1.5 w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <CloseIcon size={16} />
-            </button>
+          {(onMoveMealUp || onMoveMealDown || onRemoveMeal) && (
+            <div className="shrink-0 -mt-1.5 -mr-1.5 flex items-center">
+              {(onMoveMealUp || onMoveMealDown) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={onMoveMealUp}
+                    disabled={!onMoveMealUp}
+                    aria-label={`Move ${formatMealName(meal.name)} up`}
+                    className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <ChevronDownIcon size={16} className="rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onMoveMealDown}
+                    disabled={!onMoveMealDown}
+                    aria-label={`Move ${formatMealName(meal.name)} down`}
+                    className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <ChevronDownIcon size={16} />
+                  </button>
+                </>
+              )}
+              {onRemoveMeal && (
+                <button
+                  type="button"
+                  onClick={onRemoveMeal}
+                  aria-label={`Remove ${formatMealName(meal.name)} meal`}
+                  className="w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <CloseIcon size={16} />
+                </button>
+              )}
+            </div>
           )}
         </div>
 

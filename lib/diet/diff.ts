@@ -175,6 +175,26 @@ export function removeMeal(meals: DraftMeal[], mealId: string): DraftMeal[] {
   return meals.filter(m => m.id !== mealId)
 }
 
+// Reorders one meal by a single position - 'up' swaps it with the meal
+// immediately before it, 'down' with the meal immediately after. Only those
+// two adjacent slots change; every other meal, and every meal's foods,
+// stays the exact same object. A no-op (returns `meals` as-is) when the id
+// isn't found, or when the meal is already at the relevant edge (first meal
+// 'up', last meal 'down'). The returned array order is authoritative:
+// handleManualSubmit maps it 1:1 and the server writes sort_order straight
+// from the array index, so no target/type/timing sort is ever applied.
+export function moveMeal(meals: DraftMeal[], mealId: string, direction: 'up' | 'down'): DraftMeal[] {
+  const index = meals.findIndex(m => m.id === mealId)
+  if (index === -1) return meals
+
+  const targetIndex = direction === 'up' ? index - 1 : index + 1
+  if (targetIndex < 0 || targetIndex >= meals.length) return meals
+
+  const next = meals.slice()
+  ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+  return next
+}
+
 // Moves a food from one meal to another by id, unchanged otherwise - the
 // food's quantity/unit/macros are carried over verbatim (no recompute), so
 // computeMealTotals/computeDailyTotals reflect the move for free once called

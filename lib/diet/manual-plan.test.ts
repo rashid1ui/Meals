@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolveMeal, validateMealsShape, type SaveDietPlanMeal } from './save-plan'
-import { computeMealTotals, computeDailyTotals, removeMeal, uniqueMealName, type DraftMeal } from './diff'
+import { computeMealTotals, computeDailyTotals, moveMeal, removeMeal, uniqueMealName, type DraftMeal } from './diff'
 import { calculateFoodMacros, type FoodMacro } from '../nutrition/calculator'
 import { splitProteinByType } from '../nutrition/proteinType'
 import { splitCarbsByType } from '../nutrition/carbType'
@@ -600,4 +600,129 @@ test('Manual Mode meal level - removing meals never invokes AI: the manual save 
   }
   // And removeMeal itself is a pure array filter - no imports at all.
   assert.equal(removeMeal([{ id: 'x', name: 'X', sortOrder: 0, foods: [] }], 'x').length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// Manual Mode product rule (meal ORDER): the user's arrangement is
+// authoritative. moveMeal only swaps adjacent positions; the array order it
+// produces flows verbatim through draftToSavePayload -> resolveMeal, and the
+// server writes sort_order straight from the array index. Nothing sorts by
+// meal type, default order, calories, target, or workout timing.
+// ---------------------------------------------------------------------------
+
+// Five meals in the spec's initial order, foods reuse manualRuleDb() rows.
+function reorderDraft(): DraftMeal[] {
+  const f = (id: string, dbId: string) => ({
+    id,
+    foodDatabaseId: dbId,
+    name: manualRuleDb().get(dbId)!.name,
+    quantity: 100,
+    unit: 'grams',
+    calories: manualRuleDb().get(dbId)!.calories,
+    protein: manualRuleDb().get(dbId)!.protein,
+    carbs: manualRuleDb().get(dbId)!.carbs,
+    fat: manualRuleDb().get(dbId)!.fat
+  })
+  return [
+    { id: 'm-b', name: 'Breakfast', sortOrder: 0, foods: [f('fa', 'a'), f('fb', 'b')] },
+    { id: 'm-l', name: 'Lunch', sortOrder: 1, foods: [f('fc', 'c')] },
+    { id: 'm-d', name: 'Dinner', sortOrder: 2, foods: [f('fd', 'd')] },
+    { id: 'm-pw', name: 'Pre-Workout', sortOrder: 3, foods: [f('fe', 'e')] },
+    { id: 'm-post', name: 'Post-Workout', sortOrder: 4, foods: [f('ff', 'f')] }
+  ]
+}
+
+test('Manual Mode meal order - EXPLICIT SPEC: Post-Workout up one, then Pre-Workout up two, contents unchanged', () => {
+  let meals = reorderDraft()
+  const totalsBefore = computeDailyTotals(meals)
+  const pwFoodsBefore = JSON.parse(JSON.stringify(meals.find(m => m.id === 'm-pw')!.foods))
+  const postFoodsBefore = JSON.parse(JSON.stringify(meals.find(m => m.id === 'm-post')!.foods))
+
+  meals = moveMeal(meals, 'm-post', 'up')
+  assert.deepEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner', 'Post-Workout', 'Pre-Workout'])
+
+  meals = moveMeal(meals, 'm-pw', 'up')
+  meals = moveMeal(meals, 'm-pw', 'up')
+  assert.deepEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+
+  // Both swapped meals keep their exact foods/quantities/units/macros.
+  assert.deepEqual(meals.find(m => m.id === 'm-pw')!.foods, pwFoodsBefore)
+  assert.deepEqual(meals.find(m => m.id === 'm-post')!.foods, postFoodsBefore)
+  assert.deepEqual(computeDailyTotals(meals), totalsBefore)
+
+  // Submitted payload + server-resolved rows follow the same final order.
+  const payload = draftToSavePayload(meals)
+  assert.deepEqual(payload.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+  const { resolvedMeals } = resolveManualPlan(payload)
+  assert.deepEqual(resolvedMeals.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+})
+
+test('Manual Mode meal order - final submitted payload preserves the builder order', () => {
+  const meals = moveMeal(moveMeal(reorderDraft(), 'm-pw', 'up'), 'm-post', 'up')
+  // Builder: Breakfast, Lunch, Pre-Workout, Post-Workout, Dinner
+  assert.deepEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Post-Workout', 'Dinner'])
+  assert.deepEqual(
+    draftToSavePayload(meals).map(m => m.name),
+    ['Breakfast', 'Lunch', 'Pre-Workout', 'Post-Workout', 'Dinner']
+  )
+})
+
+test('Manual Mode meal order - persisted sort_order (= array index) matches the final builder order', () => {
+  const meals = moveMeal(reorderDraft(), 'm-post', 'up') // ...Post-Workout, Pre-Workout
+  const payload = draftToSavePayload(meals)
+  // createManualDietPlanLocked writes sort_order: i for payload.meals[i].
+  const persisted = payload.map((m, i) => ({ sort_order: i, name: m.name }))
+  assert.deepEqual(persisted, [
+    { sort_order: 0, name: 'Breakfast' },
+    { sort_order: 1, name: 'Lunch' },
+    { sort_order: 2, name: 'Dinner' },
+    { sort_order: 3, name: 'Post-Workout' },
+    { sort_order: 4, name: 'Pre-Workout' }
+  ])
+})
+
+test('Manual Mode meal order - the Review screen renders meals in builder order, with no sort', () => {
+  const meals = moveMeal(reorderDraft(), 'm-d', 'down') // Dinner below Pre-Workout
+  const builderOrder = meals.map(m => m.name)
+  assert.deepEqual(builderOrder, ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+
+  // FinalReviewStep renders `meals.map(...)` directly - assert the component
+  // applies no sort/ordering of its own.
+  const review = readFileSync(
+    fileURLToPath(new URL('../../app/onboarding/FinalReviewStep.tsx', import.meta.url)),
+    'utf8'
+  )
+  assert.ok(/meals\.map\(/.test(review), 'Review maps meals directly')
+  assert.ok(!/\.sort\(/.test(review), 'Review never sorts meals')
+})
+
+test('Manual Mode meal order - a deliberately non-default order (Dinner before Lunch) survives end to end', () => {
+  const meals = moveMeal(reorderDraft(), 'm-d', 'up') // Breakfast, Dinner, Lunch, Pre, Post
+  const { resolvedMeals } = resolveManualPlan(draftToSavePayload(meals))
+  assert.deepEqual(resolvedMeals.map(m => m.name), ['Breakfast', 'Dinner', 'Lunch', 'Pre-Workout', 'Post-Workout'])
+  // No automatic re-sort back toward a "Breakfast/Lunch/Dinner" default.
+})
+
+test('Manual Mode meal order - nutrition totals are unchanged by any reorder', () => {
+  const base = reorderDraft()
+  const totals = computeDailyTotals(base)
+  const shuffled = moveMeal(moveMeal(moveMeal(base, 'm-post', 'up'), 'm-pw', 'up'), 'm-b', 'down')
+  assert.deepEqual(computeDailyTotals(shuffled), totals)
+  // And the same set of meals is still present - nothing added or lost.
+  assert.deepEqual([...shuffled.map(m => m.id)].sort(), ['m-b', 'm-d', 'm-l', 'm-post', 'm-pw'])
+})
+
+test('Manual Mode meal order - remove then reorder, and add then reorder, both compose cleanly', () => {
+  // Remove Pre-Workout, then lift Post-Workout above Dinner.
+  let a = removeMeal(reorderDraft(), 'm-pw')
+  a = moveMeal(a, 'm-post', 'up')
+  assert.deepEqual(draftToSavePayload(a).map(m => m.name), ['Breakfast', 'Lunch', 'Post-Workout', 'Dinner'])
+
+  // Append a Snack, then move it up two positions.
+  let b: DraftMeal[] = [...reorderDraft(), { id: 'm-snack', name: 'Snack', sortOrder: 5, foods: [] }]
+  b = moveMeal(moveMeal(b, 'm-snack', 'up'), 'm-snack', 'up')
+  assert.deepEqual(
+    draftToSavePayload(b).map(m => m.name),
+    ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-Workout', 'Post-Workout']
+  )
 })

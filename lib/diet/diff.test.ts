@@ -7,6 +7,7 @@ import {
   classifyTarget,
   getFoodBadges,
   moveFood,
+  moveMeal,
   removeMeal,
   uniqueMealName,
   defaultMealNamesForCount,
@@ -228,6 +229,118 @@ test('removeMeal - daily totals immediately drop the removed meal\'s contributio
   // Exactly Breakfast + Lunch - the Pre-Workout banana no longer counts,
   // and nothing was rebalanced to compensate.
   assert.deepStrictEqual(after, { calories: 630, protein: 72, carbs: 55, fat: 12 })
+})
+
+function fiveMeals() {
+  return [
+    meal('b', 'Breakfast', [food('f1', 'Oats', 80, 300, 10, 55, 5)]),
+    meal('l', 'Lunch', [food('f2', 'Chicken', 200, 330, 62, 0, 7)]),
+    meal('d', 'Dinner', [food('f3', 'Rice', 150, 200, 4, 44, 0)]),
+    meal('pw', 'Pre-Workout', [food('f4', 'Banana', 120, 105, 1, 27, 0)]),
+    meal('post', 'Post-Workout', [food('f5', 'Whey', 30, 120, 24, 3, 1)])
+  ]
+}
+
+test('moveMeal - up swaps only the meal with the one before it; every other meal is the same object', () => {
+  const meals = fiveMeals()
+  const result = moveMeal(meals, 'pw', 'up') // Pre-Workout (idx 3) <-> Dinner (idx 2)
+  assert.deepStrictEqual(result.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+  assert.strictEqual(result[0], meals[0])
+  assert.strictEqual(result[1], meals[1])
+  assert.strictEqual(result[4], meals[4])
+  // The two swapped meals are the exact same objects, just repositioned.
+  assert.strictEqual(result[2], meals[3])
+  assert.strictEqual(result[3], meals[2])
+})
+
+test('moveMeal - down swaps only the meal with the one after it', () => {
+  const meals = fiveMeals()
+  const result = moveMeal(meals, 'l', 'down') // Lunch (idx 1) <-> Dinner (idx 2)
+  assert.deepStrictEqual(result.map(m => m.name), ['Breakfast', 'Dinner', 'Lunch', 'Pre-Workout', 'Post-Workout'])
+})
+
+test('moveMeal - moving the first meal up is a no-op (same reference)', () => {
+  const meals = fiveMeals()
+  assert.strictEqual(moveMeal(meals, 'b', 'up'), meals)
+})
+
+test('moveMeal - moving the last meal down is a no-op (same reference)', () => {
+  const meals = fiveMeals()
+  assert.strictEqual(moveMeal(meals, 'post', 'down'), meals)
+})
+
+test('moveMeal - an unknown meal id is a no-op (same reference)', () => {
+  const meals = fiveMeals()
+  assert.strictEqual(moveMeal(meals, 'nope', 'up'), meals)
+  assert.strictEqual(moveMeal(meals, 'nope', 'down'), meals)
+})
+
+test('moveMeal - moving a middle meal leaves all non-adjacent meals in their original order', () => {
+  const meals = fiveMeals()
+  const result = moveMeal(meals, 'd', 'up') // Dinner up: B, L, D, PW, Post -> B, D, L, PW, Post
+  assert.deepStrictEqual(result.map(m => m.name), ['Breakfast', 'Dinner', 'Lunch', 'Pre-Workout', 'Post-Workout'])
+  assert.strictEqual(result[0], meals[0])
+  assert.strictEqual(result[3], meals[3])
+  assert.strictEqual(result[4], meals[4])
+})
+
+test('moveMeal - meal contents (foods, quantities, units, macros) are byte-identical after a move', () => {
+  const meals = fiveMeals()
+  const before = JSON.parse(JSON.stringify(meals))
+  const result = moveMeal(meals, 'post', 'up')
+  // Same set of meals by name, same foods inside each, nothing renamed.
+  for (const original of before) {
+    const moved = result.find(m => m.id === original.id)
+    assert.ok(moved, `${original.name} still present`)
+    assert.deepStrictEqual(moved, original, `${original.name} unchanged`)
+  }
+})
+
+test('moveMeal - no meal is duplicated or lost by repeated moves', () => {
+  let meals = fiveMeals()
+  meals = moveMeal(meals, 'post', 'up')
+  meals = moveMeal(meals, 'post', 'up')
+  meals = moveMeal(meals, 'b', 'down')
+  meals = moveMeal(meals, 'b', 'up') // back where it started
+  assert.deepStrictEqual([...meals.map(m => m.id)].sort(), ['b', 'd', 'l', 'post', 'pw'])
+  assert.strictEqual(new Set(meals.map(m => m.id)).size, 5)
+})
+
+test('moveMeal - daily nutrition totals are identical before and after a reorder', () => {
+  const meals = fiveMeals()
+  assert.deepStrictEqual(computeDailyTotals(moveMeal(meals, 'pw', 'up')), computeDailyTotals(meals))
+})
+
+test('moveMeal - explicit spec scenario: Post-Workout up one, then Pre-Workout up two', () => {
+  let meals = fiveMeals() // Breakfast, Lunch, Dinner, Pre-Workout, Post-Workout
+  const totals = computeDailyTotals(meals)
+
+  meals = moveMeal(meals, 'post', 'up')
+  assert.deepStrictEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner', 'Post-Workout', 'Pre-Workout'])
+
+  meals = moveMeal(meals, 'pw', 'up')
+  meals = moveMeal(meals, 'pw', 'up')
+  assert.deepStrictEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Pre-Workout', 'Dinner', 'Post-Workout'])
+
+  // Every meal's foods/quantities/macros are untouched; only order changed.
+  assert.deepStrictEqual(meals.find(m => m.id === 'pw')!.foods, fiveMeals()[3].foods)
+  assert.deepStrictEqual(meals.find(m => m.id === 'post')!.foods, fiveMeals()[4].foods)
+  assert.deepStrictEqual(computeDailyTotals(meals), totals)
+})
+
+test('moveMeal - composes with removeMeal: remove a meal, then reorder the rest', () => {
+  let meals = fiveMeals()
+  meals = removeMeal(meals, 'pw')
+  meals = moveMeal(meals, 'post', 'up') // Post-Workout above Dinner
+  assert.deepStrictEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Post-Workout', 'Dinner'])
+})
+
+test('moveMeal - composes with an added meal: append, then reorder it into place', () => {
+  let meals = fiveMeals()
+  meals = [...meals, meal('snack', 'Snack', [])]
+  meals = moveMeal(meals, 'snack', 'up')
+  meals = moveMeal(meals, 'snack', 'up')
+  assert.deepStrictEqual(meals.map(m => m.name), ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-Workout', 'Post-Workout'])
 })
 
 test('computeMealTotals - sums foods within a meal (macro recalculation)', () => {
