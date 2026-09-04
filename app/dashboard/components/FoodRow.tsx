@@ -15,7 +15,7 @@ import { isValidQuantity } from '@/lib/nutrition/calculator'
 import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, MinusIcon, CloseIcon, ChevronDownIcon } from '@/components/ui/icons'
-import { getFoodEmoji } from '@/lib/food/foodEmojiMap'
+import FoodThumb from '@/components/food/FoodThumb'
 import { formatMealName } from '@/lib/nutrition/workoutMeals'
 
 const QUANTITY_STEP = 10
@@ -223,15 +223,11 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
           aria-label={`${editing ? 'Collapse' : 'Edit'} ${food.name}`}
           className="min-w-0 flex-1 flex items-center gap-2.5 text-left rounded-control py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          {/* Thumbnail tile is hidden on the narrowest screens so it never
-              steals width from the food name (primary info). It returns at
-              ~480px where there is room for both. */}
-          <span
-            aria-hidden="true"
-            className="hidden min-[480px]:flex shrink-0 w-9 h-9 items-center justify-center rounded-chip bg-surface-elevated border border-border text-lg leading-none"
-          >
-            {getFoodEmoji(food.name)}
-          </span>
+          {/* Real food photo (falls back to the emoji tile when the food has
+              no stored image, or the image 404s). Stays a fixed square so
+              the row height never shifts; the food name keeps its own
+              min-w-0 column and wraps rather than truncating. */}
+          <FoodThumb food={dbFood} name={food.name} sizeClassName="w-10 h-10 sm:w-12 sm:h-12" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Wraps rather than truncating - the food name is primary

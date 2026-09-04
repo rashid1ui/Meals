@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { calculateFoodMacros, type FoodMacro } from '@/lib/nutrition/calculator'
+import type { FoodImageFields } from '@/lib/food/foodImage'
 import { diffMeals, moveFood, computeDailyTotals, uniqueMealName, type DraftMeal, type DraftFood } from '@/lib/diet/diff'
 import { saveDietPlan } from '../actions'
 import {
@@ -49,7 +50,10 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferencesDTO = {
 // fresh Set to every MealCard on every render.
 const EMPTY_SAVING_SET: ReadonlySet<string> = new Set()
 
-export interface FoodOption extends FoodMacro {
+// FoodImageFields adds the optional, nullable image_url / image_alt /
+// image_attribution columns (migration 0029) - presentation metadata only,
+// never read by any nutrition or tracking code path.
+export interface FoodOption extends FoodMacro, FoodImageFields {
   category: string
 }
 

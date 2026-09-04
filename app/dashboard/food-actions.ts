@@ -17,7 +17,10 @@ const ALLOWED_DISPLAY_UNITS = DISPLAY_UNIT_OPTIONS.map(o => o.value)
 const ALLOWED_PROTEIN_TYPES = ['animal', 'plant', 'supplement']
 const MAX_NUTRITION_PER_100 = 2000
 
-const FOOD_OPTION_COLUMNS = 'id, name, serving_size, serving_unit, calories, protein, carbs, fat, category, display_unit, grams_per_display_unit'
+// image_* are presentation-only (migration 0029). A newly created food has
+// them NULL - FoodThumb falls back to the emoji tile until
+// scripts/assign-food-images.ts assigns one. Creation never depends on them.
+const FOOD_OPTION_COLUMNS = 'id, name, serving_size, serving_unit, calories, protein, carbs, fat, category, display_unit, grams_per_display_unit, image_url, image_alt, image_attribution'
 
 // ilike treats % and _ as wildcards - escape them so a name containing
 // either (e.g. an existing "2% Milk") is matched literally, not as a

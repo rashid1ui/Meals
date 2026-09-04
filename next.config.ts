@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
+      // Real food photography for the meal tracker (components/food/FoodThumb.tsx).
+      // URLs are resolved once by scripts/assign-food-images.ts and stored on
+      // food_database.image_url - the app never calls the Pexels API at
+      // request time, it only renders these already-stored CDN URLs.
+      {
+        protocol: "https",
+        hostname: "images.pexels.com",
+      },
     ],
   },
 };

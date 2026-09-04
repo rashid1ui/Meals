@@ -5,6 +5,8 @@ import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import CreateFoodForm from '@/components/food/CreateFoodForm'
+import FoodThumb from '@/components/food/FoodThumb'
+import { anyFoodHasImage } from '@/lib/food/foodImage'
 import { calculateFoodMacros, isValidQuantity } from '@/lib/nutrition/calculator'
 import { toCanonicalGrams, requiresGramsPerUnit, unitLabel, type UnitConfig } from '@/lib/nutrition/units'
 import { servingDisplayFor } from '@/lib/food/servingDisplay'
@@ -163,15 +165,18 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
 
   return (
     <Modal onClose={onClose} labelledBy="food-picker-title" size="lg" sheet>
-      <div className="flex items-center justify-between mb-4">
-        <h3 id="food-picker-title" className="font-display text-xl font-bold text-foreground">
-          {selected ? selected.name : 'Add Food'}
-        </h3>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {selected && <FoodThumb food={selected} name={selected.name} sizeClassName="w-9 h-9" />}
+          <h3 id="food-picker-title" className="font-display text-xl font-bold text-foreground break-words min-w-0">
+            {selected ? selected.name : 'Add Food'}
+          </h3>
+        </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <CloseIcon size={18} />
         </button>
@@ -219,21 +224,24 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
                     key={food.id}
                     type="button"
                     onClick={() => selectFood(food)}
-                    className="text-left p-3 rounded-control border border-border bg-surface hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary space-y-1.5"
+                    className="flex gap-3 text-left p-2.5 rounded-control border border-border bg-surface hover:bg-surface-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-semibold text-sm text-foreground">{food.name}</span>
-                      <Badge variant={categoryBadgeVariant(food.category)} className="shrink-0">
-                        {categoryLabel(food.category)}
-                      </Badge>
+                    <FoodThumb food={food} name={food.name} sizeClassName="w-12 h-12" className="mt-0.5" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex items-start gap-1.5 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground min-w-0 flex-1">{food.name}</span>
+                        <Badge variant={categoryBadgeVariant(food.category)} className="shrink-0">
+                          {categoryLabel(food.category)}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-3 font-mono tabular-nums text-xs font-semibold">
+                        <span className="text-calories">{Math.round(display.calories)} kcal</span>
+                        <span className="text-protein">{Math.round(display.protein)}p</span>
+                        <span className="text-carbs">{Math.round(display.carbs)}c</span>
+                        <span className="text-fat">{Math.round(display.fat)}f</span>
+                      </div>
+                      <span className="block text-[11px] text-muted-foreground">{display.label}</span>
                     </div>
-                    <div className="flex flex-wrap gap-3 font-mono tabular-nums text-xs font-semibold">
-                      <span className="text-calories">{Math.round(display.calories)} kcal</span>
-                      <span className="text-protein">{Math.round(display.protein)}p</span>
-                      <span className="text-carbs">{Math.round(display.carbs)}c</span>
-                      <span className="text-fat">{Math.round(display.fat)}f</span>
-                    </div>
-                    <span className="block text-[11px] text-muted-foreground">{display.label}</span>
                   </button>
                 )
               })}
@@ -252,6 +260,20 @@ export default function FoodPickerModal({ foodOptions, onAdd, onClose, onFoodCre
             <PlusIcon size={14} />
             Can&apos;t find it? Add a new food
           </button>
+
+          {anyFoodHasImage(foodOptions) && (
+            <p className="text-[11px] text-muted-foreground">
+              Food photos via{' '}
+              <a
+                href="https://www.pexels.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                Pexels
+              </a>
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

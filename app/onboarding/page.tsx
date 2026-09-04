@@ -56,7 +56,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   const { data: manualFoodRows, error: manualFoodError } = await supabase
     .from('food_database')
     .select(
-      'id, name, category, protein_type, carb_type, serving_size, serving_unit, calories, protein, carbs, fat, display_unit, grams_per_display_unit'
+      'id, name, category, protein_type, carb_type, serving_size, serving_unit, calories, protein, carbs, fat, display_unit, grams_per_display_unit, image_url, image_alt, image_attribution'
     )
     .or('is_active.eq.true,category.eq.supplement')
     .order('name')
