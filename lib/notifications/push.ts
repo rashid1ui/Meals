@@ -8,7 +8,7 @@ import 'server-only'
 import webpush from 'web-push'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyPushError } from './pushErrors'
-import { validateVapidConfig, type VapidConfigValidation } from './vapid'
+import { validateVapidConfig, normalizeVapidSubject, type VapidConfigValidation } from './vapid'
 
 let configured = false
 
@@ -46,7 +46,10 @@ function ensureVapidConfigured() {
   }
 
   const { publicKey, privateKey, email } = readVapidConfigFromEnv()
-  webpush.setVapidDetails(`mailto:${email}`, publicKey!, privateKey!)
+  // normalizeVapidSubject accepts VAPID_EMAIL as either a bare address or a
+  // full `mailto:` URI and always yields exactly `mailto:<address>` - never
+  // the `mailto:mailto:` double-prefix that made web-push reject every send.
+  webpush.setVapidDetails(normalizeVapidSubject(email!), publicKey!, privateKey!)
   configured = true
 }
 

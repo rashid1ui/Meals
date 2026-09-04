@@ -51,6 +51,7 @@ function labelsFor(count: number): string[] {
 export default function RemindersStep({ value, onChange, mealNames }: Props) {
   const permission = useNotificationPermission()
   const [requesting, setRequesting] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
 
   const labels =
     mealNames && mealNames.length === value.perMeal.length
@@ -66,16 +67,22 @@ export default function RemindersStep({ value, onChange, mealNames }: Props) {
   // never on mount/effect.
   const handleEnableNotifications = async () => {
     setRequesting(true)
+    setPushError(null)
     try {
       const result = await Notification.requestPermission()
       notifyPermissionChanged()
       if (result === 'granted') {
         onChange({ ...value, enabled: true })
-        // Best-effort - a subscribe failure here shouldn't block onboarding;
-        // the user can still enable push later from Settings. Still logged
-        // so a silent failure is visible in the browser console.
+        // A subscribe failure doesn't block onboarding (in-tab reminders
+        // still work, and the user can retry from Settings) - but it does
+        // mean closed-tab push won't be delivered, so surface it here
+        // instead of leaving the user believing it's all set up.
+        // subscribeToPush also console.errors the specific failing stage.
         const pushResult = await subscribeToPush()
-        if (!pushResult.ok) console.error('[RemindersStep] push subscription failed:', pushResult.error)
+        if (!pushResult.ok) {
+          console.error('[RemindersStep] push subscription failed:', pushResult.error)
+          setPushError(pushResult.error || "Notifications couldn't be enabled on this device. Please try again.")
+        }
       }
     } finally {
       setRequesting(false)
@@ -118,6 +125,11 @@ export default function RemindersStep({ value, onChange, mealNames }: Props) {
                 Enable reminders
               </Button>
             </div>
+          )}
+          {pushError && (
+            <p className="text-xs text-error" role="alert">
+              {pushError}
+            </p>
           )}
         </div>
       )}

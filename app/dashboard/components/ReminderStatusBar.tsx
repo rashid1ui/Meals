@@ -23,6 +23,7 @@ type Props = {
 export default function ReminderStatusBar({ preferences, onPreferencesChange }: Props) {
   const permission = useNotificationPermission()
   const [enabling, setEnabling] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
 
   if (permission === 'unsupported') return null
 
@@ -31,6 +32,7 @@ export default function ReminderStatusBar({ preferences, onPreferencesChange }: 
   // result of a user gesture.
   const handleEnable = async () => {
     setEnabling(true)
+    setPushError(null)
     try {
       const result = await Notification.requestPermission()
       notifyPermissionChanged()
@@ -38,14 +40,17 @@ export default function ReminderStatusBar({ preferences, onPreferencesChange }: 
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
         const saved = await upsertNotificationPreferences({ remindersEnabled: true, timezone })
         if ('data' in saved) onPreferencesChange(saved.data)
-        // Best-effort: a failed subscribe (e.g. VAPID misconfigured) still
-        // leaves the in-tab Notification API path (useMealReminders.ts)
-        // working, so it must never block the preference save above -
-        // but it's still logged (subscribeToPush itself logs the specific
-        // stage that failed), so a silent failure is at least visible in
-        // the browser console instead of vanishing entirely.
+        // The in-tab Notification API path (useMealReminders.ts) still works
+        // even if this fails, so it must never block the preference save
+        // above - but a failed subscribe means closed-tab push will NOT be
+        // delivered, so the user has to be told rather than left believing
+        // notifications are fully set up. subscribeToPush also console.errors
+        // the specific failing stage.
         const pushResult = await subscribeToPush()
-        if (!pushResult.ok) console.error('[ReminderStatusBar] push subscription failed:', pushResult.error)
+        if (!pushResult.ok) {
+          console.error('[ReminderStatusBar] push subscription failed:', pushResult.error)
+          setPushError(pushResult.error || "Notifications couldn't be enabled on this device. Please try again.")
+        }
       }
     } finally {
       setEnabling(false)
@@ -62,34 +67,48 @@ export default function ReminderStatusBar({ preferences, onPreferencesChange }: 
 
   if (permission === 'default') {
     return (
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <p className="text-sm font-semibold text-foreground">Want meal reminders?</p>
-          <p className="text-xs text-muted-foreground">
-            Get a reminder when it&apos;s time to eat and encouragement as you hit your daily targets.
-          </p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Want meal reminders?</p>
+            <p className="text-xs text-muted-foreground">
+              Get a reminder when it&apos;s time to eat and encouragement as you hit your daily targets.
+            </p>
+          </div>
+          <Button size="sm" onClick={handleEnable} loading={enabling}>
+            Enable reminders
+          </Button>
         </div>
-        <Button size="sm" onClick={handleEnable} loading={enabling}>
-          Enable reminders
-        </Button>
+        {pushError && (
+          <p className="text-xs text-error" role="alert">
+            {pushError}
+          </p>
+        )}
       </div>
     )
   }
 
   return (
-    <p className="text-xs text-muted-foreground">
-      Meal reminders: {preferences.remindersEnabled ? 'On' : 'Off'}
-      {!preferences.remindersEnabled && (
-        <>
-          {' '}
-          <Link
-            href="/settings"
-            className="text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-          >
-            Enable meal reminders →
-          </Link>
-        </>
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">
+        Meal reminders: {preferences.remindersEnabled ? 'On' : 'Off'}
+        {!preferences.remindersEnabled && (
+          <>
+            {' '}
+            <Link
+              href="/settings"
+              className="text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+            >
+              Enable meal reminders →
+            </Link>
+          </>
+        )}
+      </p>
+      {pushError && (
+        <p className="text-xs text-error" role="alert">
+          {pushError}
+        </p>
       )}
-    </p>
+    </div>
   )
 }

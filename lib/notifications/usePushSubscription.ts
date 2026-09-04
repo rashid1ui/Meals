@@ -8,87 +8,73 @@
 // state for the surrounding "enable notifications" action and just awaits
 // these inline, the same way they already await Notification.
 // requestPermission() and upsertNotificationPreferences().
+//
+// All of the gate/branch logic lives in ./pushSubscribe (runSubscribe),
+// which is pure and dependency-injected so every failure path is
+// unit-testable without a bundler or a DOM. This file is just the adapter:
+// it reads the real browser globals + NEXT_PUBLIC_VAPID_PUBLIC_KEY and wires
+// in the real savePushSubscription action.
 
 import { savePushSubscription, deletePushSubscription } from './actions'
-import type { PushSubscriptionInput } from './subscriptions'
+import {
+  runSubscribe,
+  type PushEnvironment,
+  type PushRegistrationLike,
+  type PushSubscribeResult
+} from './pushSubscribe'
 
-export type PushSubscribeResult = { ok: true } | { ok: false; error: string }
+export type { PushSubscribeResult }
 
-// Standard web.dev snippet: the Push API's applicationServerKey must be a
-// Uint8Array, but VAPID public keys are distributed as base64url strings.
-// Built via `new Uint8Array(length)` + manual fill (not Uint8Array.from)
-// specifically so it's backed by a real ArrayBuffer - lib.dom's
-// PushSubscriptionOptionsInit wants BufferSource/ArrayBufferView<ArrayBuffer>,
-// which Uint8Array.from's return type doesn't satisfy under this TS version.
-function urlBase64ToUint8Array(base64Url: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64Url.length % 4)) % 4)
-  const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-  for (let i = 0; i < rawData.length; i++) {
-    outputArray[i] = rawData.charCodeAt(i)
-  }
-  return outputArray
-}
-
+// Every capability runSubscribe depends on. Notification is included (it was
+// missing before): userVisibleOnly push requires it, and callers gate their
+// "enable" UI on Notification.permission anyway.
 export function isPushSupported(): boolean {
-  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
+  return (
+    typeof window !== 'undefined' &&
+    'Notification' in window &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window
+  )
 }
 
-// Registers the service worker (idempotent - re-registering an
-// already-registered, unchanged /sw.js is a no-op) and subscribes this
-// device, reusing an existing browser-level subscription if one is already
-// present rather than creating a second one. Always calls
-// savePushSubscription so the server row (endpoint/keys) is up to date even
-// when the browser subscription itself already existed - e.g. permission
-// was granted in an earlier session and the user is just re-confirming.
-export async function subscribeToPush(): Promise<PushSubscribeResult> {
-  if (!isPushSupported()) {
-    const error = 'Push notifications are not supported in this browser.'
-    console.error('[push] subscribeToPush: unsupported browser -', error)
-    return { ok: false, error }
-  }
-
-  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  if (!vapidPublicKey) {
-    const error = 'Push notifications are not configured.'
-    console.error('[push] subscribeToPush: NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing -', error)
-    return { ok: false, error }
-  }
-
-  let registration: ServiceWorkerRegistration
-  try {
-    registration = await navigator.serviceWorker.register('/sw.js')
-    await navigator.serviceWorker.ready
-  } catch (err) {
-    console.error('[push] subscribeToPush: service worker registration failed:', err)
-    return { ok: false, error: err instanceof Error ? err.message : 'Failed to register the service worker.' }
-  }
-
-  let subscription: PushSubscription
-  try {
-    const existing = await registration.pushManager.getSubscription()
-    subscription =
-      existing ??
-      (await registration.pushManager.subscribe({
-        userVisibleOnly: true,
+// Adapts the real ServiceWorkerRegistration.pushManager to the small
+// PushRegistrationLike surface runSubscribe expects. Registering an
+// already-registered, unchanged /sw.js is a no-op, and awaiting
+// navigator.serviceWorker.ready guarantees an *active* worker before we ask
+// it to hold a push subscription.
+async function registerAndReady(): Promise<PushRegistrationLike> {
+  await navigator.serviceWorker.register('/sw.js')
+  const registration = await navigator.serviceWorker.ready
+  return {
+    getSubscription: () => registration.pushManager.getSubscription(),
+    subscribe: options =>
+      registration.pushManager.subscribe({
+        userVisibleOnly: options.userVisibleOnly,
         // Cast: a known TS/lib.dom mismatch (Uint8Array<ArrayBufferLike> vs
         // the ArrayBufferView<ArrayBuffer> this option's type demands) - not
         // a real runtime concern, PushManager.subscribe accepts any
         // BufferSource-shaped Uint8Array.
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
-      }))
-  } catch (err) {
-    console.error('[push] subscribeToPush: pushManager.subscribe failed:', err)
-    return { ok: false, error: err instanceof Error ? err.message : 'Failed to create a push subscription.' }
+        applicationServerKey: options.applicationServerKey as BufferSource
+      })
   }
+}
 
-  const result = await savePushSubscription(subscription.toJSON() as PushSubscriptionInput)
-  if ('error' in result) {
-    console.error('[push] subscribeToPush: savePushSubscription failed:', result.error)
-    return { ok: false, error: result.error }
+// Registers the service worker and subscribes this device, reusing an
+// existing browser-level subscription if one is already present. Always
+// persists via savePushSubscription so the server row (endpoint/keys) is up
+// to date even when the browser subscription itself already existed.
+//
+// Return shape is unchanged: { ok: true } | { ok: false; error: string },
+// where `error` is always a safe, user-renderable message (never a stack or
+// secret). Every failure is also console.error'd with detail by runSubscribe.
+export async function subscribeToPush(): Promise<PushSubscribeResult> {
+  const env: PushEnvironment = {
+    supported: isPushSupported(),
+    vapidPublicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    registerAndReady,
+    persist: savePushSubscription
   }
-  return { ok: true }
+  return runSubscribe(env)
 }
 
 // Tears down both halves - the browser-level subscription (so this device

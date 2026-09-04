@@ -27,10 +27,27 @@ export interface VapidConfigValidation {
 // every user on every affected tick, since nothing checked this ahead of
 // time - see lib/notifications/push.ts's ensureVapidConfigured and
 // app/api/cron/notifications/route.ts's up-front check).
-const VAPID_PUBLIC_KEY_BYTES = 65
+export const VAPID_PUBLIC_KEY_BYTES = 65
 const VAPID_PRIVATE_KEY_BYTES = 32
 const BASE64URL_PATTERN = /^[A-Za-z0-9\-_]+=*$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// One or more leading `mailto:` prefixes (any casing, tolerating stray
+// whitespace around each) - see normalizeVapidSubject.
+const MAILTO_PREFIX_PATTERN = /^(?:\s*mailto:\s*)+/i
+
+// web-push's setVapidDetails wants the contact as exactly
+// `mailto:user@example.com`. VAPID_EMAIL is configured inconsistently in the
+// wild - sometimes a bare address, sometimes already a full `mailto:` URI -
+// and push.ts used to prepend `mailto:` unconditionally, turning the second
+// form into `mailto:mailto:user@example.com`, which the push service rejects
+// at send time. This strips any number of leading `mailto:` prefixes and
+// re-adds exactly one, so both accepted input forms collapse to the same
+// canonical value. A value with no usable address after stripping (empty,
+// whitespace) is caught upstream by validateVapidConfig.
+export function normalizeVapidSubject(email: string): string {
+  const bare = email.replace(MAILTO_PREFIX_PATTERN, '').trim()
+  return `mailto:${bare}`
+}
 
 function decodedByteLength(value: string): number | null {
   if (!BASE64URL_PATTERN.test(value)) return null
@@ -79,8 +96,16 @@ export function validateVapidConfig(config: VapidConfig): VapidConfigValidation 
 
   if (!email) {
     errors.push('VAPID_EMAIL is not set')
-  } else if (!EMAIL_PATTERN.test(email)) {
-    errors.push('VAPID_EMAIL does not look like a valid email address')
+  } else {
+    // Validate the bare address, not the raw value: `mailto:user@example.com`
+    // and `user@example.com` are both acceptable configured forms (see
+    // normalizeVapidSubject), so strip a leading `mailto:` before the
+    // shape check. A non-address like `not-an-email` (with or without the
+    // prefix) still fails.
+    const bareEmail = email.replace(MAILTO_PREFIX_PATTERN, '').trim()
+    if (!EMAIL_PATTERN.test(bareEmail)) {
+      errors.push('VAPID_EMAIL does not look like a valid email address')
+    }
   }
 
   return { valid: errors.length === 0, errors }
