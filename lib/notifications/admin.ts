@@ -13,6 +13,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeFoodStatus, deriveMealStatus, type TrackingStatus } from '@/lib/tracking/logic'
 import type { NotificationEventType } from './actions'
+import type { ReminderSupplement } from './supplementSchedule'
 
 export interface EnabledUser {
   userId: string
@@ -212,6 +213,89 @@ export async function claimNotificationEventForUser(
   if (error.code === '23505') return { claimed: false }
   console.error('[notifications/admin] claimNotificationEventForUser failed:', error)
   return { error: 'Failed to record notification event.' }
+}
+
+export interface SupplementEnabledUser {
+  userId: string
+  timezone: string | null
+}
+
+// Every user with at least one supplement reminder turned on - independent
+// of getUsersWithRemindersEnabled/notification_preferences.reminders_enabled
+// (spec section 9: each supplement's notification_enabled is its own master
+// switch, never gated behind the separate meal-reminders toggle). Timezone
+// still comes from notification_preferences (the one place a user's IANA
+// zone is captured - see lib/notifications/timezone.ts) - a user who never
+// touched meal reminders simply has no row there and falls back to UTC,
+// exactly like getReminderMealsForUser's own admin-client callers.
+export async function getUsersWithSupplementRemindersEnabled(admin: SupabaseClient): Promise<SupplementEnabledUser[]> {
+  const { data: supplementRows, error: supplementError } = await admin
+    .from('user_supplements')
+    .select('user_id')
+    .eq('notification_enabled', true)
+
+  if (supplementError) {
+    console.error('[notifications/admin] getUsersWithSupplementRemindersEnabled failed:', supplementError)
+    return []
+  }
+
+  const userIds = Array.from(new Set((supplementRows || []).map(r => r.user_id as string)))
+  if (userIds.length === 0) return []
+
+  const { data: prefRows, error: prefError } = await admin
+    .from('notification_preferences')
+    .select('user_id, timezone')
+    .in('user_id', userIds)
+
+  if (prefError) {
+    console.error('[notifications/admin] getUsersWithSupplementRemindersEnabled: failed to load timezones:', prefError)
+  }
+
+  const timezoneByUserId = new Map<string, string | null>((prefRows || []).map(r => [r.user_id as string, r.timezone as string | null]))
+  return userIds.map(userId => ({ userId, timezone: timezoneByUserId.get(userId) ?? null }))
+}
+
+interface SupplementRow {
+  id: string
+  name: string
+  dose: number | string | null
+  dose_unit: string | null
+  quantity: number | string
+  quantity_unit: string
+  times: string[] | null
+  start_date: string
+  end_date: string | null
+}
+
+// Admin-client counterpart to lib/supplements/actions.ts's getSupplements -
+// only the columns the reminder sweep actually needs, pre-filtered to
+// notification_enabled=true so a disabled supplement is never even
+// considered. Mirrors getReminderMealsForUser's shape (explicit userId, no
+// session).
+export async function getEnabledSupplementsForUser(admin: SupabaseClient, userId: string): Promise<ReminderSupplement[]> {
+  const { data, error } = await admin
+    .from('user_supplements')
+    .select('id, name, dose, dose_unit, quantity, quantity_unit, times, start_date, end_date')
+    .eq('user_id', userId)
+    .eq('notification_enabled', true)
+
+  if (error) {
+    console.error(`[notifications/admin] getEnabledSupplementsForUser: failed to load supplements for user ${userId}:`, error)
+    return []
+  }
+
+  return ((data as SupplementRow[] | null) || []).map(row => ({
+    id: row.id,
+    name: row.name,
+    dose: row.dose === null ? null : Number(row.dose),
+    doseUnit: row.dose_unit,
+    quantity: Number(row.quantity),
+    quantityUnit: row.quantity_unit,
+    times: (row.times || []).map(t => String(t).slice(0, 5)),
+    notificationEnabled: true,
+    startDate: row.start_date,
+    endDate: row.end_date
+  }))
 }
 
 // Compensating action for claimNotificationEventForUser: deletes a claim

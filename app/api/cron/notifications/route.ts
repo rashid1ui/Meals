@@ -15,16 +15,22 @@ import {
   getDailyProgressForUser,
   claimNotificationEventForUser,
   releaseNotificationEventClaim,
-  type EnabledUser
+  getUsersWithSupplementRemindersEnabled,
+  getEnabledSupplementsForUser,
+  type EnabledUser,
+  type SupplementEnabledUser
 } from '@/lib/notifications/admin'
 import { localDateTimeInTimeZone } from '@/lib/notifications/timezone'
 import { dueMealReminders, type ReminderMeal } from '@/lib/notifications/schedule'
+import { dueSupplementReminders } from '@/lib/notifications/supplementSchedule'
 import { buildMealReminderCopy, buildMilestoneCopy, computeRemainingNutrition } from '@/lib/notifications/copy'
+import { buildSupplementReminderCopy } from '@/lib/notifications/supplementCopy'
 import { pctOf } from '@/lib/tracking/logic'
 import { sendPushToUser, checkVapidConfig } from '@/lib/notifications/push'
 import {
   processMealReminderNotification,
   processMilestoneNotifications,
+  processSupplementReminderNotification,
   runUsersSweep,
   emptyOutcome,
   mergeOutcome,
@@ -89,8 +95,25 @@ async function runNotificationSweep() {
   const now = new Date()
 
   const users = await getUsersWithRemindersEnabled(admin)
+  const mealSummary = await runUsersSweep(users, user => processUserNotifications(admin, user, now))
 
-  const summary = await runUsersSweep(users, user => processUserNotifications(admin, user, now))
+  // Supplement reminders are swept as a SEPARATE population (spec section
+  // 9: each supplement's notification_enabled is its own independent
+  // switch, not gated behind notification_preferences.reminders_enabled) -
+  // a user with meal reminders off but a supplement reminder on must still
+  // get that supplement's push, and vice versa. The two populations may
+  // overlap; each runs its own independent claim/send pass so neither
+  // affects the other's outcome.
+  const supplementUsers = await getUsersWithSupplementRemindersEnabled(admin)
+  const supplementSummary = await runUsersSweep(supplementUsers, user => processUserSupplementNotifications(admin, user, now))
+
+  const summary = {
+    usersProcessed: mealSummary.usersProcessed + supplementSummary.usersProcessed,
+    usersFailed: mealSummary.usersFailed + supplementSummary.usersFailed,
+    pushesSent: mealSummary.pushesSent + supplementSummary.pushesSent,
+    subscriptionsRemoved: mealSummary.subscriptionsRemoved + supplementSummary.subscriptionsRemoved,
+    userErrors: [...mealSummary.userErrors, ...supplementSummary.userErrors]
+  }
 
   if (summary.usersFailed > 0) {
     // Do not hide a partial failure behind a 200 - some users were
@@ -195,6 +218,66 @@ async function processUserNotifications(
       const message = err instanceof Error ? err.message : String(err)
       outcome.errors.push(`milestones: ${message}`)
       console.error(`[cron/notifications] milestone check failed for user ${user.userId}:`, err)
+    }
+  }
+
+  return outcome
+}
+
+// One user's supplement-reminder pass - the same claim/release/send wiring
+// as processUserNotifications above, over dueSupplementReminders' occurrence
+// list instead of dueMealReminders' meal list. Kept as its own function
+// (rather than folded into processUserNotifications) since it runs against
+// a structurally different, independently-gated user population - see
+// runNotificationSweep's comment on why supplement reminders are swept
+// separately from meal reminders/milestones.
+async function processUserSupplementNotifications(
+  admin: SupabaseClient,
+  user: SupplementEnabledUser,
+  now: Date
+): Promise<SweepOutcome> {
+  const outcome = emptyOutcome()
+
+  const { dateString: localDate, minutesSinceMidnight: nowMinutes } = localDateTimeInTimeZone(now, user.timezone)
+
+  const supplements = await getEnabledSupplementsForUser(admin, user.userId)
+  const due = dueSupplementReminders(supplements, nowMinutes, localDate)
+  if (due.length === 0) return outcome
+
+  const claim: ClaimFn = (eventKey, eventType) =>
+    claimNotificationEventForUser(admin, user.userId, localDate, eventKey, eventType)
+
+  const release: ReleaseFn = async eventKey => {
+    const result = await releaseNotificationEventClaim(admin, user.userId, localDate, eventKey)
+    if ('error' in result) {
+      console.error(
+        `[cron/notifications] failed to release supplement claim for retry (user ${user.userId}, key ${eventKey}):`,
+        result.error
+      )
+    }
+  }
+
+  const send: SendFn = payload => sendPushToUser(admin, user.userId, payload)
+
+  for (const occurrence of due) {
+    try {
+      const occurrenceOutcome = await processSupplementReminderNotification(
+        occurrence,
+        () => buildSupplementReminderCopy(occurrence),
+        claim,
+        release,
+        send
+      )
+      mergeOutcome(outcome, occurrenceOutcome)
+    } catch (err) {
+      // One supplement occurrence failing must never block this user's
+      // other due supplements.
+      const message = err instanceof Error ? err.message : String(err)
+      outcome.errors.push(`supplement ${occurrence.supplementId}@${occurrence.time}: ${message}`)
+      console.error(
+        `[cron/notifications] supplement reminder failed for user ${user.userId}, supplement ${occurrence.supplementId}:`,
+        err
+      )
     }
   }
 

@@ -7,9 +7,12 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { ChevronRightIcon } from '@/components/ui/icons'
 import DietEditor, { type FoodOption } from './components/DietEditor'
+import SupplementsSection from './components/SupplementsSection'
+import { SupplementsTrackingProvider } from '@/lib/supplements/SupplementsTrackingProvider'
 import type { DraftMeal } from '@/lib/diet/diff'
 import { sumMacros } from '@/lib/tracking/logic'
 import { effectiveDailyTarget } from '@/lib/diet/effective-target'
+import { getSupplements } from '@/lib/supplements/actions'
 
 // Narrow, hand-verified shapes for the `meals`/`foods` query result below.
 // There is no generated Supabase Database type in this project (no live DB
@@ -129,6 +132,9 @@ export default async function DashboardPage() {
     .eq('is_active', false)
     .order('created_at', { ascending: false })
 
+  const supplementsResult = await getSupplements()
+  const initialSupplements = 'data' in supplementsResult ? supplementsResult.data : []
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Header
@@ -146,12 +152,16 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        <DietEditor
-          key={dietPlan.id}
-          initialMeals={initialMeals}
-          targets={targets}
-          foodOptions={foodOptions}
-        />
+        <SupplementsTrackingProvider>
+          <DietEditor
+            key={dietPlan.id}
+            initialMeals={initialMeals}
+            targets={targets}
+            foodOptions={foodOptions}
+          />
+
+          <SupplementsSection initialSupplements={initialSupplements} />
+        </SupplementsTrackingProvider>
 
         <div className="space-y-6">
           <h2 className="font-display text-2xl font-bold text-foreground tracking-tight border-b border-border pb-4">

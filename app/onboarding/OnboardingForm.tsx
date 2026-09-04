@@ -27,6 +27,9 @@ import DailyTargetsStep from './DailyTargetsStep'
 import ManualMealBuilderStep, { type ManualFoodOption } from './ManualMealBuilderStep'
 import FinalReviewStep from './FinalReviewStep'
 import { createManualDietPlan, saveMealReminders, ensureManualSupplementFoods, type CreatedMeal } from './manual-actions'
+import OnboardingSupplementsStep from './OnboardingSupplementsStep'
+import { createSupplementsBulk } from '@/lib/supplements/actions'
+import { supplementFormValueToInput, type SupplementFormValue } from '@/components/supplements/types'
 import {
   saveServerOnboardingDraft,
   clearServerOnboardingDraft,
@@ -92,6 +95,11 @@ interface OnboardingDraft {
   // field existed, and in every pre-step-9 draft.
   createdPlanId?: string | null
   manualReminders: RemindersFormValue
+  // Draft vitamins/supplements added during onboarding's optional step 10 -
+  // never persisted to user_supplements until handleFinishSupplements
+  // actually runs (see its own comment); absent in drafts written before
+  // this field existed.
+  supplementDrafts?: SupplementFormValue[]
 }
 
 function loadOnboardingDraft(): OnboardingDraft | null {
@@ -159,7 +167,7 @@ type Props = {
 // project forward before that choice is made. See STEP_LABELS below, which
 // extends this once `path === 'manual'`.
 const BASE_STEP_LABELS = ['About You', 'Goal', 'Targets', 'Create Plan']
-const MANUAL_STEP_LABELS = ['Training', 'Your Targets', 'Build Meals', 'Review', 'Reminders']
+const MANUAL_STEP_LABELS = ['Training', 'Your Targets', 'Build Meals', 'Review', 'Reminders', 'Vitamins & Supplements']
 
 const GOAL_LABELS: Record<Goal, string> = {
   cut: 'Cut',
@@ -467,6 +475,8 @@ export default function OnboardingForm({
   )
   const [savingReminders, setSavingReminders] = useState(false)
   const [savingSupplementFoods, setSavingSupplementFoods] = useState(false)
+  const [supplementDrafts, setSupplementDrafts] = useState<SupplementFormValue[]>(draft?.supplementDrafts ?? [])
+  const [savingSupplements, setSavingSupplements] = useState(false)
   // Ref, not state - see handleManualSubmit's own comment for why a
   // synchronous re-entrancy guard is needed instead of (or in addition to)
   // the phase-based render swap.
@@ -500,7 +510,8 @@ export default function OnboardingForm({
       manualMeals,
       createdMeals,
       createdPlanId,
-      manualReminders
+      manualReminders,
+      supplementDrafts
     }
     try {
       window.localStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(toSave))
@@ -543,6 +554,7 @@ export default function OnboardingForm({
     createdMeals,
     createdPlanId,
     manualReminders,
+    supplementDrafts,
     phase
   ])
 
@@ -1001,9 +1013,12 @@ export default function OnboardingForm({
         setSavingReminders(false)
         return
       }
-      clearOnboardingDraft()
+      // Meal reminders are saved - the (also optional) Vitamins &
+      // Supplements step still follows, so the draft is NOT cleared and
+      // onboarding is not yet marked done. See handleFinishSupplements/
+      // handleSkipSupplements for the actual completion point.
       setSavingReminders(false)
-      setPhase('success')
+      setStep(10)
     } catch (err: unknown) {
       // Same deployment-skew case as handleManualSubmit. The plan itself was
       // already saved in step 8; only the (optional) reminder write hit a
@@ -1027,8 +1042,59 @@ export default function OnboardingForm({
       setPhase('error')
       return
     }
+    setStep(10)
+  }
+
+  // Vitamins & Supplements is the wizard's final optional step - both exits
+  // (Skip/Finish) are what actually completes onboarding (clears the draft,
+  // shows the success screen), mirroring handleSkipReminders/
+  // handleFinishReminders's own gating on manualPlanConfirmed().
+  const handleSkipSupplements = () => {
+    setError(null)
+    if (!manualPlanConfirmed()) {
+      setError('Your plan could not be confirmed as saved. Please go back and create it again.')
+      setPhase('error')
+      return
+    }
     clearOnboardingDraft()
     setPhase('success')
+  }
+
+  const handleFinishSupplements = async () => {
+    setError(null)
+    if (!manualPlanConfirmed()) {
+      setError('Your plan could not be confirmed as saved. Please go back and create it again.')
+      setPhase('error')
+      return
+    }
+    if (supplementDrafts.length === 0) {
+      clearOnboardingDraft()
+      setPhase('success')
+      return
+    }
+    setSavingSupplements(true)
+    try {
+      const result = await createSupplementsBulk(supplementDrafts.map(supplementFormValueToInput))
+      if ('error' in result) {
+        // The plan (and reminders, if configured) already saved - a
+        // supplement-save failure is surfaced inline only, never as the
+        // full-screen error state.
+        setError(result.error)
+        setSavingSupplements(false)
+        return
+      }
+      clearOnboardingDraft()
+      setSavingSupplements(false)
+      setPhase('success')
+    } catch (err: unknown) {
+      if (isStaleServerActionError(err)) {
+        setSavingSupplements(false)
+        setPhase('stale')
+        return
+      }
+      setError((err instanceof Error && err.message) || 'Failed to save your supplements.')
+      setSavingSupplements(false)
+    }
   }
 
   // Real client navigation to the saved plan's home surface. Was previously
@@ -1371,15 +1437,30 @@ export default function OnboardingForm({
         <RemindersStep value={manualReminders} onChange={setManualReminders} mealNames={createdMeals.map(m => m.name)} />
       )}
 
+      {/* Step 10: Vitamins & Supplements - the wizard's final optional
+          step, only reachable once step 9 (Reminders) has resolved. */}
+      {step === 10 && path === 'manual' && (
+        <OnboardingSupplementsStep value={supplementDrafts} onChange={setSupplementDrafts} />
+      )}
+
       {/* Actions */}
       <div className="flex gap-4 pt-6 border-t border-border">
-        {step > 1 && !(path === 'manual' && step === 9) && (
+        {step > 1 && !(path === 'manual' && (step === 9 || step === 10)) && (
           <Button variant="secondary" onClick={handleBack}>
             Back
           </Button>
         )}
 
-        {path === 'manual' && step === 9 ? (
+        {path === 'manual' && step === 10 ? (
+          <div className="flex gap-4 flex-1">
+            <Button variant="secondary" onClick={handleSkipSupplements} className="flex-1">
+              Skip for now
+            </Button>
+            <Button variant="primary" onClick={handleFinishSupplements} loading={savingSupplements} className="flex-1">
+              Finish
+            </Button>
+          </div>
+        ) : path === 'manual' && step === 9 ? (
           <div className="flex gap-4 flex-1">
             <Button variant="secondary" onClick={handleSkipReminders} className="flex-1">
               Skip for now

@@ -10,8 +10,9 @@
 
 import { buildMealReminderEventKey, type ReminderMeal } from './schedule'
 import { thresholdsToClaim, buildMilestoneEventKey, type MilestoneThreshold } from './milestones'
+import { buildSupplementReminderEventKey, type SupplementReminderOccurrence } from './supplementSchedule'
 
-export type NotificationEventType = 'meal_reminder' | 'milestone'
+export type NotificationEventType = 'meal_reminder' | 'milestone' | 'supplement_reminder'
 
 export interface SendResult {
   sent: number
@@ -95,6 +96,50 @@ export async function processMealReminderNotification(
   if (result.sent === 0) {
     // Nothing was actually delivered (no subscriptions, or every device's
     // send failed) - release so it's retried on a later tick.
+    await release(key)
+  }
+
+  return outcome
+}
+
+// One due supplement reminder occurrence (a single supplement/time pair) -
+// same claim -> build copy -> send -> keep-claim-only-if-delivered shape as
+// processMealReminderNotification above, just keyed via
+// buildSupplementReminderEventKey (supplement id + time, since one
+// supplement can have several independent daily times - spec section 11)
+// instead of buildMealReminderEventKey.
+export async function processSupplementReminderNotification(
+  occurrence: SupplementReminderOccurrence,
+  buildCopy: () => NotificationCopy,
+  claim: ClaimFn,
+  release: ReleaseFn,
+  send: SendFn
+): Promise<SweepOutcome> {
+  const outcome = emptyOutcome()
+  const key = buildSupplementReminderEventKey(occurrence.supplementId, occurrence.time)
+
+  const claimResult = await claim(key, 'supplement_reminder')
+  if ('error' in claimResult) {
+    outcome.errors.push(`claim failed for supplement ${occurrence.supplementId}@${occurrence.time}: ${claimResult.error}`)
+    return outcome
+  }
+  if (!claimResult.claimed) return outcome // already sent earlier today - normal, not an error
+
+  const copy = buildCopy()
+
+  let result: SendResult
+  try {
+    result = await send({ title: copy.title, body: copy.body, url: '/dashboard', tag: key })
+  } catch (err) {
+    await release(key)
+    outcome.errors.push(`send failed for supplement ${occurrence.supplementId}@${occurrence.time}: ${errorMessage(err)}`)
+    return outcome
+  }
+
+  outcome.pushesSent += result.sent
+  outcome.subscriptionsRemoved += result.removed
+
+  if (result.sent === 0) {
     await release(key)
   }
 

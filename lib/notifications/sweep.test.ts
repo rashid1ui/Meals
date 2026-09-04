@@ -3,12 +3,14 @@ import assert from 'node:assert'
 import {
   processMealReminderNotification,
   processMilestoneNotifications,
+  processSupplementReminderNotification,
   runUsersSweep,
   type ClaimFn,
   type ReleaseFn,
   type SendFn
 } from './sweep'
 import type { ReminderMeal } from './schedule'
+import type { SupplementReminderOccurrence } from './supplementSchedule'
 
 const breakfast: ReminderMeal = {
   id: 'meal-1',
@@ -174,6 +176,56 @@ test('processMilestoneNotifications - a successful send keeps every claimed thre
   assert.deepStrictEqual(builtFor, [50], 'only the highest crossed threshold (50, since 60% has not reached 75%) builds copy')
   assert.ok(claimed.has('milestone:25') && claimed.has('milestone:50'))
   assert.strictEqual(outcome.pushesSent, 1)
+})
+
+const vitaminD: SupplementReminderOccurrence = {
+  supplementId: 'supplement-1',
+  name: 'Vitamin D3',
+  time: '08:00',
+  dose: 5000,
+  doseUnit: 'IU',
+  quantity: 1,
+  quantityUnit: 'capsule'
+}
+
+test('processSupplementReminderNotification - a successful send keeps the claim, keyed by supplement id AND time', async () => {
+  const { claim, release, claimed } = makeFakeLedger()
+  const send: SendFn = async () => ({ sent: 1, removed: 0 })
+
+  const outcome = await processSupplementReminderNotification(
+    vitaminD,
+    () => ({ title: 'Vitamin D3 reminder', body: 'Take it' }),
+    claim,
+    release,
+    send
+  )
+
+  assert.strictEqual(outcome.pushesSent, 1)
+  assert.ok(claimed.has('supplement_reminder:supplement-1:08:00'))
+})
+
+test('processSupplementReminderNotification - two times for the same supplement claim independent keys', async () => {
+  const { claim, release, claimed } = makeFakeLedger()
+  const send: SendFn = async () => ({ sent: 1, removed: 0 })
+  const evening: SupplementReminderOccurrence = { ...vitaminD, time: '20:00' }
+
+  await processSupplementReminderNotification(vitaminD, () => ({ title: 't', body: 'b' }), claim, release, send)
+  await processSupplementReminderNotification(evening, () => ({ title: 't', body: 'b' }), claim, release, send)
+
+  assert.ok(claimed.has('supplement_reminder:supplement-1:08:00'))
+  assert.ok(claimed.has('supplement_reminder:supplement-1:20:00'))
+})
+
+test('processSupplementReminderNotification - a send that throws releases the claim for retry', async () => {
+  const { claim, release, claimed } = makeFakeLedger()
+  const send: SendFn = async () => {
+    throw new Error('push failed')
+  }
+
+  const outcome = await processSupplementReminderNotification(vitaminD, () => ({ title: 't', body: 'b' }), claim, release, send)
+
+  assert.strictEqual(outcome.errors.length, 1)
+  assert.ok(!claimed.has('supplement_reminder:supplement-1:08:00'))
 })
 
 test('runUsersSweep - one user throwing never aborts processing of the remaining users', async () => {

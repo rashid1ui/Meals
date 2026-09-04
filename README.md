@@ -48,9 +48,20 @@ The full schema lives in `supabase/migrations/`, applied in filename order:
 - **`0000_baseline_schema.sql`** — every core table, constraint, index, RLS
   policy, and the `handle_new_user` trigger. Rebuilt from a production
   introspection; represents the state immediately before `0001`.
-- **`0001`–`0025`** — incremental `ALTER`s / new tables / functions, each with a
+- **`0001`–`0026`** — incremental `ALTER`s / new tables / functions, each with a
   header explaining why it exists.
-- **`0026`+** — new work starts here.
+- **`0027_user_supplements.sql`** — Vitamins & Supplements tracker: adds
+  `user_supplements` (free-text name, dose/dose_unit, quantity/quantity_unit,
+  frequency, one or more reminder `times`, start/end date, notes,
+  `notification_enabled`), RLS-scoped to `auth.uid() = user_id`, and widens
+  `notification_events.event_type` to accept `supplement_reminder`.
+- **`0028_supplement_tracking.sql`** — daily supplement dose tracking: adds
+  `supplement_tracking` (one row per user/supplement/date/scheduled time,
+  `completed`/`completed_at`), unique on `(user_id, user_supplement_id,
+  tracking_date, scheduled_time)` for idempotent upserts, `user_supplement_id`
+  `ON DELETE SET NULL` (preserves history if a supplement is deleted, same
+  choice `food_tracking.food_id` made), RLS-scoped to `auth.uid() = user_id`.
+- **`0029`+** — new work starts here.
 
 Every migration is written to be safe to run against production (idempotent
 guards throughout) and is applied via the Supabase CLI or dashboard — nothing in
@@ -85,9 +96,49 @@ lib/
   diet/                    PURE: diff, save-plan, effective-target, generate-diet, supplements
   tracking/                PURE: logic, date, optimisticTracking
   notifications/           schedule, milestones, copy, timezone, sweep, push
+                            supplementSchedule/supplementCopy, useSupplementReminders
+  supplements/             PURE: validation, tracking (expected doses + % calc)
+                            + actions.ts (CRUD), trackingActions.ts (daily dose
+                            tracking), mapRow.ts (shared row<->DTO), both 'use server'
+                            + SupplementsTrackingProvider.tsx (shared client state)
   supabase/                server.ts (RLS client), admin.ts (service role), middleware.ts
 supabase/migrations/      the schema (see above)
+components/supplements/   shared form/list-item/tracking-card UI, used by the
+                            dashboard, Settings, and the onboarding step
 ```
+
+**Vitamins & Supplements:** a user-owned, freely-named list (`user_supplements`
+— no fixed catalog) with its own dose/quantity/frequency/reminder times/notes
+and a per-row `notification_enabled` switch. Reuses the meal-reminder
+notification architecture end to end rather than a second system: the same
+`notification_events` dedup ledger (keyed `supplement_reminder:<id>:<time>`),
+the same client-side `Notification` tick (`useSupplementReminders`, gated only
+on browser permission — independent of the meal-reminders master switch), and
+the same cron sweep (`app/api/cron/notifications/route.ts`) for closed-browser
+Web Push, swept as its own user population since a supplement's notification
+setting is independent of `notification_preferences.reminders_enabled`.
+Managed from the Dashboard and Settings (`SupplementsSection`, shared with
+onboarding's optional, skippable "Vitamins & Supplements" step via
+`components/supplements/`).
+
+**Daily supplement tracking:** existing (having a reminder, or even existing at
+all) is NOT completion — a dose only counts once the user explicitly marks it
+taken, exactly like `food_tracking`. `lib/supplements/tracking.ts`'s
+`buildExpectedDoses` expands every active supplement's `times` into one
+independent expected dose per (supplement, time) pair for a given date
+(respecting `start_date`/`end_date`, **never** `notification_enabled` — a
+disabled reminder must not drop a supplement from today's target);
+`computeSupplementProgress` is the single `completed/total/percentage`
+calculation shared by every caller. `getTodaySupplementTracking`
+(`lib/supplements/trackingActions.ts`) lazily/idempotently ensures today's
+dose rows exist via an `ON CONFLICT DO NOTHING` upsert (never overwrites an
+already-recorded completion, never duplicates under a refresh or a race), then
+reads them back — 3 queries total, never one per supplement. `SupplementsTrackingProvider`
+(client context) is the single shared state both the Dashboard's
+`SupplementProgressCard` (next to Protein/Carbs/Fat — a separate daily target
+category, never mixed into the macro totals) and `SupplementsSection`'s
+per-dose Taken/Take controls read from, so marking a dose updates both
+instantly with no reload.
 
 **The rule:** framework-free logic lives in `lib/**` and is unit-tested there;
 `'use server'` files are thin — they authenticate, load reference data, call the
@@ -115,13 +166,15 @@ cookie) and every query is `user_id`-scoped on top of RLS.
 npm run dev        # next dev
 npm run build      # next build
 npm run lint       # eslint
-npm test           # unit tests (lib/**, pure logic) — ~440 tests, runs in CI
+npm test           # unit tests (lib/**, pure logic) — ~500 tests, runs in CI
 npx tsc --noEmit   # type-check
 
 # Integration tests — need a live/local Supabase in .env.local, NOT in `npm test`:
 npm run test:audit                 # calls the real DeepSeek API (costs money)
 npm run test:manual-plan
 npm run test:supplement-db
+npm run test:user-supplements       # user_supplements RLS: own-row CRUD + cross-user isolation
+npm run test:supplement-tracking    # supplement_tracking RLS: dose CRUD, uniqueness, cross-user isolation
 npm run test:production-hardening   # finalize_plan_swap, manual-plan lock, supplement catalog
 ```
 

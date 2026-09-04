@@ -16,7 +16,7 @@ import { isValidPushSubscriptionInput, type PushSubscriptionInput } from './subs
 
 type Result<T> = { data: T } | { error: string }
 
-export type NotificationEventType = 'meal_reminder' | 'milestone'
+export type NotificationEventType = 'meal_reminder' | 'milestone' | 'supplement_reminder'
 
 export interface NotificationPreferencesDTO {
   remindersEnabled: boolean

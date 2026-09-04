@@ -4,6 +4,7 @@ import { classifyTarget, type MacroTotals, type TargetStatus } from '@/lib/diet/
 import type { DailyTrackingSummary } from '../tracking-actions'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
+import SupplementProgressCard from './SupplementProgressCard'
 
 const STATUS_LABELS: Record<TargetStatus, string> = {
   'on-target': 'On Target',
@@ -199,6 +200,12 @@ export default function DailyProgress({ tracking }: Props) {
           barClass="bg-fat"
         />
       </div>
+
+      {/* Supplement adherence is its own daily target category (completed
+          doses / scheduled doses) - never mixed into the macro grid above,
+          since a capsule count is not a nutritional value. Renders nothing
+          when there's nothing scheduled today. */}
+      <SupplementProgressCard />
 
       {totalMeals > 0 && (
         <div className="flex items-center justify-center gap-8 text-sm font-mono tabular-nums text-muted-foreground">
