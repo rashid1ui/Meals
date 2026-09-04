@@ -249,3 +249,43 @@ export function HomeIcon(props: IconProps) {
     </svg>
   )
 }
+
+// Wheat sheaf - the carbs macro glyph on the dashboard summary cards.
+export function WheatIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 22V9" />
+      <path d="M12 9c0-2 1.6-3.6 3.6-3.6C15.6 7.4 14 9 12 9ZM12 9c0-2-1.6-3.6-3.6-3.6C8.4 7.4 10 9 12 9Z" />
+      <path d="M12 15c0-2 1.6-3.6 3.6-3.6C15.6 13.4 14 15 12 15ZM12 15c0-2-1.6-3.6-3.6-3.6C8.4 13.4 10 15 12 15Z" />
+    </svg>
+  )
+}
+
+// Droplet - the fat macro glyph on the dashboard summary cards.
+export function DropletIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 3s6 5.5 6 10a6 6 0 0 1-12 0c0-4.5 6-10 6-10Z" />
+    </svg>
+  )
+}
+
+// Fork + knife - the "meals" glyph on the daily summary stat cards.
+export function UtensilsIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M7 3v18M4 3v6a3 3 0 0 0 6 0V3" />
+      <path d="M17 3c-1.7 0-3 2.2-3 5s1.3 4 3 4v9" />
+    </svg>
+  )
+}
+
+// Apple - the "foods" glyph on the daily summary stat cards.
+export function AppleIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 7c-1.5-2-4-2.5-5.5-1C4.5 7.5 4 11 5.5 15c1 2.7 2.5 5 4 5 1 0 1.5-.6 2.5-.6s1.5.6 2.5.6c1.5 0 3-2.3 4-5 1.5-4 1-7.5-1-9-1.5-1.5-4-1-5.5 1Z" />
+      <path d="M12 7c.3-1.7 1.5-3 3-3.3" />
+    </svg>
+  )
+}

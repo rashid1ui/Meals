@@ -35,7 +35,7 @@ import ReminderStatusBar from './ReminderStatusBar'
 
 
 import Button from '@/components/ui/Button'
-import { PlusIcon, AlertIcon, ChevronRightIcon } from '@/components/ui/icons'
+import { PlusIcon, AlertIcon, ChevronRightIcon, CalendarIcon } from '@/components/ui/icons'
 import { getReminderSchedule, type NotificationPreferencesDTO, type ReminderMealDTO } from '@/lib/notifications/actions'
 import { useMealReminders } from '@/lib/notifications/useMealReminders'
 
@@ -106,6 +106,21 @@ export default function DietEditor({
   const localDateRef = useRef(localDate)
   useEffect(() => {
     localDateRef.current = localDate
+  }, [localDate])
+
+  // Read-only display of the date the dashboard is already scoped to (there
+  // is no date navigation in this product - meal tracking is always "today",
+  // and useLocalDate keeps this correct across a midnight rollover). Not a
+  // new data flow: it only formats the localDate value that already drives
+  // the tracking fetch below.
+  const todayLabel = useMemo(() => {
+    const [y, m, d] = localDate.split('-').map(Number)
+    if (!y || !m || !d) return 'Today'
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    })
   }, [localDate])
 
   // `optState` holds BOTH the last server-confirmed tracking snapshot AND any
@@ -416,10 +431,15 @@ export default function DietEditor({
           percentages in a second card set below it. */}
       {trackingLoading || (!trackingError && !dailyTracking) ? (
         <div className="space-y-4" aria-hidden="true">
-          <div className="h-40 rounded-card bg-surface border border-border animate-pulse" />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[0, 1, 2, 3].map(i => (
+          <div className="h-44 rounded-card bg-surface border border-border animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[0, 1, 2].map(i => (
               <div key={i} className="h-28 rounded-card bg-surface border border-border animate-pulse" />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[0, 1].map(i => (
+              <div key={i} className="h-[68px] rounded-card bg-surface border border-border animate-pulse" />
             ))}
           </div>
         </div>
@@ -457,12 +477,23 @@ export default function DietEditor({
           "what should I eat?". Each card's checkbox answers "did I eat
           this?" - a separate concern from planning/editing below it. */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-border pb-4">
-          <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">Today&apos;s Meals</h2>
-          <Button variant="secondary" size="sm" onClick={() => setShowAddMeal(true)}>
-            <PlusIcon size={16} />
-            Add Meal
-          </Button>
+        <div className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">Today&apos;s Meals</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track your meals, hit your targets, and stay consistent.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
+            <span className="inline-flex items-center gap-1.5 rounded-pill border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground">
+              <CalendarIcon size={15} className="text-muted-foreground" aria-hidden="true" />
+              {todayLabel}
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => setShowAddMeal(true)}>
+              <PlusIcon size={16} />
+              Add Meal
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -145,9 +145,14 @@ export default async function DashboardPage() {
       />
 
       <div className="max-w-6xl mx-auto p-6 mt-6 space-y-8 pb-20">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Your Active Diet</h1>
-          <span className="bg-primary/15 text-primary px-4 py-2 rounded-full text-sm font-bold border border-primary/30">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="font-display text-3xl font-bold text-foreground tracking-tight">Your Active Diet</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track your progress, stay consistent, and reach your goals.
+            </p>
+          </div>
+          <span className="shrink-0 bg-primary/15 text-primary px-4 py-2 rounded-full text-sm font-bold border border-primary/30">
             {dietPlan.name}
           </span>
         </div>

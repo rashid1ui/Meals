@@ -221,16 +221,23 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
           onClick={() => setEditing(e => !e)}
           aria-expanded={editing}
           aria-label={`${editing ? 'Collapse' : 'Edit'} ${food.name}`}
-          className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left rounded-control py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="min-w-0 flex-1 flex items-center gap-2.5 text-left rounded-control py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <div className="min-w-0">
+          {/* Thumbnail tile is hidden on the narrowest screens so it never
+              steals width from the food name (primary info). It returns at
+              ~480px where there is room for both. */}
+          <span
+            aria-hidden="true"
+            className="hidden min-[480px]:flex shrink-0 w-9 h-9 items-center justify-center rounded-chip bg-surface-elevated border border-border text-lg leading-none"
+          >
+            {getFoodEmoji(food.name)}
+          </span>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
-                <span aria-hidden="true" className="text-base leading-none shrink-0">
-                  {getFoodEmoji(food.name)}
-                </span>
-                <span className="font-semibold text-foreground truncate">{food.name}</span>
-              </span>
+              {/* Wraps rather than truncating - the food name is primary
+                  information and must never clip to "Rolled Oats, ...".
+                  w-full drops any badges onto the next line. */}
+              <span className="font-semibold text-foreground w-full break-words">{food.name}</span>
               {badges.filter(isDisplayBadge).map(badge => (
                 <Badge key={badge} variant={BADGE_VARIANT[badge]}>
                   {BADGE_LABELS[badge]}

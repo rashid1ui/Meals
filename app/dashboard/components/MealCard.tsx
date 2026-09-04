@@ -9,6 +9,8 @@ import FoodRow from './FoodRow'
 import FoodPickerModal from '@/components/food/FoodPickerModal'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import ProgressRing from '@/components/ui/ProgressRing'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, CheckIcon, CloseIcon, ChevronDownIcon } from '@/components/ui/icons'
 
@@ -81,6 +83,27 @@ const STATUS_LABEL: Record<MealTrackingStatus, string> = {
   complete: 'Eaten'
 }
 
+// Splits formatMealName's "<emoji> <name>" output back into its parts so the
+// emoji can sit in its own tinted tile (reference layout) while the full,
+// untruncated name owns the heading. formatMealName returns the name
+// unchanged when it matches no known meal keyword - that case yields a null
+// emoji and the plain name, never a mangled slice.
+function splitMealName(name: string): { emoji: string | null; label: string } {
+  const formatted = formatMealName(name)
+  if (formatted === name) return { emoji: null, label: name }
+  const firstSpace = formatted.indexOf(' ')
+  return { emoji: formatted.slice(0, firstSpace), label: name }
+}
+
+type NutrientKey = 'calories' | 'protein' | 'carbs' | 'fat'
+
+const NUTRIENT_META: { key: NutrientKey; label: string; unit: string; valueClass: string }[] = [
+  { key: 'calories', label: 'kcal', unit: '', valueClass: 'text-calories' },
+  { key: 'protein', label: 'Protein', unit: 'g', valueClass: 'text-protein' },
+  { key: 'carbs', label: 'Carbs', unit: 'g', valueClass: 'text-carbs' },
+  { key: 'fat', label: 'Fat', unit: 'g', valueClass: 'text-fat' }
+]
+
 export default function MealCard({
   meal,
   changes,
@@ -110,6 +133,12 @@ export default function MealCard({
 
   const actual = completion?.actual ?? null
   const actualPct = actual && target.calories > 0 ? Math.round(pctOf(actual.calories, target.calories)) : null
+  // The completion ring only makes sense once this meal is actually
+  // trackable (persisted + has foods) - an unsaved or empty meal shows the
+  // target block alone, exactly as before.
+  const showTracking = Boolean(actual && meal.foods.length > 0)
+
+  const { emoji: mealEmoji, label: mealLabel } = useMemo(() => splitMealName(meal.name), [meal.name])
 
   const foodOptionsById = useMemo(() => {
     const map = new Map<string, FoodOption>()
@@ -117,170 +146,192 @@ export default function MealCard({
     return map
   }, [foodOptions])
 
+  const foodCount = meal.foods.length
+
   return (
     <Card
       id={`meal-${meal.id}`}
       tabIndex={-1}
       elevated={isNext}
-      className={`p-6 flex flex-col scroll-mt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+      className={`p-5 flex flex-col gap-4 scroll-mt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         isNext ? 'border-primary/50' : ''
       } ${recede ? 'opacity-[0.92]' : ''}`}
     >
-      <div className="border-b border-border pb-3 mb-3 space-y-2.5">
-        {/* Eyebrow: Next (static label) + the meal-completion state, which
-            IS the toggle button - reads as plain status text ("○ Not
-            eaten") rather than a heavy standalone control, while staying
-            fully clickable with a 44px-tall hit area via padding. This is a
-            bulk-apply shortcut over the same per-food logging below, never
-            an independently-stored flag - see deriveMealStatus. */}
-        {(isNext || isNewMeal || completion) && (
-          <div className="flex items-center gap-2 flex-wrap -mt-1 -ml-1">
+      {/* Eyebrow bar: the NEXT / New markers on the left, the meal-completion
+          toggle on the right. The toggle reads as plain status text
+          ("○ Not eaten") rather than a heavy control, while staying fully
+          clickable with a 44px hit area. It's a bulk-apply shortcut over the
+          same per-food logging below, never an independently-stored flag. */}
+      {(isNext || isNewMeal || completion) && (
+        <div className="flex items-start justify-between gap-2 -mt-0.5">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0 pt-1">
             {isNext && (
-              <span className="text-[11px] font-bold uppercase tracking-wide text-primary px-1">Next</span>
+              <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
+                Next
+              </span>
             )}
             {isNewMeal && (
-              <span className="text-[11px] font-bold uppercase tracking-wide text-success px-1">New</span>
-            )}
-            {completion && (
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
-                aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
-                onClick={completion.onToggleMeal}
-                aria-busy={completion.togglingMeal}
-                className={`inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${STATUS_TEXT_CLASS[status]}`}
-              >
-                <span className={completion.togglingMeal ? 'animate-pulse' : undefined}>
-                  <TrackingStatusIcon status={status} size={20} />
-                </span>
-                {STATUS_LABEL[status]}
-              </button>
+              <span className="inline-flex items-center rounded-full border border-success/30 bg-success/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-success">
+                New
+              </span>
             )}
           </div>
-        )}
+          {completion && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={status === 'complete' ? true : status === 'partial' ? 'mixed' : false}
+              aria-label={status === 'complete' ? `Mark ${meal.name} as not eaten` : `Mark all of ${meal.name} as eaten`}
+              onClick={completion.onToggleMeal}
+              aria-busy={completion.togglingMeal}
+              className={`shrink-0 -mr-1 inline-flex items-center gap-1.5 min-h-[44px] px-1 rounded-md text-xs font-semibold transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${STATUS_TEXT_CLASS[status]}`}
+            >
+              <span className={completion.togglingMeal ? 'animate-pulse' : undefined}>
+                <TrackingStatusIcon status={status} size={20} />
+              </span>
+              {STATUS_LABEL[status]}
+            </button>
+          )}
+        </div>
+      )}
 
-        {/* Header: emoji + full meal name get priority for horizontal space.
-            Only the low-frequency Remove (×) sits here; the reorder controls
-            live in their own row at the bottom of the card so the meal name
-            is never truncated to make room for arrows. */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2 min-w-0">
-            {status === 'complete' && <CheckIcon size={18} className="text-success shrink-0" />}
-            <span className="truncate">{formatMealName(meal.name)}</span>
-          </h3>
+      {/* Identity row: emoji tile + full meal name on the left, the
+          completion ring (dashboard) or the Remove control (manual builder)
+          on the right. The name column is min-w-0 + truncate and the right
+          slot is shrink-0, so the title is never clipped to make room for a
+          control - the bug this redesign explicitly guards against. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <span
+            aria-hidden="true"
+            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border text-2xl leading-none"
+          >
+            {mealEmoji ?? '🍽️'}
+          </span>
+          <div className="min-w-0 pt-0.5">
+            <h3 className="font-display text-lg font-bold text-foreground flex items-start gap-1.5 min-w-0">
+              {status === 'complete' && <CheckIcon size={16} className="text-success shrink-0 mt-1" />}
+              {/* Wraps rather than truncating - a long meal name must stay
+                  fully readable, never collapse to "B...". Real names
+                  ("Breakfast", "Pre-Workout") are one line; a long custom
+                  name simply takes the height it needs. */}
+              <span className="min-w-0 break-words">{mealLabel}</span>
+            </h3>
+            <span className="mt-0.5 block text-xs font-medium text-muted-foreground">
+              {foodCount === 1 ? '1 food' : `${foodCount} foods`} planned
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-1 shrink-0">
+          {showTracking && (
+            <div className="flex flex-col items-center gap-0.5">
+              <ProgressRing
+                value={actualPct ?? 0}
+                label={`${meal.name} - ${actualPct ?? 0}% of its target calories eaten`}
+                size={60}
+              />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                complete
+              </span>
+            </div>
+          )}
           {onRemoveMeal && (
             <button
               type="button"
               onClick={onRemoveMeal}
-              aria-label={`Remove ${formatMealName(meal.name)} meal`}
-              className="shrink-0 -mt-1.5 -mr-1.5 w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-label={`Remove ${mealLabel} meal`}
+              className="shrink-0 -mt-1 -mr-1.5 w-11 h-11 flex items-center justify-center rounded-control text-muted-foreground/60 hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <CloseIcon size={16} />
             </button>
           )}
         </div>
+      </div>
 
-        {/* Target vs Actual - two explicitly labeled rows so the numbers are
-            never ambiguous about which one they are. Actual only renders
-            once this meal is trackable (persisted + has foods); an
-            unsaved/empty meal shows Target alone. */}
-        <div className="grid grid-cols-[3.25rem_1fr] gap-x-2 gap-y-1 items-baseline">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Target</span>
-          <div className="flex flex-wrap items-baseline gap-x-2 font-mono tabular-nums text-sm">
-            <span className="font-bold text-calories">{Math.round(target.calories)} kcal</span>
-            <span className="text-protein">{Math.round(target.protein)}P</span>
-            <span className="text-carbs">{Math.round(target.carbs)}C</span>
-            <span className="text-fat">{Math.round(target.fat)}F</span>
-          </div>
-
-          {actual && meal.foods.length > 0 && (
-            <>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Actual</span>
-              <div className="flex flex-wrap items-baseline gap-x-2 font-mono tabular-nums text-sm">
-                <span className="font-bold text-foreground">{Math.round(actual.calories)} kcal</span>
-                <span className="text-protein">{Math.round(actual.protein)}P</span>
-                <span className="text-carbs">{Math.round(actual.carbs)}C</span>
-                <span className="text-fat">{Math.round(actual.fat)}F</span>
+      {/* Nutrition summary: one compact block. The four big numbers are this
+          meal's TARGET (planned) composition; the quiet "Eaten" row beneath
+          is what's actually been logged so far - the two stay explicitly
+          labelled and never merge. */}
+      <div className="rounded-control bg-surface-elevated border border-border px-3 py-2.5">
+        <div className="grid grid-cols-4 gap-1.5">
+          {NUTRIENT_META.map(({ key, label, unit, valueClass }) => (
+            <div key={key} className="min-w-0 text-center">
+              <div className={`font-mono tabular-nums text-base font-bold leading-tight ${valueClass}`}>
+                {Math.round(target[key])}{unit}
               </div>
-            </>
-          )}
+              <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
+                {label}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {actual && meal.foods.length > 0 && (
-          <div className="pt-0.5 space-y-1">
-            <div className="flex items-center justify-end">
-              <span className="text-xs font-mono tabular-nums font-semibold text-primary">
-                {actualPct}% complete
-              </span>
-            </div>
-            <div
-              role="progressbar"
-              aria-label={`${meal.name} actual calories eaten toward its target`}
-              aria-valuenow={Math.round(actual.calories)}
-              aria-valuemin={0}
-              aria-valuemax={Math.round(target.calories)}
-              className="h-1.5 rounded-full bg-surface-elevated overflow-hidden"
-            >
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300"
-                style={{ width: `${Math.min(100, actualPct ?? 0)}%` }}
-              />
-            </div>
+        {showTracking && actual && (
+          <div className="mt-2 pt-2 border-t border-border flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono tabular-nums text-xs">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Eaten</span>
+            <span className="font-bold text-foreground">{Math.round(actual.calories)} kcal</span>
+            <span className="text-protein">{Math.round(actual.protein)}P</span>
+            <span className="text-carbs">{Math.round(actual.carbs)}C</span>
+            <span className="text-fat">{Math.round(actual.fat)}F</span>
           </div>
         )}
       </div>
 
-      <div className="flex-1">
-        {meal.foods.length > 0 && (
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-            Foods
+      {/* Foods */}
+      <div className="flex-1 flex flex-col">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {foodCount > 0 ? `Foods (${foodCount})` : 'Foods'}
           </span>
-        )}
-        {meal.foods.length === 0 ? (
+          <Button variant="secondary" size="sm" onClick={() => setShowAddFood(true)}>
+            <PlusIcon size={14} />
+            Add food
+          </Button>
+        </div>
+
+        {foodCount === 0 ? (
           <div className="text-center py-6 px-4 rounded-control border border-dashed border-border">
             <p className="text-sm font-semibold text-foreground">No foods in this meal yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">Add a food to start building this meal.</p>
+            <p className="text-xs text-muted-foreground mt-1 mb-3">Add a food to start building this meal.</p>
+            <Button variant="secondary" size="sm" onClick={() => setShowAddFood(true)}>
+              <PlusIcon size={14} />
+              Add food
+            </Button>
           </div>
         ) : (
-          meal.foods.map(food => {
-            const foodTracking = completion?.foods.get(food.id)
-            return (
-              <FoodRow
-                key={food.id}
-                food={food}
-                meal={meal}
-                badges={getFoodBadges(changes, food.id)}
-                onRemove={() => onRemoveFood(food.id)}
-                dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
-                onUpdateQuantity={onUpdateFoodQuantity ? (q) => onUpdateFoodQuantity(food.id, q) : undefined}
-                onMove={onMoveFood ? (targetMealId) => onMoveFood(food.id, targetMealId) : undefined}
-                otherMeals={otherMeals}
-                completion={
-                  completion && foodTracking
-                    ? {
-                        status: foodTracking.status,
-                        consumedQuantity: foodTracking.consumedQuantity,
-                        plannedQuantity: foodTracking.plannedQuantity,
-                        actual: foodTracking.actual,
-                        onLog: (consumedQuantity) => completion.onLogFood(food.id, consumedQuantity),
-                        logging: completion.savingFoodIds.has(food.id)
-                      }
-                    : undefined
-                }
-              />
-            )
-          })
+          <div>
+            {meal.foods.map(food => {
+              const foodTracking = completion?.foods.get(food.id)
+              return (
+                <FoodRow
+                  key={food.id}
+                  food={food}
+                  meal={meal}
+                  badges={getFoodBadges(changes, food.id)}
+                  onRemove={() => onRemoveFood(food.id)}
+                  dbFood={food.foodDatabaseId ? foodOptionsById.get(food.foodDatabaseId) ?? null : null}
+                  onUpdateQuantity={onUpdateFoodQuantity ? (q) => onUpdateFoodQuantity(food.id, q) : undefined}
+                  onMove={onMoveFood ? (targetMealId) => onMoveFood(food.id, targetMealId) : undefined}
+                  otherMeals={otherMeals}
+                  completion={
+                    completion && foodTracking
+                      ? {
+                          status: foodTracking.status,
+                          consumedQuantity: foodTracking.consumedQuantity,
+                          plannedQuantity: foodTracking.plannedQuantity,
+                          actual: foodTracking.actual,
+                          onLog: (consumedQuantity) => completion.onLogFood(food.id, consumedQuantity),
+                          logging: completion.savingFoodIds.has(food.id)
+                        }
+                      : undefined
+                  }
+                />
+              )
+            })}
+          </div>
         )}
       </div>
-
-      <button
-        onClick={() => setShowAddFood(true)}
-        className="w-full min-h-[44px] flex items-center gap-1.5 px-1 pt-2.5 mt-1 border-t border-border/60 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control"
-      >
-        <PlusIcon size={14} />
-        Add food
-      </button>
 
       {/* Reorder row: its own quiet strip at the foot of the card (manual
           builder only - the dashboard editor passes neither handler). Text +
@@ -288,12 +339,12 @@ export default function MealCard({
           title for space. Each button is disabled at its boundary (first
           meal has no "up", last has no "down"). */}
       {(onMoveMealUp || onMoveMealDown) && (
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-2.5 mt-2 border-t border-border/60">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-2.5 border-t border-border/60">
           <button
             type="button"
             onClick={onMoveMealUp}
             disabled={!onMoveMealUp}
-            aria-label={`Move ${formatMealName(meal.name)} up`}
+            aria-label={`Move ${mealLabel} up`}
             className="min-h-[44px] px-3 inline-flex items-center gap-1.5 rounded-control text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <ChevronDownIcon size={14} className="rotate-180" />
@@ -303,7 +354,7 @@ export default function MealCard({
             type="button"
             onClick={onMoveMealDown}
             disabled={!onMoveMealDown}
-            aria-label={`Move ${formatMealName(meal.name)} down`}
+            aria-label={`Move ${mealLabel} down`}
             className="min-h-[44px] px-3 inline-flex items-center gap-1.5 rounded-control text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-surface-elevated disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <ChevronDownIcon size={14} />
