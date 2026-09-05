@@ -18,13 +18,27 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
-      // Real food photography for the meal tracker (components/food/FoodThumb.tsx).
-      // URLs are resolved once by scripts/assign-food-images.ts and stored on
-      // food_database.image_url - the app never calls the Pexels API at
-      // request time, it only renders these already-stored CDN URLs.
+      // Real food photography for the meal tracker (components/food/FoodThumb.tsx)
+      // plus meal-card and supplement photos. URLs are resolved server-side
+      // (lib/images/*) - by scripts/assign-food-images.ts, the `after()` create
+      // hooks, and the /api/cron/images sweep - and stored on the row. The app
+      // never calls the Pexels API at request time; it only renders these
+      // already-stored CDN URLs.
       {
         protocol: "https",
         hostname: "images.pexels.com",
+      },
+      // Open Food Facts product photos for exact-product supplement images
+      // (lib/images/openFoodFacts.ts). CC-BY-SA; the product page + license
+      // are stored in image_attribution. Only the OFF-served CDN URL is
+      // referenced - nothing is scraped or rehosted.
+      {
+        protocol: "https",
+        hostname: "images.openfoodfacts.org",
+      },
+      {
+        protocol: "https",
+        hostname: "images.openfoodfacts.net",
       },
     ],
   },

@@ -1,0 +1,31 @@
+name: Image resolution sweep
+
+# Steady-state reconciliation for automatic food / meal / supplement image
+# resolution. The `after()` hook on each create already resolves images
+# inline; this sweep only retries what that missed (a killed serverless
+# invocation, a transient Pexels/Open Food Facts error, a row created by a
+# path that didn't schedule, or the pre-existing backlog).
+#
+# Images are NOT time-sensitive, so once a day is plenty - unlike the
+# 15-minute notifications cron. Calls the same kind of CRON_SECRET-protected
+# endpoint (see app/api/cron/images/route.ts, which fails closed without the
+# secret). GitHub Actions schedule drift is irrelevant here.
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: images-cron
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call image sweep endpoint
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://gym-meals-six.vercel.app/api/cron/images"

@@ -5,6 +5,7 @@ import { computeMealTotals } from '@/lib/diet/diff'
 import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import StoredImageThumb from '@/components/images/StoredImageThumb'
 import { ChevronRightIcon } from '@/components/ui/icons'
 
 type Props = {
@@ -21,7 +22,19 @@ export default function NextMealSpotlight({ meal, onView }: Props) {
   return (
     <Card elevated className="p-5 border-primary/40">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-start gap-3">
+          <StoredImageThumb
+            image={{
+              image_url: meal.imageUrl,
+              image_alt: meal.imageAlt,
+              image_attribution: meal.imageAttribution
+            }}
+            fallback={<span className="text-2xl leading-none">🍽️</span>}
+            fallbackAlt={`Photo representing ${meal.name}`}
+            sizeClassName="w-12 h-12"
+            className="mt-0.5"
+          />
+          <div className="min-w-0">
           <span className="text-xs font-semibold uppercase tracking-wide text-primary">Next Meal</span>
           <h3 className="font-display text-2xl font-bold text-foreground tracking-tight truncate mt-0.5">
             {formatMealName(meal.name)}
@@ -31,6 +44,7 @@ export default function NextMealSpotlight({ meal, onView }: Props) {
             <span className="text-protein">{Math.round(totals.protein)}P</span>
             <span className="text-carbs">{Math.round(totals.carbs)}C</span>
             <span className="text-fat">{Math.round(totals.fat)}F</span>
+          </div>
           </div>
         </div>
         <Button variant="primary" size="sm" onClick={onView} className="shrink-0">

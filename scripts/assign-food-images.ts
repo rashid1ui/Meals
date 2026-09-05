@@ -32,6 +32,8 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { buildFoodImageQuery, primaryFoodNoun } from '../lib/food/foodImageQuery'
+import { queryTokens, scoreCandidate as scoreImageCandidate, type ScoredCandidate } from '../lib/images/score'
+import type { ImageCandidate } from '../lib/images/types'
 
 type PexelsPhoto = {
   id: number
@@ -59,41 +61,29 @@ function squareUrl(photo: PexelsPhoto): string {
   return base.split('?')[0] + '?auto=compress&cs=tinysrgb&fit=crop&w=600&h=600'
 }
 
-const STOPWORDS = new Set(['of', 'a', 'the', 'and', 'with', 'on', 'in', 'raw', 'fresh', 'food'])
-// Words in a candidate's alt/slug that signal the wrong kind of shot for a
-// single ingredient (a plated dish, a person, a live animal, packaging text).
-const NEGATIVE = [
-  'person', 'people', 'woman', 'man ', ' men', 'child', 'family', 'wife', 'husband',
-  'recipe', 'restaurant', 'cafe', 'menu', 'logo', 'label', 'scrabble', 'portrait',
-  'sunset', 'field ', 'farm ', 'tree', 'palm', 'grazing', 'wildlife'
-]
-
-function stem(w: string): string {
-  return w.replace(/ies$/, 'y').replace(/(es|s)$/, '')
-}
-function hayHas(hay: string, word: string): boolean {
-  const w = word.toLowerCase()
-  return hay.includes(w) || hay.includes(stem(w)) || hay.includes(w + 's') || hay.includes(stem(w) + 's')
-}
-
-type Scored = { photo: PexelsPhoto; score: number; tier: 'HIGH' | 'MEDIUM' | 'LOW'; coverage: number; nounHit: boolean; neg: number }
-
-function scoreCandidate(photo: PexelsPhoto, queryTokens: string[], noun: string): Scored {
+// Scoring / tiering logic lives in lib/images/score.ts now (shared with the
+// runtime resolver). This adapter just maps a PexelsPhoto to the provider-
+// agnostic ImageCandidate that scorer expects - identical ranking as before.
+function toCandidate(photo: PexelsPhoto): ImageCandidate {
   let slug = ''
   try { slug = new URL(photo.url).pathname } catch { /* keep '' */ }
-  const hay = `${photo.alt ?? ''} ${slug}`.toLowerCase().replace(/[-/]/g, ' ')
+  return {
+    url: photo.url,
+    alt: photo.alt ?? '',
+    haystack: slug,
+    attribution: {
+      source: 'pexels',
+      photographer: photo.photographer,
+      photographer_url: photo.photographer_url,
+      source_url: photo.url
+    }
+  }
+}
 
-  const nounHit = hayHas(hay, noun)
-  const tokenHits = queryTokens.filter(t => hayHas(hay, t)).length
-  const coverage = queryTokens.length ? tokenHits / queryTokens.length : 0
-  const neg = NEGATIVE.filter(w => hay.includes(w)).length
+type Scored = ScoredCandidate & { photo: PexelsPhoto }
 
-  const score = +(coverage + (nounHit ? 0.5 : -1) - neg * 0.4).toFixed(2)
-  let tier: Scored['tier'] = 'LOW'
-  if (nounHit && neg === 0 && coverage >= 0.6) tier = 'HIGH'
-  else if (nounHit && neg <= 1 && coverage >= 0.34) tier = 'MEDIUM'
-
-  return { photo, score, tier, coverage: +coverage.toFixed(2), nounHit, neg }
+function scoreCandidate(photo: PexelsPhoto, tokens: string[], noun: string): Scored {
+  return { ...scoreImageCandidate(toCandidate(photo), tokens, noun), photo }
 }
 
 async function searchPexels(apiKey: string, query: string): Promise<PexelsPhoto[]> {
@@ -148,7 +138,7 @@ async function main() {
   for (const food of foods as { id: string; name: string }[]) {
     const query = buildFoodImageQuery(food.name)
     const noun = primaryFoodNoun(food.name)
-    const queryTokens = query.split(/\s+/).filter(t => t.length > 2 && !STOPWORDS.has(t))
+    const qTokens = queryTokens(query)
 
     let photos: PexelsPhoto[] = []
     try {
@@ -158,7 +148,7 @@ async function main() {
     }
 
     const ranked = photos
-      .map(p => scoreCandidate(p, queryTokens, noun))
+      .map(p => scoreCandidate(p, qTokens, noun))
       .sort((a, b) => b.score - a.score)
     const best = ranked[0]
 

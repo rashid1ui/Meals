@@ -11,6 +11,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
+import { scheduleImageResolution } from '@/lib/images/schedule'
 import { validateSupplementInput, type SupplementInput } from './validation'
 import { rowToDTO, inputToRow, SUPPLEMENT_SELECT_COLUMNS as SELECT_COLUMNS, type SupplementDTO, type SupplementRow } from './mapRow'
 
@@ -56,7 +57,11 @@ export async function createSupplement(input: SupplementInput): Promise<Result<S
     return { error: 'Failed to save this supplement.' }
   }
 
-  return { data: rowToDTO(data as SupplementRow) }
+  const dto = rowToDTO(data as SupplementRow)
+  // Non-blocking: resolve an exact product image (Open Food Facts) or a
+  // representative one after the response is sent. Failure leaves the pill icon.
+  scheduleImageResolution({ kind: 'supplement', id: dto.id })
+  return { data: dto }
 }
 
 // Bulk variant for onboarding (spec section 6 allows adding several
@@ -86,7 +91,9 @@ export async function createSupplementsBulk(inputs: SupplementInput[]): Promise<
     return { error: 'Failed to save your supplements.' }
   }
 
-  return { data: (data as SupplementRow[]).map(rowToDTO) }
+  const dtos = (data as SupplementRow[]).map(rowToDTO)
+  for (const dto of dtos) scheduleImageResolution({ kind: 'supplement', id: dto.id })
+  return { data: dtos }
 }
 
 // Ownership-checked (eq user_id) via the normal per-request RLS client - an

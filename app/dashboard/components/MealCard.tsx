@@ -7,6 +7,7 @@ import { formatMealName } from '@/lib/nutrition/workoutMeals'
 import type { FoodTrackingState } from '../tracking-actions'
 import FoodRow from './FoodRow'
 import FoodPickerModal from '@/components/food/FoodPickerModal'
+import StoredImageThumb from '@/components/images/StoredImageThumb'
 import type { FoodOption } from './DietEditor'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -202,12 +203,17 @@ export default function MealCard({
           control - the bug this redesign explicitly guards against. */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <span
-            aria-hidden="true"
-            className="shrink-0 w-11 h-11 flex items-center justify-center rounded-control bg-surface-elevated border border-border text-2xl leading-none"
-          >
-            {mealEmoji ?? '🍽️'}
-          </span>
+          <StoredImageThumb
+            image={{
+              image_url: meal.imageUrl,
+              image_alt: meal.imageAlt,
+              image_attribution: meal.imageAttribution
+            }}
+            fallback={<span className="text-2xl leading-none">{mealEmoji ?? '🍽️'}</span>}
+            fallbackAlt={`Photo representing ${meal.name}`}
+            sizeClassName="w-11 h-11"
+            className="rounded-control"
+          />
           <div className="min-w-0 pt-0.5">
             <h3 className="font-display text-lg font-bold text-foreground flex items-start gap-1.5 min-w-0">
               {status === 'complete' && <CheckIcon size={16} className="text-success shrink-0 mt-1" />}

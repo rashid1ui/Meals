@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { scheduleImageResolution } from '@/lib/images/schedule'
 import { computeSupplementMacros, buildSupplementCatalogName, classifySupplementInsertError } from './supplements'
 import type { SupplementSetup } from '@/lib/types'
 
@@ -115,6 +116,9 @@ export async function ensureSupplementCatalogRow(
       return { error: `Failed to save your ${supp.type} supplement. Please try again.` }
     } else {
       suppFoodId = newSupp?.id ?? null
+      // Genuinely-new catalog row: resolve a product image after the
+      // response (Open Food Facts first for these branded supplements).
+      if (suppFoodId) scheduleImageResolution({ kind: 'food', id: suppFoodId })
     }
 
     if (!suppFoodId) {

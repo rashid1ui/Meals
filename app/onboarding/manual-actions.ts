@@ -16,6 +16,8 @@ import { isValidReminderTime } from '@/lib/notifications/schedule'
 import { validateSupplementSetup, findDuplicateSupplementType } from '@/lib/diet/supplements'
 import { ensureSupplementCatalogRow, type EnsuredSupplementFood } from '@/lib/diet/supplement-catalog'
 import { acquireManualPlanLock, releaseManualPlanLock } from '@/lib/diet/manual-plan-lock'
+import { scheduleImageResolution } from '@/lib/images/schedule'
+import { mealCompositionKey } from '@/lib/images/mealQuery'
 import type { SupplementSetup } from '@/lib/types'
 
 const VALID_TRAINING_TIMES = ['morning', 'afternoon', 'evening', 'custom'] as const
@@ -298,13 +300,21 @@ async function createManualDietPlanLocked(
           // below - addressed directly by id, no position/name matching
           // needed.
           reminder_time: null,
-          reminder_enabled: true
+          reminder_enabled: true,
+          // Presentation-only (migration 0030): resolved once, after the
+          // response, from the meal's actual food composition.
+          image_status: 'pending',
+          image_composition_key: mealCompositionKey(
+            meal.name,
+            meal.foods.map(f => ({ foodDatabaseId: null, name: f.name }))
+          )
         })
         .select()
         .single()
 
       if (insertMealError || !newMeal) throw new Error('Meal insert failed')
       createdMeals.push({ id: newMeal.id, name: newMeal.name, sortOrder: newMeal.sort_order })
+      scheduleImageResolution({ kind: 'meal', id: newMeal.id })
 
       if (meal.foods.length > 0) {
         const foodsToInsert = meal.foods.map((food, idx) => ({

@@ -99,6 +99,10 @@ export default async function DashboardPage() {
     id: meal.id,
     name: meal.name,
     sortOrder: meal.sort_order,
+    imageUrl: (meal as { image_url?: string | null }).image_url ?? null,
+    imageAlt: (meal as { image_alt?: string | null }).image_alt ?? null,
+    imageAttribution:
+      (meal as { image_attribution?: DraftMeal['imageAttribution'] }).image_attribution ?? null,
     foods: meal.foods.map((food) => {
       const match = foodDatabaseByName.get(food.name)
       return {

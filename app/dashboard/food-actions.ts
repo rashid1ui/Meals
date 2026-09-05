@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
+import { scheduleImageResolution } from '@/lib/images/schedule'
 import {
   requiresGramsPerUnit,
   fixedGramsPerUnit,
@@ -197,6 +198,11 @@ export async function createFoodDatabaseEntry(input: CreateFoodInput): Promise<R
     console.error('[food-actions] createFoodDatabaseEntry insert failed:', error)
     return { error: 'Failed to save the new food. Please try again.' }
   }
+
+  // Genuinely-new row only (the reuse/race paths above return before here).
+  // Non-blocking: resolves a real photo after the response is sent; a
+  // failure only logs and leaves the emoji fallback in place.
+  scheduleImageResolution({ kind: 'food', id: (data as FoodOption).id })
 
   return { data: data as FoodOption }
 }

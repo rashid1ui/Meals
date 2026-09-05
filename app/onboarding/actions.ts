@@ -18,6 +18,8 @@ import {
   type OtherDbSupplement
 } from '@/lib/diet/supplements'
 import { ensureSupplementCatalogRow } from '@/lib/diet/supplement-catalog'
+import { scheduleImageResolution } from '@/lib/images/schedule'
+import { mealCompositionKey } from '@/lib/images/mealQuery'
 import type { SupplementSetup } from '@/lib/types'
 
 interface RemindersSubmission {
@@ -389,7 +391,14 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
             name: meal.name,
             sort_order: meal.sort_order,
             reminder_time: reminderTime,
-            reminder_enabled: reminderEnabled
+            reminder_enabled: reminderEnabled,
+            // Presentation-only (migration 0030): resolved once, after the
+            // response, from the meal's actual food composition.
+            image_status: 'pending',
+            image_composition_key: mealCompositionKey(
+              meal.name,
+              meal.foods.map((f: { name: string }) => ({ foodDatabaseId: null, name: f.name }))
+            )
           })
           .select()
           .single()
@@ -411,6 +420,8 @@ export async function submitOnboarding(formData: FormData): Promise<SubmitOnboar
 
         const { error: foodsError } = await supabase.from('foods').insert(foodsToInsert)
         if (foodsError) throw new Error('Food insert failed')
+
+        scheduleImageResolution({ kind: 'meal', id: newMeal.id })
       }
 
       // Set cookie to speed up middleware

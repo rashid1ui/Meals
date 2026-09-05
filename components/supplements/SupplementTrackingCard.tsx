@@ -10,8 +10,10 @@
 
 import { useState } from 'react'
 import { PillIcon, ChevronRightIcon } from '@/components/ui/icons'
+import StoredImageThumb from '@/components/images/StoredImageThumb'
 import { formatDoseAndQuantity, formatTime12h } from './format'
 import type { SupplementFrequency } from '@/lib/supplements/validation'
+import type { FoodImageAttribution } from '@/lib/food/foodImage'
 
 export interface SupplementTrackingCardData {
   id: string
@@ -22,6 +24,9 @@ export interface SupplementTrackingCardData {
   quantityUnit: string
   frequency: SupplementFrequency
   notificationEnabled: boolean
+  imageUrl?: string | null
+  imageAlt?: string | null
+  imageAttribution?: FoodImageAttribution | null
 }
 
 export interface DoseRow {
@@ -54,9 +59,13 @@ export default function SupplementTrackingCard({
   return (
     <div className="p-4 rounded-control border border-border space-y-3">
       <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-          <PillIcon size={18} />
-        </div>
+        <StoredImageThumb
+          image={{ image_url: supplement.imageUrl, image_alt: supplement.imageAlt, image_attribution: supplement.imageAttribution }}
+          fallback={<span className="text-primary"><PillIcon size={18} /></span>}
+          fallbackAlt={`Photo of ${supplement.name}`}
+          sizeClassName="w-9 h-9"
+          className="rounded-full mt-0.5"
+        />
 
         <button
           type="button"

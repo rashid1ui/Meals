@@ -12,6 +12,8 @@ import {
   type OriginalFoodRecord,
   type PlanSource
 } from '@/lib/diet/save-plan'
+import { buildMealImageCarryForwardIndex, decideMealImageCarryForward } from '@/lib/images/mealCarryForward'
+import { scheduleMealImageResolution } from '@/lib/images/schedule'
 
 export type SaveDietPlanResult = { success: true } | { error: string }
 
@@ -61,7 +63,9 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     // reading another user's food rows via a crafted originalFoodId.
     const { data: currentMeals, error: currentMealsError } = await supabase
       .from('meals')
-      .select('id, name, reminder_time, reminder_enabled, foods(id, name)')
+      .select(
+        'id, name, reminder_time, reminder_enabled, image_url, image_alt, image_attribution, image_status, image_composition_key, foods(id, name)'
+      )
       .eq('diet_plan_id', currentPlan.id)
 
     if (currentMealsError) {
@@ -81,6 +85,25 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     // configured, same as any freshly-added meal today.
     const reminderByMealId = new Map(
       (currentMeals || []).map(m => [m.id, { reminderTime: m.reminder_time, reminderEnabled: m.reminder_enabled }])
+    )
+
+    // Meal images are "resolve once -> store -> reuse". Meal rows are
+    // deleted+reinserted on every save, so the stored image must be carried
+    // forward explicitly or it is lost - see lib/images/mealCarryForward.ts
+    // (extracted there so this exact decision has direct unit-test coverage:
+    // quantity/reorder/tracking never re-resolve, only a real composition
+    // change re-resolves that one meal, a user-provided image always wins).
+    const mealImageCarryForwardIndex = buildMealImageCarryForwardIndex(
+      (currentMeals || []).map(m => ({
+        id: m.id,
+        name: m.name,
+        foods: ((m as { foods?: { name: string }[] }).foods || []).map(f => ({ foodDatabaseId: null, name: f.name })),
+        image_url: (m as { image_url?: string | null }).image_url ?? null,
+        image_alt: (m as { image_alt?: string | null }).image_alt ?? null,
+        image_attribution: (m as { image_attribution?: unknown }).image_attribution ?? null,
+        image_status: (m as { image_status?: string | null }).image_status ?? null,
+        image_composition_key: (m as { image_composition_key?: string | null }).image_composition_key ?? null
+      }))
     )
 
     const originalFoodIds = Array.from(new Set(
@@ -177,10 +200,23 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     // today's.
     const mealIdPairs: { old_id: string; new_id: string }[] = []
     const foodIdPairs: { old_id: string; new_id: string; new_meal_id: string }[] = []
+    // New meal ids whose image composition changed (or is brand new) - image
+    // resolution is scheduled for these only, AFTER the swap succeeds.
+    const mealsToResolveImages: string[] = []
     try {
       for (let i = 0; i < resolvedMeals.length; i++) {
         const meal = resolvedMeals[i]
         const carriedReminder = meal.currentId ? reminderByMealId.get(meal.currentId) : undefined
+
+        // See lib/images/mealCarryForward.ts: a user-provided image is
+        // matched by the meal's own stable id and wins unconditionally, even
+        // across a composition change; otherwise composition-fingerprint
+        // matching applies (quantity/order/tracking never affect it).
+        const { compositionKey, carriedImage } = decideMealImageCarryForward(
+          { currentId: meal.currentId, name: meal.name, foods: meal.foods.map(f => ({ foodDatabaseId: null, name: f.name })) },
+          mealImageCarryForwardIndex
+        )
+
         const { data: newMeal, error: insertMealError } = await supabase
           .from('meals')
           .insert({
@@ -189,7 +225,14 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
             name: meal.name,
             sort_order: i,
             reminder_time: carriedReminder?.reminderTime ?? null,
-            reminder_enabled: carriedReminder?.reminderEnabled ?? true
+            reminder_enabled: carriedReminder?.reminderEnabled ?? true,
+            image_composition_key: compositionKey,
+            // Same composition as before -> reuse the stored image verbatim
+            // (0 API calls). Otherwise mark pending and resolve after the swap.
+            image_url: carriedImage?.image_url ?? null,
+            image_alt: carriedImage?.image_alt ?? null,
+            image_attribution: carriedImage?.image_attribution ?? null,
+            image_status: carriedImage ? carriedImage.image_status : 'pending'
           })
           .select()
           .single()
@@ -199,6 +242,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
           throw new Error('Meal insert failed')
         }
         insertedMealIds.push(newMeal.id)
+        if (!carriedImage) mealsToResolveImages.push(newMeal.id)
         if (meal.currentId) mealIdPairs.push({ old_id: meal.currentId, new_id: newMeal.id })
 
         // Inserted one row at a time (not a single bulk array insert) so
@@ -289,6 +333,12 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
       // truth; this is a cosmetic timestamp bump only.
       console.error('saveDietPlan: failed to touch profile updated_at:', touchProfileError)
     }
+
+    // Non-blocking, after the response: resolve a fresh image only for the
+    // meals whose composition changed (or are new). Unchanged meals kept
+    // their image verbatim above - no Pexels call for a quantity edit,
+    // reorder or tracking change.
+    scheduleMealImageResolution(mealsToResolveImages)
 
     return { success: true }
   } catch (err) {

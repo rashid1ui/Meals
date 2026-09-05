@@ -30,6 +30,11 @@ export interface DraftMeal {
   name: string
   sortOrder: number
   foods: DraftFood[]
+  // Presentation-only (migration 0030) - a resolved, stored meal photo.
+  // Absent/null on a client-added meal until the next save + resolution.
+  imageUrl?: string | null
+  imageAlt?: string | null
+  imageAttribution?: import('@/lib/food/foodImage').FoodImageAttribution | null
 }
 
 export type ChangeEntry =
