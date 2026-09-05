@@ -87,10 +87,21 @@ function recomputeMeal(meal: MealCompletionState): MealCompletionState {
   }
 }
 
-function recomputeConsumed(meals: MealCompletionState[]): MacroTotals {
-  // Mirrors the server's recomputeDailyAndReturn: the daily rollup is the
-  // sum of every actually-eaten food's macros, nothing planned.
-  return sumMacros(meals.flatMap(m => m.foods.map(f => f.actual)))
+function recomputeConsumed(
+  meals: MealCompletionState[],
+  outsidePlan: DailyTrackingSummary['outsidePlan']
+): MacroTotals {
+  // Mirrors the server's getTodayTracking: TRUE intake is the sum of every
+  // actually-eaten planned food's macros PLUS the confirmed outside-plan
+  // portion (which this optimistic layer never changes - it only ever
+  // touches planned foods - so it's carried straight through).
+  const planned = sumMacros(meals.flatMap(m => m.foods.map(f => f.actual)))
+  return {
+    calories: planned.calories + outsidePlan.calories,
+    protein: planned.protein + outsidePlan.protein,
+    carbs: planned.carbs + outsidePlan.carbs,
+    fat: planned.fat + outsidePlan.fat
+  }
 }
 
 // Recompute one food's state from a new consumed quantity, exactly as
@@ -133,7 +144,7 @@ export function applyOptimisticFoodLog(
     return recomputeMeal({ ...meal, foods })
   })
   if (!touched) return summary
-  return { ...summary, meals, consumed: recomputeConsumed(meals) }
+  return { ...summary, meals, consumed: recomputeConsumed(meals, summary.outsidePlan) }
 }
 
 // "I ate this whole meal" / "undo that" - fans the per-food transform out
@@ -188,7 +199,10 @@ export function mergeConfirmedFood(
   return {
     ...base,
     meals,
-    consumed: recomputeConsumed(meals),
+    // Adopt the snapshot's outside-plan portion too (a concurrent scan
+    // confirm may have changed it) before re-summing TRUE intake.
+    outsidePlan: snapshot.outsidePlan,
+    consumed: recomputeConsumed(meals, snapshot.outsidePlan),
     // Not rendered in the meal-tracking view; adopt the latest server value
     // so the Insights protein split converges without a dedicated recompute.
     proteinBreakdown: snapshot.proteinBreakdown

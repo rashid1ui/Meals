@@ -10,15 +10,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/carbType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/diet/supplements.test.ts lib/diet/generation-lock.test.ts lib/diet/generate-diet.test.ts lib/diet/manual-plan.test.ts lib/diet/manual-plan-lock.test.ts lib/diet/effective-target.test.ts lib/diet/manual-plan-success.test.ts lib/actions/staleActionError.test.ts lib/tracking/logic.test.ts lib/tracking/date.test.ts lib/tracking/optimisticTracking.test.ts app/dashboard/actions.test.ts lib/auth/routing.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts lib/notifications/vapid.test.ts lib/notifications/pushSubscribe.test.ts lib/notifications/sweep.test.ts lib/notifications/clientSweep.test.ts lib/food/search.test.ts lib/food/servingDisplay.test.ts lib/food/foodImageQuery.test.ts lib/food/foodImage.test.ts lib/supplements/validation.test.ts lib/supplements/tracking.test.ts lib/notifications/supplementSchedule.test.ts lib/notifications/supplementCopy.test.ts lib/images/score.test.ts lib/images/supplementQuery.test.ts lib/images/mealQuery.test.ts lib/images/resolveFood.test.ts lib/images/resolveSupplement.test.ts lib/images/resolveMeal.test.ts lib/images/persist.test.ts lib/images/serverOnly.test.ts lib/images/mealCarryForward.test.ts lib/qa/identity.test.ts lib/onboarding/draftStorage.test.ts",
+    "test": "node --import tsx --test lib/nutrition/calculator.test.ts lib/nutrition/solver.test.ts lib/nutrition/units.test.ts lib/nutrition/engine.test.ts lib/nutrition/proteinType.test.ts lib/nutrition/carbType.test.ts lib/nutrition/workoutMeals.test.ts lib/diet/diff.test.ts lib/diet/supplements.test.ts lib/diet/generation-lock.test.ts lib/diet/generate-diet.test.ts lib/diet/manual-plan.test.ts lib/diet/manual-plan-lock.test.ts lib/diet/effective-target.test.ts lib/diet/manual-plan-success.test.ts lib/actions/staleActionError.test.ts lib/tracking/logic.test.ts lib/tracking/date.test.ts lib/tracking/optimisticTracking.test.ts app/dashboard/actions.test.ts lib/auth/routing.test.ts lib/notifications/schedule.test.ts lib/notifications/milestones.test.ts lib/notifications/copy.test.ts lib/notifications/timezone.test.ts lib/notifications/subscriptions.test.ts lib/notifications/pushErrors.test.ts lib/notifications/vapid.test.ts lib/notifications/pushSubscribe.test.ts lib/notifications/sweep.test.ts lib/notifications/clientSweep.test.ts lib/food/search.test.ts lib/food/servingDisplay.test.ts lib/food/foodImageQuery.test.ts lib/food/foodImage.test.ts lib/supplements/validation.test.ts lib/supplements/tracking.test.ts lib/notifications/supplementSchedule.test.ts lib/notifications/supplementCopy.test.ts lib/images/score.test.ts lib/images/supplementQuery.test.ts lib/images/mealQuery.test.ts lib/images/resolveFood.test.ts lib/images/resolveSupplement.test.ts lib/images/resolveMeal.test.ts lib/images/persist.test.ts lib/images/serverOnly.test.ts lib/images/mealCarryForward.test.ts lib/qa/identity.test.ts lib/onboarding/draftStorage.test.ts lib/outsidePlan/imageValidation.test.ts lib/outsidePlan/imageProcessing.test.ts lib/outsidePlan/storage.test.ts lib/outsidePlan/imageHash.test.ts lib/outsidePlan/scanAnalysis.test.ts lib/ai-vision/schema.test.ts lib/ai-vision/providers/kimi.test.ts lib/outsidePlan/nutritionMatching.test.ts lib/outsidePlan/nutritionResolution.test.ts lib/outsidePlan/nutritionResolutionService.test.ts lib/outsidePlan/nutritionResolution.realistic.test.ts lib/outsidePlan/reviewModel.test.ts lib/outsidePlan/reviewClient.test.ts",
     "assign-food-images": "node --import tsx scripts/assign-food-images.ts",
     "qa:reset": "node --import tsx scripts/qa-reset.ts",
+    "smoke:kimi-vision": "node --import tsx scripts/kimi-vision-smoke-test.ts",
     "test:audit": "node --import tsx --test tests/integration/audit.test.ts",
     "test:supplement-db": "node --import tsx --test tests/integration/supplement-db.test.ts",
     "test:user-supplements": "node --import tsx --test tests/integration/user-supplements-rls.test.ts",
     "test:supplement-tracking": "node --import tsx --test tests/integration/supplement-tracking-rls.test.ts",
     "test:manual-plan": "node --import tsx --test tests/integration/manual-plan.test.ts",
-    "test:production-hardening": "node --import tsx --test tests/integration/production-hardening.test.ts"
+    "test:production-hardening": "node --import tsx --test tests/integration/production-hardening.test.ts",
+    "test:outside-plan-food-rls": "node --import tsx --test tests/integration/outside-plan-food-rls.test.ts",
+    "test:food-scan-storage-rls": "node --import tsx --test tests/integration/food-scan-storage-rls.test.ts",
+    "test:food-scan-cache-rls": "node --import tsx --test tests/integration/food-scan-cache-rls.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -27,7 +31,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
-    "web-push": "^3.6.7"
+    "sharp": "^0.35.4",
+    "web-push": "^3.6.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

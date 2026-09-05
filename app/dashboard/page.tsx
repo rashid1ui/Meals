@@ -8,6 +8,7 @@ import Badge from '@/components/ui/Badge'
 import { ChevronRightIcon } from '@/components/ui/icons'
 import DietEditor, { type FoodOption } from './components/DietEditor'
 import SupplementsSection from './components/SupplementsSection'
+import OutsidePlanCard from './components/OutsidePlanCard'
 import { SupplementsTrackingProvider } from '@/lib/supplements/SupplementsTrackingProvider'
 import type { DraftMeal } from '@/lib/diet/diff'
 import { sumMacros } from '@/lib/tracking/logic'
@@ -171,6 +172,8 @@ export default async function DashboardPage() {
 
           <SupplementsSection initialSupplements={initialSupplements} />
         </SupplementsTrackingProvider>
+
+        <OutsidePlanCard />
 
         <div className="space-y-6">
           <h2 className="font-display text-2xl font-bold text-foreground tracking-tight border-b border-border pb-4">

@@ -49,6 +49,7 @@ function makeSummary(): DailyTrackingSummary {
   return {
     date: '2026-09-03',
     consumed: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    outsidePlan: { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 },
     target: { calories: 2400, protein: 180, carbs: 250, fat: 70 },
     meals: [
       {

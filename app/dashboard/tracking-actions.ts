@@ -26,6 +26,7 @@ import {
   type MacroTotals
 } from '@/lib/tracking/logic'
 import { splitProteinByType, type ProteinBreakdown, type ProteinType } from '@/lib/nutrition/proteinType'
+import { foldOutsidePlanIntoConsumed } from '@/lib/outsidePlan/reviewModel'
 
 // One food's tracking state within a meal. `planned` is that food's own
 // full planned macros (what it contributes if fully eaten); `actual` is
@@ -54,12 +55,17 @@ export type MealCompletionState = {
 
 export type DailyTrackingSummary = {
   date: string
+  // TRUE intake for the day: planned meals actually logged PLUS confirmed
+  // outside-plan food (migration 0031). `outsidePlan` below is just the
+  // second term, so "planned portion" is derivable as consumed - outsidePlan.
   consumed: { calories: number; protein: number; carbs: number; fat: number }
+  outsidePlan: { calories: number; protein: number; carbs: number; fat: number; count: number }
   target: { calories: number; protein: number; carbs: number; fat: number }
   meals: MealCompletionState[]
   // Animal/plant/supplement split of `consumed.protein` - always sums to
   // exactly that number (lib/nutrition/proteinType.ts's splitProteinByType
   // classifies every tracked food into exactly one bucket, never drops one).
+  // Outside-plan items are classified by their item_name the same way.
   proteinBreakdown: ProteinBreakdown
 }
 
@@ -131,7 +137,7 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   // lookup have no dependency on each other - fire them together instead of in
   // series (this action previously did several sequential round-trips per
   // dashboard load).
-  const [{ data: activePlans }, { data: trackedFoods }, { typeByName, categoryByName }] = await Promise.all([
+  const [{ data: activePlans }, { data: trackedFoods }, { data: outsidePlanRows }, { typeByName, categoryByName }] = await Promise.all([
     supabase
       .from('diet_plans')
       .select('id, plan_source, calories_target, protein_target, carbs_target, fat_target')
@@ -141,6 +147,13 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
     supabase
       .from('food_tracking')
       .select('food_id, food_name, completed, quantity, calories, protein, carbs, fat')
+      .eq('user_id', user.id)
+      .eq('tracking_date', localDate),
+    // Confirmed outside-plan food for the same logical day. Additive to the
+    // planned totals - never joined to meals/foods (design principle 2/22).
+    supabase
+      .from('outside_plan_food_entries')
+      .select('item_name, calories, protein, carbs, fat')
       .eq('user_id', user.id)
       .eq('tracking_date', localDate),
     loadProteinTypeLookups(supabase)
@@ -208,7 +221,13 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   // their re-linked replacement. Also deliberately not the daily_tracking
   // rollup - that's a periodic snapshot for Weekly/Monthly/Calendar history,
   // not live truth for today (see recomputeDailyAndReturn below).
-  const consumed = sumMacros(mealStates.map(m => m.actual))
+  const plannedConsumed = sumMacros(mealStates.map(m => m.actual))
+
+  // TRUE intake = planned meals logged + confirmed outside-plan food. The
+  // outside-plan term is surfaced separately so the dashboard can show it
+  // and "planned portion" stays derivable (migration 0031).
+  const outsidePlanEntryRows = (outsidePlanRows as { item_name: string; calories: number; protein: number; carbs: number; fat: number }[] | null) || []
+  const { consumed, outsidePlanTotals } = foldOutsidePlanIntoConsumed(plannedConsumed, outsidePlanEntryRows)
 
   // Same plan-scoping applies to the protein-type breakdown: only foods that
   // are in the live plan AND logged today should be classified, so this is
@@ -221,7 +240,12 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
       .filter((t): t is TrackedFoodRow => Boolean(t))
   )
   const proteinBreakdown = splitProteinByType(
-    completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
+    [
+      ...completedTrackedFoods.map(t => ({ name: t.food_name, protein: Number(t.protein) })),
+      // Outside-plan protein is real intake too - classify each entry by its
+      // item_name so the breakdown still sums to exactly consumed.protein.
+      ...outsidePlanEntryRows.map(r => ({ name: r.item_name, protein: Number(r.protein) }))
+    ],
     typeByName,
     categoryByName
   )
@@ -230,6 +254,13 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
     data: {
       date: localDate,
       consumed,
+      outsidePlan: {
+        calories: outsidePlanTotals.calories,
+        protein: outsidePlanTotals.protein,
+        carbs: outsidePlanTotals.carbs,
+        fat: outsidePlanTotals.fat,
+        count: outsidePlanEntryRows.length
+      },
       // A hand-built plan is scored against its own composition, not the
       // onboarding recommendation stored on the row (lib/diet/effective-target.ts).
       target: effectiveDailyTarget(
@@ -260,8 +291,12 @@ async function recomputeDailyAndReturn(
   const result = await getTodayTracking(localDate)
   if ('error' in result) return result
 
-  const { consumed, target } = result.data
+  const { consumed, target, outsidePlan } = result.data
 
+  // calories/protein/carbs/fat hold the TRUE total (planned + outside-plan);
+  // outside_plan_* hold just the outside-plan portion, so planned stays
+  // derivable as total - outside_plan_* (migration 0031). getTodayTracking
+  // already summed both, so this is a pure snapshot of what it returned.
   const { error: dailyError } = await supabase.from('daily_tracking').upsert(
     {
       user_id: userId,
@@ -270,6 +305,10 @@ async function recomputeDailyAndReturn(
       protein: consumed.protein,
       carbs: consumed.carbs,
       fat: consumed.fat,
+      outside_plan_calories: outsidePlan.calories,
+      outside_plan_protein: outsidePlan.protein,
+      outside_plan_carbs: outsidePlan.carbs,
+      outside_plan_fat: outsidePlan.fat,
       nutrition_progress: Math.round(pctOf(consumed.calories, target.calories)),
       calories_target: target.calories,
       protein_target: target.protein,
@@ -286,6 +325,19 @@ async function recomputeDailyAndReturn(
   }
 
   return result
+}
+
+// Public entry point for "the outside-plan food for this day changed, redo
+// the rollup" - called by app/dashboard/outside-plan-actions.ts after a
+// confirm or a delete. Same recompute path the planned-food logging actions
+// use, so today's live numbers and today's persisted snapshot never
+// disagree. Safe to call repeatedly (it re-sums from source rows).
+export async function recomputeDailyTracking(localDate: string): Promise<Result<DailyTrackingSummary>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+  if (!isPlausibleToday(localDate)) return { error: 'Tracking is only available for today.' }
+  const supabase = await createClient()
+  return recomputeDailyAndReturn(supabase, user.id, localDate)
 }
 
 // Logs the ACTUAL quantity of one food eaten for a given date - 0 means "not

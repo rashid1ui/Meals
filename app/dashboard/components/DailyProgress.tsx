@@ -257,9 +257,20 @@ export default function DailyProgress({ tracking }: Props) {
     0
   )
 
+  const outsidePlan = tracking.outsidePlan
+
   return (
     <div className="space-y-4">
       <CalorieCard current={totals.calories} target={targets.calories} />
+
+      {outsidePlan.count > 0 && (
+        <p className="text-xs text-muted-foreground -mt-1">
+          Includes{' '}
+          <span className="font-mono tabular-nums font-semibold text-foreground">{Math.round(outsidePlan.calories)} kcal</span>{' '}
+          from {outsidePlan.count} outside-plan {outsidePlan.count === 1 ? 'entry' : 'entries'} logged today. Your diet plan
+          is unchanged.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MacroCard

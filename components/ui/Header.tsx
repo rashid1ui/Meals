@@ -18,7 +18,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import { SignOutButton } from '@/components/SignOutButton'
-import { MenuIcon, CloseIcon, ChartIcon, HomeIcon } from '@/components/ui/icons'
+import { MenuIcon, CloseIcon, ChartIcon, HomeIcon, AppleIcon } from '@/components/ui/icons'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 
 type Props = {
@@ -43,6 +43,7 @@ export default function Header({
   const pathname = usePathname()
   const isHomeActive = pathname === '/dashboard'
   const isInsightsActive = pathname?.startsWith('/dashboard/insights') ?? false
+  const isScanActive = pathname?.startsWith('/dashboard/scan') ?? false
 
   useEffect(() => {
     if (!menuOpen) return
@@ -106,6 +107,14 @@ export default function Header({
           >
             <ChartIcon size={17} />
             Insights
+          </Link>
+          <Link
+            href="/dashboard/scan"
+            aria-current={isScanActive ? 'page' : undefined}
+            className={navLinkClasses(isScanActive)}
+          >
+            <AppleIcon size={17} />
+            Outside Plan
           </Link>
         </div>
 
@@ -184,6 +193,18 @@ export default function Header({
             >
               <ChartIcon size={16} />
               Insights
+            </Link>
+            <Link
+              href="/dashboard/scan"
+              role="menuitem"
+              aria-current={isScanActive ? 'page' : undefined}
+              onClick={() => setMenuOpen(false)}
+              className={`flex items-center gap-2 min-h-[44px] px-3 rounded-pill text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                isScanActive ? 'bg-primary/15 text-primary' : 'text-foreground hover:bg-surface'
+              }`}
+            >
+              <AppleIcon size={16} />
+              Outside Plan
             </Link>
             {showSettingsLink && (
               <Link
