@@ -275,3 +275,58 @@ test('mergeConfirmedFood - drift-safe: a food missing from base is ignored', () 
   const snap = applyOptimisticFoodLog(makeSummary(), 'breakfast', 'oats', 80)
   assert.strictEqual(mergeConfirmedFood(base, snap, 'not-a-real-food'), base)
 })
+
+// ---------------------------------------------------------------------------
+// Phase 6: the confirmed outside-plan portion must survive every optimistic
+// planned-food change (section 13). `consumed` is TRUE intake = planned
+// actual + outside-plan; a planned-food click re-sums planned but must keep
+// the outside-plan term.
+// ---------------------------------------------------------------------------
+
+function summaryWithOutsidePlan(): DailyTrackingSummary {
+  const s = makeSummary()
+  s.outsidePlan = { calories: 300, protein: 20, carbs: 30, fat: 10, count: 1 }
+  // consumed reflects TRUE intake even with nothing planned eaten yet.
+  s.consumed = { calories: 300, protein: 20, carbs: 30, fat: 10 }
+  return s
+}
+
+test('Phase 6: applyOptimisticFoodLog keeps the 300 kcal outside-plan portion when a planned food is logged', () => {
+  const next = applyOptimisticFoodLog(summaryWithOutsidePlan(), 'breakfast', 'oats', 80)
+  // Oats eaten = 379 kcal planned actual, + 300 outside-plan = 679.
+  assert.strictEqual(next.consumed.calories, 679)
+  assert.strictEqual(next.consumed.protein, 13 + 20)
+  assert.deepStrictEqual(next.outsidePlan, { calories: 300, protein: 20, carbs: 30, fat: 10, count: 1 })
+})
+
+test('Phase 6: the outside-plan portion never briefly disappears - viewOf(initState + overlay) still includes it', () => {
+  const { state } = requestFoodLog(initState(summaryWithOutsidePlan()), 'oats', { mealId: 'breakfast', consumedQuantity: 80 })
+  const v = viewOf(state)
+  assert.strictEqual(v.consumed.calories, 679)
+  assert.strictEqual(v.outsidePlan.calories, 300)
+})
+
+test('Phase 6: applyOptimisticMealToggle (whole breakfast) keeps the outside-plan portion', () => {
+  const next = applyOptimisticMealToggle(summaryWithOutsidePlan(), 'breakfast', true)
+  // Breakfast fully eaten = 497 kcal + 300 outside-plan = 797.
+  assert.strictEqual(next.consumed.calories, 797)
+  assert.strictEqual(next.outsidePlan.calories, 300)
+})
+
+test('Phase 6: mergeConfirmedFood adopts the server snapshot\'s outside-plan portion (e.g. a concurrent scan confirm changed it)', () => {
+  const base = summaryWithOutsidePlan()
+  const snap = applyOptimisticFoodLog(summaryWithOutsidePlan(), 'breakfast', 'oats', 80)
+  // Server snapshot now shows a larger outside-plan portion (another entry
+  // was confirmed since base was loaded).
+  snap.outsidePlan = { calories: 450, protein: 30, carbs: 40, fat: 15, count: 2 }
+  const merged = mergeConfirmedFood(base, snap, 'oats')
+  assert.strictEqual(merged.outsidePlan.calories, 450)
+  // 379 (oats actual, adopted from snap) + 450 (outside-plan) = 829
+  assert.strictEqual(merged.consumed.calories, 829)
+})
+
+test('Phase 6: zero outside-plan is unchanged behavior (regression guard)', () => {
+  const next = applyOptimisticFoodLog(makeSummary(), 'breakfast', 'oats', 80)
+  assert.strictEqual(next.consumed.calories, 379)
+  assert.deepStrictEqual(next.outsidePlan, { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 })
+})

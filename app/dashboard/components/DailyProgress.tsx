@@ -258,18 +258,34 @@ export default function DailyProgress({ tracking }: Props) {
   )
 
   const outsidePlan = tracking.outsidePlan
+  // consumed is the TRUE total (planned + outside-plan); the planned portion
+  // is what's left after removing the outside-plan portion. Clamped at 0 for
+  // float safety.
+  const plannedCalories = Math.max(0, totals.calories - outsidePlan.calories)
 
   return (
     <div className="space-y-4">
       <CalorieCard current={totals.calories} target={targets.calories} />
 
       {outsidePlan.count > 0 && (
-        <p className="text-xs text-muted-foreground -mt-1">
-          Includes{' '}
-          <span className="font-mono tabular-nums font-semibold text-foreground">{Math.round(outsidePlan.calories)} kcal</span>{' '}
-          from {outsidePlan.count} outside-plan {outsidePlan.count === 1 ? 'entry' : 'entries'} logged today. Your diet plan
-          is unchanged.
-        </p>
+        <div className="-mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            Planned{' '}
+            <span className="font-mono tabular-nums font-semibold text-foreground">{Math.round(plannedCalories)} kcal</span>
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Outside plan{' '}
+            <span className="font-mono tabular-nums font-semibold text-foreground">
+              {Math.round(outsidePlan.calories)} kcal
+            </span>{' '}
+            ({outsidePlan.count} {outsidePlan.count === 1 ? 'entry' : 'entries'})
+          </span>
+          <span className="basis-full text-[11px]">
+            &ldquo;Outside plan&rdquo; just means food that wasn&apos;t part of your planned diet &mdash; your plan is
+            unchanged.
+          </span>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

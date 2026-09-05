@@ -102,12 +102,29 @@ export default function OutsidePlanCard() {
                   {entry.wasEdited && <Badge variant="neutral">Edited</Badge>}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {entry.itemCount > 0 ? `${entry.itemCount} item${entry.itemCount === 1 ? '' : 's'} · ` : ''}
                   <span className="font-mono tabular-nums">{Math.round(entry.calories)} kcal</span>
                   {' · '}
                   <span className="font-mono tabular-nums text-protein">{Math.round(entry.protein)}g P</span>{' '}
                   <span className="font-mono tabular-nums text-carbs">{Math.round(entry.carbs)}g C</span>{' '}
                   <span className="font-mono tabular-nums text-fat">{Math.round(entry.fat)}g F</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {entry.source === 'ai_scan' ? 'AI scan' : 'Manual entry'}
+                  {entry.itemCount > 0 && (
+                    <>
+                      {' · '}
+                      {entry.itemCount} item{entry.itemCount === 1 ? '' : 's'}
+                      {entry.matchedItemCount > 0 || entry.manualItemCount > 0 ? (
+                        <>
+                          {' ('}
+                          {entry.matchedItemCount > 0 ? `${entry.matchedItemCount} from database` : ''}
+                          {entry.matchedItemCount > 0 && entry.manualItemCount > 0 ? ', ' : ''}
+                          {entry.manualItemCount > 0 ? `${entry.manualItemCount} manual` : ''}
+                          {')'}
+                        </>
+                      ) : null}
+                    </>
+                  )}
                 </p>
               </div>
               <button

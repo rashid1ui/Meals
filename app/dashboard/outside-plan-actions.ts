@@ -20,7 +20,15 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/auth/get-user'
-import { isPlausibleToday } from '@/lib/tracking/date'
+import { isPlausibleToday, shiftDateUTC } from '@/lib/tracking/date'
+import {
+  buildOutsidePlanAnalytics,
+  type OutsidePlanAnalytics,
+  type OutsidePlanAnalyticsInput,
+  type OutsidePlanComponentInput,
+  type OutsidePlanEntryInput,
+  type DailySnapshotInput
+} from '@/lib/outsidePlan/analytics'
 import { fetchActiveFoodCandidates } from '@/lib/outsidePlan/nutritionResolutionService'
 import { matchFoodCandidate, type NutritionMatchTier } from '@/lib/outsidePlan/nutritionMatching'
 import { deleteFoodScanImage } from '@/lib/outsidePlan/storage'
@@ -28,6 +36,7 @@ import {
   assertScanEventConfirmable,
   buildOutsidePlanEntryRow,
   computeConfirmedTotals,
+  interpretClaimResult,
   validateConfirmItems,
   type ConfirmItemInput
 } from '@/lib/outsidePlan/reviewModel'
@@ -249,9 +258,7 @@ export async function confirmOutsidePlanScan(
     .is('resulting_entry_id', null)
     .select('id')
 
-  const claimWon = !claimError && Array.isArray(claimed) && claimed.length === 1
-
-  if (!claimWon) {
+  if (interpretClaimResult(claimed, claimError) === 'lost') {
     // Lost the race - undo our insert and return the winner's entry so the
     // caller still sees a success (one entry exists, which is correct).
     await supabase.from('outside_plan_food_entries').delete().eq('id', inserted.id).eq('user_id', user.id)
@@ -307,13 +314,30 @@ export interface OutsidePlanLogEntry {
   itemName: string
   loggedAt: string
   mealContext: string | null
+  // 'ai_scan' or 'manual' - how the ENTRY was created. Provider internals
+  // (raw Kimi response, model ids) are never included here.
   source: string
   wasEdited: boolean
   itemCount: number
+  // Per-item provenance derived from the components JSONB: how many items
+  // got nutrition from a food_database match vs. hand-entered nutrition.
+  matchedItemCount: number
+  manualItemCount: number
   calories: number
   protein: number
   carbs: number
   fat: number
+}
+
+function countComponentSources(components: unknown): { matched: number; manual: number } {
+  if (!Array.isArray(components)) return { matched: 0, manual: 0 }
+  let matched = 0
+  let manual = 0
+  for (const c of components) {
+    if (c && typeof c === 'object' && (c as { source?: unknown }).source === 'matched') matched++
+    else manual++
+  }
+  return { matched, manual }
 }
 
 export async function getOutsidePlanFoodLog(localDate: string): Promise<Result<OutsidePlanLogEntry[]>> {
@@ -334,19 +358,24 @@ export async function getOutsidePlanFoodLog(localDate: string): Promise<Result<O
     return { error: 'Failed to load your outside-plan food. Please try again.' }
   }
 
-  const entries: OutsidePlanLogEntry[] = (data ?? []).map(r => ({
-    id: r.id as string,
-    itemName: r.item_name as string,
-    loggedAt: r.logged_at as string,
-    mealContext: (r.meal_context as string | null) ?? null,
-    source: r.source as string,
-    wasEdited: Boolean(r.was_edited),
-    itemCount: Array.isArray(r.components) ? r.components.length : 0,
-    calories: Number(r.calories),
-    protein: Number(r.protein),
-    carbs: Number(r.carbs),
-    fat: Number(r.fat)
-  }))
+  const entries: OutsidePlanLogEntry[] = (data ?? []).map(r => {
+    const counts = countComponentSources(r.components)
+    return {
+      id: r.id as string,
+      itemName: r.item_name as string,
+      loggedAt: r.logged_at as string,
+      mealContext: (r.meal_context as string | null) ?? null,
+      source: r.source as string,
+      wasEdited: Boolean(r.was_edited),
+      itemCount: Array.isArray(r.components) ? r.components.length : 0,
+      matchedItemCount: counts.matched,
+      manualItemCount: counts.manual,
+      calories: Number(r.calories),
+      protein: Number(r.protein),
+      carbs: Number(r.carbs),
+      fat: Number(r.fat)
+    }
+  })
 
   return { data: entries }
 }
@@ -377,4 +406,133 @@ export async function deleteOutsidePlanEntry(entryId: string, localDate: string)
 
   await recomputeDailyTracking(localDate)
   return { data: { deleted: true } }
+}
+
+// ---- Outside-plan analytics (Phase 7) ----
+//
+// One range query against outside_plan_food_entries (the authoritative,
+// item-level, delete-reflecting source) + one against daily_tracking (only
+// for each day's snapshot so the pure builder can derive the PLANNED
+// portion) + a lightweight active-plan check. All aggregation is pure
+// (lib/outsidePlan/analytics.ts). No Kimi, no nutrition resolver, no
+// per-entry query. Every row is user-scoped; RLS is the backstop.
+//
+// Provider internals are stripped here: components are reduced to
+// {name, source, macros} - matched_food_id, estimated_grams, ai_confidence,
+// detected, original_name and the entry's ai_raw_response / ai_model /
+// image_storage_path never leave the server.
+
+export type OutsidePlanAnalyticsPeriod = '7d' | '30d'
+
+export interface GetOutsidePlanAnalyticsResult {
+  analytics: OutsidePlanAnalytics
+  period: OutsidePlanAnalyticsPeriod
+  rangeStart: string
+  rangeEnd: string
+}
+
+function normalizeComponents(raw: unknown): OutsidePlanComponentInput[] {
+  if (!Array.isArray(raw)) return []
+  const out: OutsidePlanComponentInput[] = []
+  for (const c of raw) {
+    if (!c || typeof c !== 'object') continue
+    const o = c as Record<string, unknown>
+    const name = typeof o.name === 'string' ? o.name : ''
+    if (!name.trim()) continue
+    out.push({
+      name,
+      source: o.source === 'matched' ? 'matched' : 'manual',
+      calories: typeof o.calories === 'number' ? o.calories : null,
+      protein: typeof o.protein === 'number' ? o.protein : null,
+      carbs: typeof o.carbs === 'number' ? o.carbs : null,
+      fat: typeof o.fat === 'number' ? o.fat : null
+    })
+  }
+  return out
+}
+
+export async function getOutsidePlanAnalytics(
+  localDate: string,
+  period: OutsidePlanAnalyticsPeriod
+): Promise<Result<GetOutsidePlanAnalyticsResult>> {
+  const user = await getUser()
+  if (!user) return { error: 'Not authenticated' }
+  if (!isPlausibleToday(localDate)) return { error: 'Invalid date.' }
+
+  const resolvedPeriod: OutsidePlanAnalyticsPeriod = period === '30d' ? '30d' : '7d'
+  const days = resolvedPeriod === '30d' ? 30 : 7
+  const rangeEnd = localDate
+  const rangeStart = shiftDateUTC(localDate, -(days - 1))
+
+  const supabase = await createClient()
+
+  const [{ data: entryRows, error: entryError }, { data: snapshotRows, error: snapshotError }, { data: activePlans }] =
+    await Promise.all([
+      supabase
+        .from('outside_plan_food_entries')
+        .select('id, tracking_date, logged_at, source, was_edited, meal_context, calories, protein, carbs, fat, components')
+        .eq('user_id', user.id)
+        .gte('tracking_date', rangeStart)
+        .lte('tracking_date', rangeEnd)
+        .order('logged_at', { ascending: true }),
+      supabase
+        .from('daily_tracking')
+        .select('tracking_date, calories, protein, carbs, fat, outside_plan_calories, outside_plan_protein, outside_plan_carbs, outside_plan_fat')
+        .eq('user_id', user.id)
+        .gte('tracking_date', rangeStart)
+        .lte('tracking_date', rangeEnd),
+      supabase.from('diet_plans').select('id').eq('user_id', user.id).eq('is_active', true).limit(1)
+    ])
+
+  if (entryError || snapshotError) {
+    console.error('[outside-plan] getOutsidePlanAnalytics query failed:', entryError?.message, snapshotError?.message)
+    return { error: 'Failed to load outside-plan analytics. Please try again.' }
+  }
+
+  const entries: OutsidePlanEntryInput[] = (entryRows ?? []).map(r => ({
+    id: r.id as string,
+    trackingDate: r.tracking_date as string,
+    loggedAt: r.logged_at as string,
+    source: (r.source as string) === 'ai_scan' ? 'ai_scan' : 'manual',
+    wasEdited: Boolean(r.was_edited),
+    mealContext: (r.meal_context as string | null) ?? null,
+    calories: Number(r.calories) || 0,
+    protein: Number(r.protein) || 0,
+    carbs: Number(r.carbs) || 0,
+    fat: Number(r.fat) || 0,
+    components: normalizeComponents(r.components)
+  }))
+
+  const snapshots: DailySnapshotInput[] = (snapshotRows ?? []).map(r => ({
+    trackingDate: r.tracking_date as string,
+    total: {
+      calories: Number(r.calories) || 0,
+      protein: Number(r.protein) || 0,
+      carbs: Number(r.carbs) || 0,
+      fat: Number(r.fat) || 0
+    },
+    outsidePlan: {
+      calories: Number(r.outside_plan_calories) || 0,
+      protein: Number(r.outside_plan_protein) || 0,
+      carbs: Number(r.outside_plan_carbs) || 0,
+      fat: Number(r.outside_plan_fat) || 0
+    }
+  }))
+
+  const input: OutsidePlanAnalyticsInput = {
+    rangeStart,
+    rangeEnd,
+    entries,
+    snapshots,
+    hasActivePlan: Boolean(activePlans && activePlans.length > 0)
+  }
+
+  return {
+    data: {
+      analytics: buildOutsidePlanAnalytics(input),
+      period: resolvedPeriod,
+      rangeStart,
+      rangeEnd
+    }
+  }
 }

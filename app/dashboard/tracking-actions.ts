@@ -159,8 +159,42 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
     loadProteinTypeLookups(supabase)
   ])
 
+  const outsidePlanEntryRows =
+    (outsidePlanRows as { item_name: string; calories: number; protein: number; carbs: number; fat: number }[] | null) || []
+
   const activePlan = activePlans?.[0]
-  if (!activePlan) return { error: 'No active meal plan found.' }
+
+  // No active diet plan: outside-plan food is still real, additive intake
+  // and must still roll up. Return a planned-EMPTY summary (no fabricated
+  // meal, no invented target) rather than erroring, so
+  // recomputeDailyTracking can still keep daily_tracking correct for a user
+  // who logs outside-plan food before creating a plan. The /dashboard meal
+  // tracker itself still requires a plan (app/dashboard/page.tsx redirects
+  // to onboarding), so this branch is only reached by the outside-plan
+  // recompute path and the (also plan-gated) Insights panel.
+  if (!activePlan) {
+    const { consumed, outsidePlanTotals } = foldOutsidePlanIntoConsumed(zeroMacros(), outsidePlanEntryRows)
+    return {
+      data: {
+        date: localDate,
+        consumed,
+        outsidePlan: {
+          calories: outsidePlanTotals.calories,
+          protein: outsidePlanTotals.protein,
+          carbs: outsidePlanTotals.carbs,
+          fat: outsidePlanTotals.fat,
+          count: outsidePlanEntryRows.length
+        },
+        target: zeroMacros(),
+        meals: [],
+        proteinBreakdown: splitProteinByType(
+          outsidePlanEntryRows.map(r => ({ name: r.item_name, protein: Number(r.protein) })),
+          typeByName,
+          categoryByName
+        )
+      }
+    }
+  }
 
   const { data: meals } = await supabase
     .from('meals')
@@ -226,7 +260,7 @@ export async function getTodayTracking(localDate: string): Promise<Result<DailyT
   // TRUE intake = planned meals logged + confirmed outside-plan food. The
   // outside-plan term is surfaced separately so the dashboard can show it
   // and "planned portion" stays derivable (migration 0031).
-  const outsidePlanEntryRows = (outsidePlanRows as { item_name: string; calories: number; protein: number; carbs: number; fat: number }[] | null) || []
+  // outsidePlanEntryRows was normalized once near the top of this function.
   const { consumed, outsidePlanTotals } = foldOutsidePlanIntoConsumed(plannedConsumed, outsidePlanEntryRows)
 
   // Same plan-scoping applies to the protein-type breakdown: only foods that

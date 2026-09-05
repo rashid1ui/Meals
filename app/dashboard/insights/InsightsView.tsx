@@ -8,6 +8,7 @@ import type { Goal } from '@/lib/nutrition/engine'
 import Card from '@/components/ui/Card'
 import { AlertIcon, CalendarIcon } from '@/components/ui/icons'
 import DailyProgressCalendar from './DailyProgressCalendar'
+import OutsidePlanInsights from './OutsidePlanInsights'
 import ProteinBreakdownCard from '../components/ProteinBreakdownCard'
 import WorkoutMealRecommendations from '../components/WorkoutMealRecommendations'
 
@@ -239,6 +240,14 @@ export default function InsightsView({ targets, trainingTime, trainingTimeCustom
           trainingTimeCustom={trainingTimeCustom}
           goal={goal}
         />
+      </section>
+
+      <section className="space-y-4" aria-label="Outside-Plan Insights">
+        <SectionHeader
+          title="Outside-Plan Insights"
+          description="Patterns in food you logged outside your plan. Neutral, data-only — not a judgement."
+        />
+        <OutsidePlanInsights />
       </section>
 
       <section className="space-y-4" aria-label="Weekly Insights">

@@ -7,12 +7,14 @@ import {
   deriveWasEdited,
   buildOutsidePlanEntryRow,
   assertScanEventConfirmable,
+  interpretClaimResult,
   foldOutsidePlanIntoConsumed,
   OUTSIDE_PLAN_MAX_CALORIES,
   OUTSIDE_PLAN_MAX_MACRO_G,
   type ConfirmItemInput,
   type ValidatedReviewItem
 } from './reviewModel'
+import { splitProteinByType } from '@/lib/nutrition/proteinType'
 import type { FoodMacro } from '@/lib/nutrition/calculator'
 import type { FoodAnalysisResult } from '@/lib/ai-vision/types'
 
@@ -279,4 +281,72 @@ test('foldOutsidePlanIntoConsumed - no outside-plan rows leaves planned consumed
   const { consumed, outsidePlanTotals } = foldOutsidePlanIntoConsumed(planned, [])
   assert.deepStrictEqual(consumed, planned)
   assert.deepStrictEqual(outsidePlanTotals, { calories: 0, protein: 0, carbs: 0, fat: 0 })
+})
+
+// ---- Phase 6: no double counting (section 15) ----
+
+test('D. the outside-plan portion is added exactly once - consumed = planned + sum(rows), never twice', () => {
+  const planned = { calories: 1800, protein: 140, carbs: 150, fat: 55 }
+  const rows = [
+    { calories: 200, protein: 8, carbs: 22, fat: 9 },
+    { calories: 100, protein: 2, carbs: 12, fat: 5 }
+  ]
+  const { consumed, outsidePlanTotals } = foldOutsidePlanIntoConsumed(planned, rows)
+  assert.strictEqual(consumed.calories, 1800 + 300)
+  assert.strictEqual(consumed.protein, 140 + 10)
+  // consumed - outsidePlanTotals must give the planned portion back exactly
+  assert.strictEqual(consumed.calories - outsidePlanTotals.calories, planned.calories)
+  assert.strictEqual(consumed.protein - outsidePlanTotals.protein, planned.protein)
+})
+
+test('D. recomputing from source rows is idempotent - same planned base + same rows => identical result every time', () => {
+  const planned = { calories: 900, protein: 70, carbs: 60, fat: 25 }
+  const rows = [{ calories: 330, protein: 62, carbs: 0, fat: 7.2 }]
+  const a = foldOutsidePlanIntoConsumed(planned, rows)
+  const b = foldOutsidePlanIntoConsumed(planned, rows)
+  const c = foldOutsidePlanIntoConsumed(planned, rows)
+  assert.deepStrictEqual(a, b)
+  assert.deepStrictEqual(b, c)
+})
+
+// ---- Phase 6: protein breakdown reconciliation with outside-plan items (section 12) ----
+
+test('F. outside-plan protein is classified by item name and the breakdown still sums to total consumed protein', () => {
+  const plannedProteinFoods = [
+    { name: 'Chicken Breast', protein: 40 },
+    { name: 'Whey Protein', protein: 24 },
+    { name: 'Lentils', protein: 9 }
+  ]
+  const outsidePlanFoods = [
+    { name: 'Cheeseburger', protein: 25 }, // "cheese" -> animal keyword
+    { name: 'French Fries', protein: 4 } // no keyword -> plant default
+  ]
+  const totalProtein = [...plannedProteinFoods, ...outsidePlanFoods].reduce((n, f) => n + f.protein, 0)
+  const breakdown = splitProteinByType([...plannedProteinFoods, ...outsidePlanFoods], new Map(), new Map())
+  assert.strictEqual(breakdown.animal + breakdown.plant + breakdown.supplement, totalProtein)
+  // the outside-plan burger's protein is not silently dropped
+  assert.ok(breakdown.animal >= 25)
+})
+
+// ---- Phase 6: claim-race resolution (section 6) ----
+
+test('interpretClaimResult - exactly one claimed row means this request won', () => {
+  assert.strictEqual(interpretClaimResult([{ id: 'entry-1' }], null), 'won')
+})
+
+test('interpretClaimResult - zero claimed rows means a concurrent confirm already won', () => {
+  assert.strictEqual(interpretClaimResult([], null), 'lost')
+})
+
+test('interpretClaimResult - null/undefined rows is a loss (roll back, fall back to winner)', () => {
+  assert.strictEqual(interpretClaimResult(null, null), 'lost')
+  assert.strictEqual(interpretClaimResult(undefined, null), 'lost')
+})
+
+test('interpretClaimResult - any driver error is a loss, never assumed a win (avoids two entries)', () => {
+  assert.strictEqual(interpretClaimResult([{ id: 'entry-1' }], { message: 'connection reset' }), 'lost')
+})
+
+test('interpretClaimResult - more than one row is defensively a loss', () => {
+  assert.strictEqual(interpretClaimResult([{ id: 'a' }, { id: 'b' }], null), 'lost')
 })

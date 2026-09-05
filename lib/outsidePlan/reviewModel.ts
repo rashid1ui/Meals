@@ -356,6 +356,27 @@ export function assertScanEventConfirmable(
   return { status: 'ok' }
 }
 
+// The second half of the idempotency mechanism. After INSERTing an entry the
+// confirm action runs a conditional claim:
+//   UPDATE food_scan_events SET resulting_entry_id = <new>
+//   WHERE id = ? AND user_id = ? AND resulting_entry_id IS NULL
+//   RETURNING id
+// which returns exactly one row if this request claimed the event, or zero
+// rows if a concurrent confirm already claimed it. This pure function turns
+// that PostgREST result into the decision:
+//   'won'  -> keep the inserted entry, roll up daily tracking
+//   'lost' -> DELETE the just-inserted entry, return the winner's entry
+// A driver error is deliberately treated as 'lost': rolling back one entry
+// and falling back to the winner is always safe, whereas assuming 'won' on
+// an ambiguous error risks two entries for one scan.
+export function interpretClaimResult(
+  claimedRows: ReadonlyArray<unknown> | null | undefined,
+  claimError: unknown
+): 'won' | 'lost' {
+  if (claimError) return 'lost'
+  return Array.isArray(claimedRows) && claimedRows.length === 1 ? 'won' : 'lost'
+}
+
 // ---- Daily-tracking fold ----
 
 // Adds the confirmed outside-plan portion onto the planned-meal consumed

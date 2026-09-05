@@ -156,6 +156,36 @@ export default function DietEditor({
     }
   }, [localDate])
 
+  // Re-sync today's tracking when the tab is returned to (focus /
+  // visibilitychange) - the SAME pattern useLocalDate, SupplementsTracking-
+  // Provider and OutsidePlanCard already use. This is what makes an
+  // outside-plan scan confirmed/deleted in another tab (or on the
+  // /dashboard/scan route in a long-lived tab) show up in the calorie/macro
+  // rings and the protein breakdown without a manual reload. Skipped while
+  // any optimistic planned-food write is still in flight or queued, so it
+  // can never clobber an un-acknowledged click.
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState === 'hidden') return
+      const s = optStateRef.current
+      if (!s || s.running.size > 0 || s.trailing.size > 0 || s.overlay.size > 0) return
+      getTodayTracking(localDateRef.current).then(result => {
+        if ('error' in result) return
+        const s2 = optStateRef.current
+        if (!s2 || s2.running.size > 0 || s2.trailing.size > 0 || s2.overlay.size > 0) return
+        const next = initState(result.data)
+        optStateRef.current = next
+        setOptState(next)
+      })
+    }
+    document.addEventListener('visibilitychange', resync)
+    window.addEventListener('focus', resync)
+    return () => {
+      document.removeEventListener('visibilitychange', resync)
+      window.removeEventListener('focus', resync)
+    }
+  }, [])
+
   // Meal reminders/milestones - a separate concern from both the planning
   // draft and the tracking fetch above, fetched once on mount. Reminder
   // scheduling/dedup/copy logic all lives in lib/notifications/; this
