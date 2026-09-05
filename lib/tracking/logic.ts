@@ -38,6 +38,23 @@ export function computeFoodStatus(consumedQuantity: number, plannedQuantity: num
   return 'partial'
 }
 
+// The planned quantity is a TARGET, not a ceiling. A user who actually ate
+// more than planned (350g of a planned 300g portion) must be able to record
+// that - it persists as-is and displays as "350 / 300 g", with macros scaled
+// linearly past 100%. The only bounds enforced anywhere are a floor of 0 and
+// a defensive absurd-value guard: a consumed amount beyond this multiple of
+// the plan is a fat-fingered or hostile input, not a real meal, and is
+// capped rather than trusted. Applied identically on the server
+// (logFoodConsumption), in the optimistic client layer (applyOptimisticFoodLog)
+// and in the FoodRow "how much did you eat?" control, so all three converge.
+export const MAX_CONSUMED_PLANNED_MULTIPLE = 10
+
+export function boundConsumedQuantity(consumedQuantity: number, plannedQuantity: number): number {
+  if (!isFinite(consumedQuantity) || consumedQuantity <= 0) return 0
+  const ceiling = Math.max(plannedQuantity, 0) * MAX_CONSUMED_PLANNED_MULTIPLE
+  return ceiling > 0 ? Math.min(consumedQuantity, ceiling) : consumedQuantity
+}
+
 // A meal's status is purely derived from its foods' statuses - there is no
 // independent "meal complete" flag anywhere (matches the product requirement
 // that meal completion can never be set independently of food completion).

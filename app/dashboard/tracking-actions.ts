@@ -19,6 +19,7 @@ import {
   sumMacros,
   zeroMacros,
   pctOf,
+  boundConsumedQuantity,
   buildFoodTrackingRow,
   type TrackingStatus,
   type TrackableFood,
@@ -326,9 +327,13 @@ export async function logFoodConsumption(
   const mealName = Array.isArray(mealsRelation) ? mealsRelation[0]?.name : mealsRelation?.name
   if (!mealName) return { error: 'Meal not found.' }
 
-  // Never trust a client-sent quantity beyond what the meal actually
-  // contains - clamp to [0, planned] server-side.
-  const clampedQuantity = Math.max(0, Math.min(consumedQuantity, food.quantity))
+  // The planned quantity is a target, not a ceiling: a user can log eating
+  // MORE than planned (e.g. 350g of a planned 300g portion) and that is
+  // persisted as-is, scaling macros linearly past 100%. Only a floor of 0
+  // and a defensive absurd-value guard are enforced server-side (see
+  // boundConsumedQuantity) - a client-sent amount beyond a sane multiple of
+  // the plan is still rejected as nonsense rather than trusted.
+  const clampedQuantity = boundConsumedQuantity(consumedQuantity, food.quantity)
   const plannedFood: TrackableFood = {
     id: food.id,
     name: food.name,

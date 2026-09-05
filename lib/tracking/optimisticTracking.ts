@@ -28,6 +28,7 @@ import type {
   MealCompletionState
 } from '@/app/dashboard/tracking-actions'
 import {
+  boundConsumedQuantity,
   computeActualFoodMacros,
   computeFoodStatus,
   deriveMealStatus,
@@ -93,11 +94,13 @@ function recomputeConsumed(meals: MealCompletionState[]): MacroTotals {
 }
 
 // Recompute one food's state from a new consumed quantity, exactly as
-// logFoodConsumption + getTodayTracking would on the server: clamp to
-// [0, planned], scale macros linearly, re-derive the food and meal status,
-// re-sum the meal Actual and the daily consumed totals. A no-op (returns the
-// same reference) when the meal/food isn't in this summary, so it can never
-// touch another user's / date's / meal's data.
+// logFoodConsumption + getTodayTracking would on the server: bound to
+// [0, MAX_CONSUMED_PLANNED_MULTIPLE x planned] (planned is a target, not a
+// ceiling - eating more than planned is recorded as-is), scale macros
+// linearly, re-derive the food and meal status, re-sum the meal Actual and
+// the daily consumed totals. A no-op (returns the same reference) when the
+// meal/food isn't in this summary, so it can never touch another user's /
+// date's / meal's data.
 export function applyOptimisticFoodLog(
   summary: DailyTrackingSummary,
   mealId: string,
@@ -109,7 +112,7 @@ export function applyOptimisticFoodLog(
     if (meal.mealId !== mealId) return meal
     const foods = meal.foods.map(food => {
       if (food.foodId !== foodId) return food
-      const clamped = Math.max(0, Math.min(consumedQuantity, food.plannedQuantity))
+      const clamped = boundConsumedQuantity(consumedQuantity, food.plannedQuantity)
       const actual = computeActualFoodMacros(clamped, {
         id: food.foodId,
         name: '',

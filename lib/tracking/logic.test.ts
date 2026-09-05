@@ -10,6 +10,8 @@ import {
   computeDayAdherencePct,
   buildFoodTrackingRow,
   adherenceTier,
+  boundConsumedQuantity,
+  MAX_CONSUMED_PLANNED_MULTIPLE,
   type TrackableFood,
   type MacroTotals
 } from './logic'
@@ -44,6 +46,36 @@ test('computeFoodStatus - a value within floating-point rounding of the full pla
 
 test('computeFoodStatus - logging more than planned is still complete, never an invalid fourth state', () => {
   assert.strictEqual(computeFoodStatus(120, 100), 'complete')
+})
+
+// boundConsumedQuantity - the planned amount is a TARGET, not a ceiling: a
+// user who ate more than planned must be able to record it. Only a floor of
+// 0 and a defensive absurd-value guard are enforced.
+
+test('boundConsumedQuantity - eating more than planned passes through unchanged (350 of a planned 300)', () => {
+  assert.strictEqual(boundConsumedQuantity(350, 300), 350)
+})
+
+test('boundConsumedQuantity - eating exactly the planned amount is unchanged', () => {
+  assert.strictEqual(boundConsumedQuantity(300, 300), 300)
+})
+
+test('boundConsumedQuantity - a partial amount is unchanged', () => {
+  assert.strictEqual(boundConsumedQuantity(180, 300), 180)
+})
+
+test('boundConsumedQuantity - zero and negative amounts floor at 0 (un-marking)', () => {
+  assert.strictEqual(boundConsumedQuantity(0, 300), 0)
+  assert.strictEqual(boundConsumedQuantity(-50, 300), 0)
+})
+
+test('boundConsumedQuantity - a non-finite amount is treated as 0, never NaN/Infinity', () => {
+  assert.strictEqual(boundConsumedQuantity(NaN, 300), 0)
+  assert.strictEqual(boundConsumedQuantity(Infinity, 300), 0)
+})
+
+test('boundConsumedQuantity - an absurd amount is capped at MAX_CONSUMED_PLANNED_MULTIPLE x planned', () => {
+  assert.strictEqual(boundConsumedQuantity(999999, 300), 300 * MAX_CONSUMED_PLANNED_MULTIPLE)
 })
 
 // deriveMealStatus - meal completion is ALWAYS derived from its foods'

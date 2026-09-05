@@ -115,9 +115,19 @@ test('applyOptimisticFoodLog - un-marking (quantity 0) returns the food and tota
   assert.strictEqual(breakfast(s).status, 'none')
 })
 
-test('applyOptimisticFoodLog - clamps an over-large quantity to the planned amount (never a 4th state)', () => {
+test('applyOptimisticFoodLog - eating MORE than planned is recorded as-is (target is not a ceiling), macros scale past 100%', () => {
+  const s = applyOptimisticFoodLog(makeSummary(), 'breakfast', 'oats', 120) // planned 80 -> 1.5x
+  assert.strictEqual(food(s, 'oats').consumedQuantity, 120)
+  assert.strictEqual(food(s, 'oats').status, 'complete') // still 'complete', never a 4th state
+  assert.deepStrictEqual(food(s, 'oats').actual, { calories: 568.5, protein: 19.5, carbs: 102, fat: 10.5 })
+  // the meal Actual and daily consumed reflect the over-eating, not a capped 100%
+  assert.strictEqual(breakfast(s).actual.calories, 568.5)
+  assert.strictEqual(s.consumed.calories, 568.5)
+})
+
+test('applyOptimisticFoodLog - an absurd over-large quantity is still bounded to a sane multiple of planned (never a 4th state)', () => {
   const s = applyOptimisticFoodLog(makeSummary(), 'breakfast', 'oats', 99999)
-  assert.strictEqual(food(s, 'oats').consumedQuantity, 80)
+  assert.strictEqual(food(s, 'oats').consumedQuantity, 800) // 80 planned x MAX_CONSUMED_PLANNED_MULTIPLE (10)
   assert.strictEqual(food(s, 'oats').status, 'complete')
 })
 

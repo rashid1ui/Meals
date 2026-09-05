@@ -12,6 +12,7 @@ import {
   type UnitConfig
 } from '@/lib/nutrition/units'
 import { isValidQuantity } from '@/lib/nutrition/calculator'
+import { boundConsumedQuantity } from '@/lib/tracking/logic'
 import Badge from '@/components/ui/Badge'
 import TrackingStatusIcon from '@/components/ui/TrackingStatusIcon'
 import { PlusIcon, MinusIcon, CloseIcon, ChevronDownIcon } from '@/components/ui/icons'
@@ -136,17 +137,21 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
     setPlannedInputValue(String(displayQuantity))
   }
 
+  // The planned amount is a target the user is measured against, not a cap on
+  // what they can record eating: logging 350 of a planned 300 is valid and
+  // shows as "350 / 300". boundConsumedQuantity only floors at 0 and rejects
+  // absurd inputs - the same bound the server and optimistic layer apply, so
+  // the optimistic value and the eventual server snapshot converge.
   const commitLoggedQuantity = (displayValue: number) => {
     if (!completion || !isFinite(displayValue)) return
-    const clamped = Math.max(0, Math.min(displayValue, plannedDisplayForLog))
-    setLogInputValue(String(clamped))
-    completion.onLog(toCanonicalGrams(clamped, unitConfig))
+    const bounded = boundConsumedQuantity(displayValue, plannedDisplayForLog)
+    setLogInputValue(String(bounded))
+    completion.onLog(toCanonicalGrams(bounded, unitConfig))
   }
 
   const logStep = (delta: number) => {
     if (!completion) return
-    const next = Math.max(0, Math.min(consumedDisplay + delta, plannedDisplayForLog))
-    commitLoggedQuantity(next)
+    commitLoggedQuantity(consumedDisplay + delta)
   }
 
   const [plannedQuantityError, setPlannedQuantityError] = useState<string | null>(null)
@@ -334,8 +339,14 @@ export default function FoodRow({ food, badges, onRemove, completion, dbFood, on
             </div>
           )}
 
-          {onUpdateQuantity && (
-            <div className={`space-y-1.5 ${completion ? 'pt-4 border-t border-border/60' : ''}`}>
+          {/* Planned-amount editing belongs to plan building only. In the
+              tracking view (completion present) the planned amount is already
+              shown, read-only, in the food header - a second stepper here was
+              a redundant, confusing "which number do I change?" control. The
+              only editable quantity in the tracking/details area is "How much
+              did you eat?" above. */}
+          {onUpdateQuantity && !completion && (
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground block">
                 Planned Amount
               </label>
