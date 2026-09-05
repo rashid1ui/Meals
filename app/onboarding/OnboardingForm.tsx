@@ -35,6 +35,7 @@ import {
   clearServerOnboardingDraft,
   type ServerOnboardingDraft
 } from './draft-actions'
+import { ONBOARDING_DRAFT_STORAGE_KEY } from '@/lib/onboarding/draftStorage'
 import { isStaleServerActionError } from '@/lib/actions/staleActionError'
 import { canShowManualPlanSuccess } from '@/lib/diet/manual-plan-success'
 import { AlertIcon, ChevronDownIcon } from '@/components/ui/icons'
@@ -52,7 +53,10 @@ import type { UserProfile } from '@/lib/types'
 // only (never sent anywhere), and only body-metric/preference data the user
 // is already actively typing into this form - nothing more sensitive is
 // added. Cleared the moment generation succeeds (see handleSubmit below).
-const ONBOARDING_DRAFT_KEY = 'gym-meals-onboarding-draft-v1'
+// The key itself lives in lib/onboarding/draftStorage.ts (not inlined here)
+// so app/settings/ResetAccountButton.tsx can clear the same local draft on
+// an account reset without hardcoding the string a second time.
+const ONBOARDING_DRAFT_KEY = ONBOARDING_DRAFT_STORAGE_KEY
 
 interface OnboardingDraft {
   // Epoch ms of the last save. Used only to reconcile this localStorage

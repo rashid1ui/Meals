@@ -64,7 +64,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
     const { data: currentMeals, error: currentMealsError } = await supabase
       .from('meals')
       .select(
-        'id, name, reminder_time, reminder_enabled, image_url, image_alt, image_attribution, image_status, image_composition_key, foods(id, name)'
+        'id, name, reminder_time, reminder_enabled, image_url, image_alt, image_attribution, image_status, image_checked_at, image_composition_key, foods(id, name)'
       )
       .eq('diet_plan_id', currentPlan.id)
 
@@ -102,6 +102,7 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
         image_alt: (m as { image_alt?: string | null }).image_alt ?? null,
         image_attribution: (m as { image_attribution?: unknown }).image_attribution ?? null,
         image_status: (m as { image_status?: string | null }).image_status ?? null,
+        image_checked_at: (m as { image_checked_at?: string | null }).image_checked_at ?? null,
         image_composition_key: (m as { image_composition_key?: string | null }).image_composition_key ?? null
       }))
     )
@@ -232,7 +233,11 @@ export async function saveDietPlan(payload: SaveDietPlanPayload): Promise<SaveDi
             image_url: carriedImage?.image_url ?? null,
             image_alt: carriedImage?.image_alt ?? null,
             image_attribution: carriedImage?.image_attribution ?? null,
-            image_status: carriedImage ? carriedImage.image_status : 'pending'
+            image_status: carriedImage ? carriedImage.image_status : 'pending',
+            // Carried forward verbatim (including a preserved null) - only a
+            // genuine fresh resolution attempt (scheduled below) ever sets a
+            // new image_checked_at.
+            image_checked_at: carriedImage?.image_checked_at ?? null
           })
           .select()
           .single()

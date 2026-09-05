@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import { resetAccount } from './actions'
+import { clearLocalOnboardingDraft } from '@/lib/onboarding/draftStorage'
 
 export default function ResetAccountButton() {
   const router = useRouter()
@@ -25,14 +26,24 @@ export default function ResetAccountButton() {
 
     try {
       const res = await resetAccount()
-      
+
       if (!res.ok) {
         setError(res.error || 'Failed to reset account.')
         setLoading(false)
         return
       }
 
-      // Reset succeeded. Sign out the user locally.
+      // Reset succeeded server-side (including the account-scoped
+      // onboarding_drafts row). Also clear THIS device's local onboarding
+      // draft - otherwise the next time the wizard mounts (this session or a
+      // future login, same browser) it finds the stale pre-reset draft in
+      // localStorage and resumes from it instead of starting fresh, and can
+      // even resave it back to the server, undoing the reset. Both copies
+      // must be cleared together; clearing only one lets the other
+      // repopulate it.
+      clearLocalOnboardingDraft()
+
+      // Sign out the user locally.
       const supabase = createClient()
       await supabase.auth.signOut()
       
